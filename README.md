@@ -11,11 +11,16 @@ Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 **`demo.html` is the whole app in one file** — everything inlined except the
 webfont, which falls back to system fonts if it can't load.
 
-Opening it straight off disk may or may not work, and that is not up to the
-page. A `file://` document has an opaque origin, so the browser sends
-`Origin: null` on every request; whether CoinGecko and DeFiLlama accept that is
-their call, and some browsers block the request outright. If the app loads but
-says it can't reach a host, that is what happened — serve it over http instead:
+A `file://` document has an opaque origin, which has two consequences. Storage
+access throws there, so anything reading `localStorage` at module scope kills
+the app before it binds a listener — the static shell renders and nothing
+responds. That is guarded now, and `test/e2e.mjs` holds a regression test that
+makes the accessor throw.
+
+The second consequence is not up to the page: the browser sends `Origin: null`
+on every request, and whether CoinGecko and DeFiLlama accept that is their call.
+If the app loads but says it can't reach a host, that is what happened — serve
+it over http instead:
 
 ```
 node serve.mjs        # zero dependencies, http://localhost:8080

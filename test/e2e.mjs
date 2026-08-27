@@ -122,6 +122,30 @@ await p.locator('.row .star').first().click(); await p.waitForTimeout(200);
 ok(await p.locator('.empty').count() === 1, 'unstar empties the list');
 await p.close();
 
+console.log('\n# survives blocked storage (file://, Safari private, blocked site data)');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  // exactly what an opaque origin does: the accessor itself throws
+  await ctx.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() { throw new DOMException('The operation is insecure.', 'SecurityError'); },
+    });
+  });
+  const s = await ctx.newPage();
+  const boom = []; s.on('pageerror', e => boom.push('' + e));
+  await s.goto(U);
+  await s.waitForSelector('.row:not(.sk)', { timeout: 15000 }).catch(() => {});
+  ok(await s.locator('.row:not(.sk)').count() > 5, 'app boots when localStorage throws');
+  await s.fill('#q', 'usdc'); await s.waitForTimeout(400);
+  ok(await s.locator('.row').count() > 0, 'search works when localStorage throws');
+  await s.locator('.row').first().hover();
+  await s.locator('.row .star').first().click(); await s.waitForTimeout(200);
+  ok(await s.locator('.star.on').count() === 1, 'watchlist degrades to memory');
+  ok(boom.length === 0, 'no uncaught error at module scope');
+  await ctx.close();
+}
+
 console.log('\n# degraded modes');
 for (const [mode, label, check] of [
   ['partial', 'lending source down -> warn banner, assets still usable',

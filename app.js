@@ -24,18 +24,32 @@ function path(pts, w, h, pad = 2) {
 const spark = (pts, up) => !pts?.length ? '<div class="spark"></div>'
   : `<svg class="spark" viewBox="0 0 62 26" fill="none"><path d="${path(pts, 62, 26)}" stroke="${up ? 'var(--up)' : 'var(--down)'}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+/* ---------- storage ----------
+   Reading localStorage THROWS on an opaque origin (a page opened from file://),
+   in Safari private mode, and wherever site data is blocked. This runs at module
+   scope, so an unguarded read kills the whole app before any listener is bound:
+   the static shell still renders and nothing responds. Degrade to memory. */
+let memory = null;
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return memory; } },
+  set(k, v) { memory = v; try { localStorage.setItem(k, v); } catch {} },
+};
+const readWatch = () => {
+  try { return JSON.parse(store.get('atlas:watch') || '[]'); } catch { return []; }
+};
+
 /* ---------- state ---------- */
 const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   loading: true, err: null, warn: null, at: 0,
-  watch: new Map(JSON.parse(localStorage.getItem('atlas:watch') || '[]').map(i => [i.id, i])),
+  watch: new Map(readWatch().map(i => [i.id, i])),
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
   clear: $('#clear'), banner: $('#banner'),
 };
-const saveWatch = () => localStorage.setItem('atlas:watch', JSON.stringify([...S.watch.values()]));
+const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
 
 /* ---------- data ---------- */
 async function load({ force } = {}) {
@@ -444,6 +458,13 @@ addEventListener('keydown', e => {
 });
 
 /* ---------- go ---------- */
+// The shell is static HTML, so a boot failure would otherwise look like a page
+// whose search box simply ignores you. Say what happened instead.
+addEventListener('error', e => {
+  if (S.assets.length || S.pools.length) return;
+  el.res.innerHTML = `<div class="empty"><b>The app failed to start</b>${esc(e.message || 'Unknown error')}</div>`;
+});
+
 fromUrl();
 load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');
