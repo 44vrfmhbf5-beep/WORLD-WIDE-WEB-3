@@ -206,3 +206,52 @@ body.searching .hero .sub{font-size:0;opacity:0;height:0}
   .stats{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ---- live data: logos, skeletons, banners, watchlist ---- */
+.tok{position:relative;overflow:visible}
+.tok img{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;
+  opacity:0;transition:opacity .25s var(--ease)}
+.tok .badge{z-index:1}
+.ghost-btn.icon{padding:7px}
+.ghost-btn.icon .i{width:16px;height:16px}
+#refresh:active .i{transform:rotate(180deg);transition:transform .4s var(--ease)}
+
+.star{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;flex:none;
+  color:var(--faint);opacity:0;transition:.15s var(--ease)}
+.star .i{width:16px;height:16px;stroke-width:1.7}
+.row:hover .star,.row.sel .star,.star.on,.star:focus-visible{opacity:1}
+.star:hover{background:rgba(255,255,255,.08);color:var(--text)}
+.star.on{color:#ffc960;opacity:1}
+.star.on .i{fill:#ffc960;stroke:#ffc960}
+.acts .star{opacity:1;width:32px;height:32px;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+@media (hover:none){.star{opacity:1}}
+
+/* skeletons */
+.row.sk{cursor:default;pointer-events:none}
+.row.sk .tok,.ln{background:linear-gradient(100deg,var(--surface2) 30%,rgba(255,255,255,.07) 50%,var(--surface2) 70%);
+  background-size:220% 100%;animation:shimmer 1.4s linear infinite}
+.row.sk .body{display:flex;flex-direction:column;gap:7px}
+.ln{height:10px;border-radius:6px}
+.w40{width:40%}.w25{width:25%}.w15{width:64px;height:14px;flex:none}
+@keyframes shimmer{to{background-position:-220% 0}}
+
+.cload{height:110px;display:grid;place-items:center;color:var(--faint);font-size:12.5px}
+.cload:not(.err){background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.05) 50%,transparent 70%);
+  background-size:220% 100%;animation:shimmer 1.4s linear infinite}
+
+.warn{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 14px;border-radius:13px;
+  background:rgba(255,201,96,.09);border:1px solid rgba(255,201,96,.25);color:#ffd68a;font-size:13px}
+.warn button{margin-left:auto;padding:4px 10px;border-radius:8px;background:rgba(255,255,255,.1);
+  color:inherit;font-size:12px;font-weight:600;flex:none}
+.warn button:hover{background:rgba(255,255,255,.18)}
+
+.sheet-top .ident{display:flex;gap:12px;align-items:center;min-width:0}
+.sheet-top .ident h2{overflow-wrap:anywhere}
+.sheet-top .acts{display:flex;gap:6px;flex:none}
+.note.l{text-align:left;margin-top:0}
+.cta a{display:grid;place-items:center;text-decoration:none}
+.cta.one{margin-top:18px;justify-content:center}
+.cta.one button{flex:0 0 auto;padding:11px 22px}
+.rangebar span{cursor:pointer}
+.rangebar span:hover{color:var(--dim)}
+.empty .cta{max-width:220px;margin-inline:auto}

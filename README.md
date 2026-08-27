@@ -1,53 +1,100 @@
 # Atlas — search everything onchain
 
-One search bar for every chain. Assets and lending markets, indexed side by side,
-with the cross-links between them: open an asset and see where to lend it, open a
-market and see the collateral behind it.
+One search bar for every chain. Live assets and lending markets, indexed side by
+side, with the cross-links between them: open an asset and see where to lend it,
+open a market and see the collateral behind it.
 
 Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 
-**This is the UI only.** All figures are illustrative mock data — no RPC, no
-indexer, no wallet. `data → search → render` is deliberately thin so a real
-backend can drop straight in.
-
 ## Run
 
-No build step, no dependencies.
+No build step. The app is ES modules, so it needs to be served over HTTP
+(`file://` will not work).
 
 ```
-npx http-server -p 8080 .   # or: python3 -m http.server 8080
+npx http-server -p 8080 .    # or: python3 -m http.server 8080
 ```
 
 Then open http://localhost:8080
+
+## Data
+
+Live, keyless, straight from the browser — no backend, no wallet.
+
+| Source | Used for | Endpoint |
+| --- | --- | --- |
+| [CoinGecko](https://www.coingecko.com/en/api) | prices, market caps, volume, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
+| [DeFiLlama](https://defillama.com/docs/api) | lending markets: supply/borrow APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
+
+Lending markets come from joining DeFiLlama's `pools` and `lendBorrow` feeds on
+pool id, keeping only markets with a real borrow side and over $500k supplied.
+Assets and markets are matched by ticker to produce the cross-links.
+
+Responses are cached in `sessionStorage` for 5 minutes, and a stale entry is
+served if a refetch fails, so a rate limit degrades instead of blanking the page.
+
+### Rate limits, and the one thing to watch
+
+CoinGecko's keyless tier allows roughly 5–15 calls/minute. Normal browsing stays
+well inside that; hammering the chain chips will trip it, which surfaces as a
+"rate limited" notice rather than an error. Adding a demo key (`x-cg-demo-api-key`)
+in `data.js` raises it substantially.
+
+Per-chain asset lists use CoinGecko *category* slugs, mapped in the `CHAINS`
+table at the top of `data.js`. If a chain tab comes up empty, that slug is the
+thing to check — CoinGecko renames them occasionally, and the whole mapping is
+one table.
 
 ## Files
 
 | File | What's in it |
 | --- | --- |
 | `index.html` | Shell — header, hero, search bar, filters, results, detail sheet |
-| `styles.css` | Design system, layout, motion, responsive + reduced-motion |
-| `app.js` | Mock dataset, scoring search, renderers, keyboard nav |
+| `styles.css` | Design system, layout, motion, skeletons, responsive + reduced-motion |
+| `data.js` | API clients, caching, retry/backoff, normalisation |
+| `app.js` | Search index, renderers, detail sheets, keyboard nav, URL state |
+| `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
+| `test/` | Fixture server + end-to-end suite |
+
+Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
+still nothing to install or build. It gives typo tolerance — `kamnio` finds
+Kamino — and its scores are re-ranked afterwards so an exact ticker always wins.
 
 ## Interactions
 
 - **`/` or `⌘K`** focus search · **`↑` `↓`** browse · **`↵`** open · **`esc`** back out
-- Multi-token scoring — `usdc lending` ranks USDC markets above the USDC asset
-- Filter by type (All / Assets / Lending) and by network
-- Detail sheets cross-link both ways and keep a back stack
-- Sparklines and charts are deterministic per ticker (seeded walk), so a symbol
-  always draws the same line
+- Multi-token search — `usdc lending` ranks USDC markets above the USDC asset
+- Filter by type (All / Assets / Lending / Saved) and by network
+- Detail sheets cross-link both ways; charts are real history with working ranges
+- **Saved** stars anything to `localStorage`, and survives a reload offline
+- Query, filters and the open sheet all live in the URL, so views are shareable
+  and the browser back button does what you expect
 
-## Wiring up real data
+## Tests
 
-Replace the `ASSETS` and `POOLS` tuples at the top of `app.js` with a fetch. The
-shapes the rest of the code expects:
-
-```js
-{ kind:'asset', sym, name, chain, price, chg, mcap, vol, cat, color }
-{ kind:'pool',  proto, sym, chain, sup, bor, tvl, util, ltv }
+```
+npm install     # playwright, for the test run only
+npm test
 ```
 
-Everything downstream — search keys, rows, sheets — is derived from those.
+`test/serve.mjs` replays the CoinGecko and DeFiLlama response shapes locally, so
+the suite runs with no network and no rate limits. It covers rendering, search
+ranking, fuzzy matching, filters, sheet navigation and history, the watchlist,
+and the degraded paths — one source down, both down, and HTTP 429.
+
+It also asserts that a hostile token name from an API is rendered as text.
+Onchain token names and symbols are attacker-controlled strings; every
+interpolated value goes through `esc()` in `app.js`, and that fixture exists to
+keep it that way.
+
+## A caveat on verification
+
+The sandbox this was built in blocks outbound access to both APIs, so the suite
+above is what verified the app: request shapes are implemented against the
+providers' public documentation and exercised through fixtures, not against the
+live endpoints. The wiring is sound and every failure path is tested, but the
+first run against production is worth watching — a renamed field or category
+slug would show up there and nowhere else.
 
 ## Roadmap
 
