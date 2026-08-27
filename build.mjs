@@ -3,6 +3,7 @@
 // so does app.js) cannot collide at shared scope.
 //   node build.mjs
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 const read = f => fs.readFileSync(f, 'utf8');
 
@@ -26,6 +27,14 @@ const html = read('index.html')
   .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${read('styles.css')}\n</style>`)
   .replace('<script type="module" src="app.js"></script>', () => `<script type="module">\n${js}\n</script>`)
   .replace('<title>', () => '<!-- Single-file build. Source: https://github.com/44vrfmhbf5-beep/WORLD-WIDE-WEB-3 -->\n<title>');
+
+// Parse what is actually emitted, not the string that went in: an earlier build
+// shipped corrupt because a string replacement expanded $-patterns in the
+// inlined code, so the damage happened during the splice, not before it.
+const emitted = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
+if (!emitted) throw new Error('bundle: could not find the emitted script block');
+try { new vm.Script(emitted); }
+catch (e) { throw new Error(`bundle is not valid JavaScript: ${e.message}`); }
 
 fs.writeFileSync('demo.html', html);
 console.log(`demo.html  ${(Buffer.byteLength(html) / 1024).toFixed(0)}KB`);

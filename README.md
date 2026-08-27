@@ -8,16 +8,29 @@ Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 
 ## Demo
 
-**`demo.html` is the whole app in one file.** Download it, double-click it, and
-it connects straight to the live APIs from your browser — no server, no install,
-no build. Everything is inlined except the webfont, which falls back to system
-fonts if it can't load.
+**`demo.html` is the whole app in one file** — everything inlined except the
+webfont, which falls back to system fonts if it can't load.
+
+Opening it straight off disk may or may not work, and that is not up to the
+page. A `file://` document has an opaque origin, so the browser sends
+`Origin: null` on every request; whether CoinGecko and DeFiLlama accept that is
+their call, and some browsers block the request outright. If the app loads but
+says it can't reach a host, that is what happened — serve it over http instead:
+
+```
+node serve.mjs        # zero dependencies, http://localhost:8080
+```
+
+Over http the origin is a normal one and the APIs behave predictably.
 
 Rebuild it after changing any source file:
 
 ```
 npm run build
 ```
+
+The build parses the bundle it emits and refuses to write one that isn't valid
+JavaScript.
 
 ## Hosted demo
 
@@ -41,14 +54,12 @@ deploys to it automatically.
 
 ## Run it locally
 
-No build step. The app is ES modules, so it needs to be served over HTTP
-(`file://` will not work).
+No build step, no dependencies. The app is ES modules, so it has to be served
+over HTTP — `file://` cannot load them.
 
 ```
-npx http-server -p 8080 .    # or: python3 -m http.server 8080
+node serve.mjs               # http://localhost:8080
 ```
-
-Then open http://localhost:8080
 
 ## Data
 

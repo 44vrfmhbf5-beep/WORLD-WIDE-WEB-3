@@ -28,21 +28,34 @@ export class ApiError extends Error {
   constructor(msg, { rateLimited = false } = {}) { super(msg); this.rateLimited = rateLimited; }
 }
 
+const hostOf = u => { try { return new URL(u).host; } catch { return String(u); } };
+// A page opened straight off disk sends `Origin: null`, which an API may refuse.
+// The browser reports that identically to being offline, so say so explicitly.
+const FILE_ORIGIN = typeof location !== 'undefined' && location.protocol === 'file:';
+
+function reachMessage(url, e) {
+  const h = hostOf(url);
+  if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) return `${h} timed out.`;
+  return FILE_ORIGIN
+    ? `Could not reach ${h}. This page is open from a file:// path, so the browser sends a null origin that the API may reject — serving it over http fixes that.`
+    : `Could not reach ${h} — network error, blocked request, or the API refused this origin.`;
+}
+
 async function get(url, { tries = 2, timeout = 25000 } = {}) {
   for (let i = 0; ; i++) {
     let r;
     try {
       r = await fetch(url, { signal: AbortSignal.timeout(timeout) });
-    } catch {
-      if (i >= tries - 1) throw new ApiError('Network unreachable — check your connection.');
+    } catch (e) {
+      if (i >= tries - 1) throw new ApiError(reachMessage(url, e));
       await sleep(600 * 2 ** i); continue;
     }
     if (r.status === 429) {
-      if (i >= tries - 1) throw new ApiError('Rate limited by CoinGecko. Give it a minute.', { rateLimited: true });
+      if (i >= tries - 1) throw new ApiError(`Rate limited by ${hostOf(url)}. Give it a minute.`, { rateLimited: true });
       await sleep(2500 * 2 ** i); continue;
     }
     if (!r.ok) {
-      if (i >= tries - 1) throw new ApiError(`Upstream returned ${r.status}.`);
+      if (i >= tries - 1) throw new ApiError(`${hostOf(url)} returned HTTP ${r.status}.`);
       await sleep(600 * 2 ** i); continue;
     }
     return r.json();

@@ -3,8 +3,9 @@
   "private": true,
   "description": "Search assets and lending markets across chains. Static site, no build step.",
   "scripts": {
+    "start": "node serve.mjs",
     "build": "node build.mjs",
-    "start": "node test/serve.mjs",
+    "fixtures": "node test/serve.mjs",
     "test": "node build.mjs && node test/e2e.mjs && node test/live.mjs && PAGE=demo.html node test/live.mjs"
   },
   "devDependencies": {
