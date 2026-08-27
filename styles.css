@@ -57,9 +57,11 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;background:rgb
   -webkit-background-clip:text;background-clip:text;color:transparent}
 .hero .sub{margin-top:12px;color:var(--dim);font-size:15px}
 .hero .sub span{color:var(--accent)}
-body.searching .hero{padding:22px 0 14px}
-body.searching .hero h1{font-size:0;opacity:0;height:0;margin:0}
-body.searching .hero .sub{font-size:0;opacity:0;height:0}
+.hero h1,.hero .sub{transition:font-size .3s var(--ease),opacity .22s var(--ease),
+  transform .3s var(--ease),margin .3s var(--ease)}
+body.searching .hero{padding:20px 0 6px}
+body.searching .hero h1{font-size:0;opacity:0;margin:0;transform:translateY(-10px)}
+body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6px)}
 
 /* search */
 .searchbar{position:sticky;top:64px;z-index:15;display:flex;align-items:center;gap:12px;
@@ -100,8 +102,8 @@ body.searching .hero .sub{font-size:0;opacity:0;height:0}
 .results{display:flex;flex-direction:column;gap:8px}
 .row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
   background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
-  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease);
-  animation:in .3s var(--ease) both}
+  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
+.row.in{animation:in .3s var(--ease) both}
 @keyframes in{from{opacity:0;transform:translateY(7px)}}
 .row:hover{background:var(--surface2)}
 .row.sel{border-color:var(--accent-dim);background:var(--surface2);
@@ -143,8 +145,8 @@ body.searching .hero .sub{font-size:0;opacity:0;height:0}
 
 /* detail sheet */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(8,8,12,.6);backdrop-filter:blur(3px);
-  animation:fade .2s var(--ease)}
-@keyframes fade{from{opacity:0}}
+  opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
+.scrim.on{opacity:1;pointer-events:auto}
 .sheet{position:fixed;z-index:31;top:0;right:0;bottom:0;width:min(440px,100%);
   background:var(--bg2);border-left:1px solid var(--line);overflow-y:auto;
   transform:translateX(100%);transition:transform .32s var(--ease);visibility:hidden}
@@ -255,3 +257,16 @@ body.searching .hero .sub{font-size:0;opacity:0;height:0}
 .rangebar span{cursor:pointer}
 .rangebar span:hover{color:var(--dim)}
 .empty .cta{max-width:220px;margin-inline:auto}
+
+/* ---- fluidity + focus ---- */
+.results{transition:opacity .18s var(--ease)}
+.results.stale{opacity:.45;pointer-events:none}   /* chain loading, not a skeleton flash */
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row:focus-visible,.mini:focus-visible{outline-offset:-2px}
+#q:focus-visible{outline:none}
+
+.rangebar span{transition:background .15s var(--ease),color .15s var(--ease)}
+.chip,.tab,.row,.mini{-webkit-tap-highlight-color:transparent}
+.mini{transition:background .15s var(--ease),border-color .15s var(--ease),transform .15s var(--ease)}
+.mini:active{transform:scale(.99)}

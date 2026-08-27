@@ -82,6 +82,34 @@ ok(await p.locator('[data-back]').count() === 0, 'back returns to the asset');
 await p.goBack(); await p.waitForTimeout(500);
 ok(!(await p.locator('.sheet').getAttribute('class')).includes('open'), 'browser back closes the sheet');
 
+console.log('\n# fluidity: rows are reused, not rebuilt');
+await p.fill('#q', ''); await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+// tag the live nodes, then drive the UI and see which survive
+const tag = () => p.evaluate(() => [...document.querySelectorAll('.row')].forEach((n, i) => n.__k = 'k' + i));
+const survivors = () => p.evaluate(() => [...document.querySelectorAll('.row')].filter(n => n.__k).length);
+await tag();
+await p.keyboard.press('ArrowDown'); await p.keyboard.press('ArrowDown'); await p.waitForTimeout(150);
+ok(await survivors() > 5, 'arrow keys do not rebuild the list');
+ok(await p.evaluate(() => document.querySelectorAll('.row.sel').length) === 1, 'exactly one row selected');
+ok(await p.evaluate(() => {
+  const a = document.querySelector('#q').getAttribute('aria-activedescendant');
+  return !!a && document.getElementById(a)?.classList.contains('sel');
+}), 'aria-activedescendant tracks the selection');
+await p.fill('#q', 'usd'); await p.waitForTimeout(800); await tag();   // let entries settle
+await p.fill('#q', 'usdc'); await p.waitForTimeout(250);   // refining a query
+ok(await survivors() > 3, 'typing reorders cached rows instead of recreating them');
+ok(await p.evaluate(() => [...document.querySelectorAll('.row')]
+  .every(n => !n.__k || !n.classList.contains('in'))), 'surviving rows do not replay their entry animation');
+
+console.log('\n# keyboard reaches the sheet controls');
+await p.fill('#q', 'ethereum'); await p.waitForTimeout(400);
+await p.locator('.row').first().click(); await p.waitForSelector('.chart svg path', { timeout: 10000 });
+ok(await p.evaluate(() => document.querySelector('#scrim').classList.contains('on')), 'scrim fades in via class, not display');
+await p.locator('[data-days="30"]').focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(700);
+ok(await p.evaluate(() => document.querySelector('[data-days="30"]').classList.contains('on')), 'Enter activates a chart range');
+await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+ok(await p.evaluate(() => !document.querySelector('#scrim').classList.contains('on')), 'Escape clears the scrim');
+
 console.log('\n# watchlist persists');
 await p.fill('#q', 'solana'); await p.waitForTimeout(400);
 await p.locator('.row').first().hover(); await p.locator('.row .star').first().click();

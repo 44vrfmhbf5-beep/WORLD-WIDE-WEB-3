@@ -4,6 +4,7 @@ import { CHAINS, CH, loadAssets, loadPools, loadAssetChart, loadPoolChart, links
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
+const coarse = matchMedia('(hover:none)').matches;   // don't pop a mobile keyboard
 // token names and pool metadata are partly user-supplied onchain strings
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const compact = n => !isFinite(n) || !n ? '0' : n >= 1e12 ? (n / 1e12).toFixed(2) + 'T' : n >= 1e9 ? (n / 1e9).toFixed(2) + 'B'
@@ -47,7 +48,7 @@ async function load({ force } = {}) {
   else if (a.status === 'rejected') S.warn = 'Asset prices unavailable — ' + (a.reason?.message || 'CoinGecko is not responding.');
   else if (p.status === 'rejected') S.warn = 'Lending markets unavailable — ' + (p.reason?.message || 'DeFiLlama is not responding.');
   S.loading = false; S.at = Date.now();
-  reindex(); render();
+  nodes.clear(); reindex(); render();
 }
 
 const pooled = () => S.chain ? S.pools.filter(p => p.chain === S.chain) : S.pools;
@@ -69,6 +70,7 @@ const size = i => i.kind === 'asset' ? i.mcap : i.supplyUsd;
 function compute() {
   const q = S.q.trim();
   if (!q) return scope().sort((a, b) => size(b) - size(a)).slice(0, 40);
+  if (!S.fuse) return [];
   const t = q.toLowerCase();
   const hits = S.fuse.search(q, { limit: 300 }).map(r => {
     const i = r.item; let s = 1 - (r.score ?? 1);
@@ -92,12 +94,16 @@ const tok = (it, sq) => {
     (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
     (c ? '<span class="badge"></span>' : '') + `</div>`;
 };
-const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-star="${esc(it.id)}" aria-label="${S.watch.has(it.id) ? 'Remove from' : 'Add to'} watchlist" aria-pressed="${S.watch.has(it.id)}">
+const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-star="${esc(it.id)}" aria-label="Save to watchlist" aria-pressed="${S.watch.has(it.id)}">
   <svg viewBox="0 0 24 24" class="i"><path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"/></svg></button>`;
 
-function rowHTML(it, i) {
-  const c = CH[it.chain], sel = i === S.sel;
-  const head = `class="row${sel ? ' sel' : ''}" role="option" aria-selected="${sel}" data-id="${esc(it.id)}" style="animation-delay:${Math.min(i, 12) * 18}ms"`;
+const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
+// volatile fields only: a row is reused across renders unless its numbers moved
+const sigOf = it => it.kind === 'asset' ? `${it.price}|${it.chg}|${it.mcap}` : `${it.sup}|${it.bor}|${it.supplyUsd}`;
+
+function rowHTML(it) {
+  const c = CH[it.chain];
+  const head = `class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"`;
   if (it.kind === 'asset') return `<div ${head}>
     ${tok(it)}
     <div class="body">
@@ -117,7 +123,49 @@ function rowHTML(it, i) {
     ${star(it)}</div>`;
 }
 
-/* ---------- render ---------- */
+/* ---------- render ----------
+   Rows are cached by id and moved rather than rebuilt, so typing reorders the
+   list without re-creating <img> elements or replaying entry animations. */
+const nodes = new Map();
+function nodeFor(it, i) {
+  const sig = sigOf(it);
+  const cached = nodes.get(it.id);
+  if (cached && cached.dataset.sig === sig) return cached;
+  const t = document.createElement('template');
+  t.innerHTML = rowHTML(it).trim();
+  const n = t.content.firstElementChild;
+  n.dataset.sig = sig;
+  const delay = Math.min(i, 12) * 18;
+  n.classList.add('in');                       // entry animation, new nodes only
+  n.style.animationDelay = delay + 'ms';
+  // a timer, not animationend: a row re-rendered mid-animation is detached and
+  // would never fire the event, leaving .in stuck and replaying on every render
+  setTimeout(() => { n.classList.remove('in'); n.style.animationDelay = ''; }, delay + 340);
+  nodes.set(it.id, n);
+  if (nodes.size > 600) for (const k of nodes.keys()) { if (nodes.size <= 400) break; nodes.delete(k); }
+  return n;
+}
+
+function paintSel(scroll) {
+  const rows = el.res.querySelectorAll('.row');
+  if (!rows.length) return el.q.removeAttribute('aria-activedescendant');
+  rows.forEach((n, i) => {
+    const on = i === S.sel;
+    n.classList.toggle('sel', on);
+    n.setAttribute('aria-selected', on);
+    if (on) {
+      el.q.setAttribute('aria-activedescendant', n.id);
+      if (scroll) n.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+/** Bring the results back into view when the query or a filter changes. */
+function scrollToResults() {
+  const y = el.res.getBoundingClientRect().top + scrollY - 150;
+  if (scrollY > y) scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+}
+
 const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" style="animation-delay:${i * 60}ms"><div class="tok"></div><div class="body"><div class="ln w40"></div><div class="ln w25"></div></div><div class="ln w15"></div></div>`).join('');
 
 function render() {
@@ -151,14 +199,19 @@ function render() {
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
   }
-  let html = '', last = null;
+  const frag = document.createDocumentFragment();
+  let last = null;
   list.forEach((it, i) => {
     if (S.tab !== 'assets' && S.tab !== 'lending' && it.kind !== last) {
-      html += `<div class="gtitle">${it.kind === 'asset' ? 'Assets' : 'Lending markets'}</div>`; last = it.kind;
+      const h = document.createElement('div');
+      h.className = 'gtitle'; h.setAttribute('role', 'presentation');
+      h.textContent = it.kind === 'asset' ? 'Assets' : 'Lending markets';
+      frag.appendChild(h); last = it.kind;
     }
-    html += rowHTML(it, i);
+    frag.appendChild(nodeFor(it, i));
   });
-  el.res.innerHTML = html;
+  el.res.replaceChildren(frag);
+  paintSel();
 }
 
 /* ---------- detail sheet ---------- */
@@ -260,13 +313,13 @@ function open(id, { push = true } = {}) {
   else depth = history.state?.depth ?? 0;
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
-  el.scrim.hidden = false; el.sheet.scrollTop = 0; el.sheet.focus();
+  el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
   drawChart(it.kind === 'asset' ? 1 : 30);
 }
 function hide() {
   depth = 0;
   el.sheet.classList.remove('open'); el.sheet.setAttribute('aria-hidden', 'true');
-  el.scrim.hidden = true; el.q.focus();
+  el.scrim.classList.remove('on'); if (!coarse) el.q.focus();
 }
 /** Close = rewind past every sheet entry, so browser back never re-opens it. */
 function close() {
@@ -309,22 +362,28 @@ function paintFilters() {
 }
 
 /* ---------- events ---------- */
-el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render(); syncUrl(); });
+el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render(); scrollToResults(); syncUrl(); });
 el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));
 
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
-  S.tab = b.dataset.tab; S.sel = 0; paintFilters(); reindex(); render(); syncUrl(true);
+  S.tab = b.dataset.tab; S.sel = 0; paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
+let chainSeq = 0;
 $('#chains').addEventListener('click', async e => {
   const b = e.target.closest('[data-chain]'); if (!b) return;
+  const seq = ++chainSeq;
   S.chain = b.dataset.chain || null; S.sel = 0; paintFilters();
-  S.loading = true; render();
-  try { S.assets = await loadAssets(S.chain); S.warn = null; }
-  catch (err) { S.assets = []; S.warn = 'Asset prices unavailable — ' + err.message; }
-  S.loading = false; reindex(); render(); syncUrl(true);
+  S.loading = true; el.res.classList.add('stale'); render();
+  let assets = null, err = null;
+  try { assets = await loadAssets(S.chain); } catch (e2) { err = e2; }
+  if (seq !== chainSeq) return;                 // a newer chain click won the race
+  S.assets = assets || [];
+  S.warn = err ? 'Asset prices unavailable — ' + err.message : null;
+  S.loading = false; el.res.classList.remove('stale');
+  nodes.clear(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 
 function toggleStar(id) {
@@ -337,11 +396,11 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
+  if (e.target.closest('[data-retry]')) return load({ force: true });
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
   const r = e.target.closest('.row:not(.sk)'); if (r) open(r.dataset.id);
 });
 el.banner.addEventListener('click', e => e.target.closest('[data-retry]') && load({ force: true }));
-el.res.addEventListener('click', e => e.target.closest('[data-retry]') && load({ force: true }), true);
 
 el.sheet.addEventListener('click', e => {
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
@@ -353,6 +412,11 @@ el.sheet.addEventListener('click', e => {
     return drawChart(+d.dataset.days);
   }
   const m = e.target.closest('.mini'); if (m) open(m.dataset.id);
+});
+el.sheet.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('[data-days],.mini')) {
+    e.preventDefault(); e.target.closest('[data-days],.mini').click();
+  }
 });
 el.scrim.addEventListener('click', () => close());
 
@@ -372,8 +436,7 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
     S.sel = (S.sel + (e.key === 'ArrowDown' ? 1 : -1) + S.list.length) % S.list.length;
-    render();
-    el.res.querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' });
+    paintSel(true);
   } else if (e.key === 'Enter' && S.list[S.sel]) open(S.list[S.sel].id);
 });
 
@@ -383,4 +446,4 @@ load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');
   if (id && find(id)) { history.replaceState({ id, depth: 0 }, '', location.href); open(id, { push: false }); }
 });
-el.q.focus();
+if (!coarse) el.q.focus();

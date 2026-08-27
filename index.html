@@ -40,7 +40,7 @@
 
   <div class="searchbar" id="searchbar">
     <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-    <input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Search any asset, protocol or lending market…" aria-label="Search assets and lending markets">
+    <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search any asset, protocol or lending market…" aria-label="Search assets and lending markets">
     <button class="clear" id="clear" hidden aria-label="Clear search">
       <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
@@ -57,7 +57,7 @@
 </main>
 
 <aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1"></aside>
-<div class="scrim" id="scrim" hidden></div>
+<div class="scrim" id="scrim"></div>
 
 <script type="module" src="app.js"></script>
 </body>
