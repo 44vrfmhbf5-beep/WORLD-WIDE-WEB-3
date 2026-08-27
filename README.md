@@ -6,13 +6,28 @@ open a market and see the collateral behind it.
 
 Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 
-## Live demo
+## Demo
+
+**`demo.html` is the whole app in one file.** Download it, double-click it, and
+it connects straight to the live APIs from your browser — no server, no install,
+no build. Everything is inlined except the webfont, which falls back to system
+fonts if it can't load.
+
+Rebuild it after changing any source file:
+
+```
+npm run build
+```
+
+## Hosted demo
 
 A deploy workflow (`.github/workflows/pages.yml`) publishes the site to GitHub
 Pages on every push to the default branch. It sits dormant — passing, deploying
 nothing — until Pages is switched on once by hand in **Settings → Pages → Build
 and deployment → Source: GitHub Actions**. A workflow token is not allowed to
 create the Pages site itself, which is why that step stays manual.
+
+The hosted build serves the multi-file app plus `demo.html`.
 
 This repository is currently **private**, which matters for what happens next:
 
@@ -95,10 +110,21 @@ npm install     # playwright, for the test run only
 npm test
 ```
 
-`test/serve.mjs` replays the CoinGecko and DeFiLlama response shapes locally, so
-the suite runs with no network and no rate limits. It covers rendering, search
+Two suites, both offline:
+
+**`test/e2e.mjs`** drives the UI against `test/serve.mjs`, which replays the
+CoinGecko and DeFiLlama response shapes locally. It covers rendering, search
 ranking, fuzzy matching, filters, sheet navigation and history, the watchlist,
+row reuse under typing and arrow keys, keyboard access to the sheet controls,
 and the degraded paths — one source down, both down, and HTTP 429.
+
+**`test/live.mjs`** serves the app *unmodified*, so `data.js` keeps its
+production URLs, and intercepts those exact URLs in the browser. It asserts the
+real hosts, paths and query params — `/coins/markets` with its sparkline and
+percentage params, `/coins/{id}/market_chart?days=N`, `/pools`, `/lendBorrow`,
+`/chart/{poolId}`, and the per-chain `category=` slug — then feeds correctly
+shaped payloads back and checks they render. It runs twice: once against the
+source, once against the bundled `demo.html`.
 
 It also asserts that a hostile token name from an API is rendered as text.
 Onchain token names and symbols are attacker-controlled strings; every
@@ -107,12 +133,21 @@ keep it that way.
 
 ## A caveat on verification
 
-The sandbox this was built in blocks outbound access to both APIs, so the suite
-above is what verified the app: request shapes are implemented against the
-providers' public documentation and exercised through fixtures, not against the
-live endpoints. The wiring is sound and every failure path is tested, but the
-first run against production is worth watching — a renamed field or category
-slug would show up there and nowhere else.
+The sandbox this was built in cannot reach either API — an egress policy denies
+`api.coingecko.com` and `yields.llama.fi` at the proxy — so no response here has
+ever come from the real services.
+
+What that does and does not leave unverified:
+
+- **Verified.** The exact URLs the app requests, including query params, and
+  that correctly shaped responses render. `test/live.mjs` intercepts the real
+  production URLs rather than a rewritten base, so the request side is under
+  test for real.
+- **Not verified.** That the services still return those shapes. Field names and
+  CoinGecko's category slugs come from the providers' public documentation. A
+  renamed field or slug would surface on the first live run and nowhere else —
+  which is why an empty chain tab names the slug it asked for, and why the
+  borrow join accepts the fields from either `/pools` or `/lendBorrow`.
 
 ## Roadmap
 

@@ -194,8 +194,11 @@ function render() {
     : S.tab === 'saved' ? `${list.length} saved` : `Top of ${esc(where)} · updated ${ago(S.at)} · ↑↓ to browse, ↵ to open`;
 
   if (!list.length) {
-    el.res.innerHTML = S.tab === 'saved' && !S.q
-      ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
+    el.res.innerHTML =
+      S.tab === 'saved' && !S.q
+        ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
+      : !S.q && S.chain && !S.assets.length
+        ? `<div class="empty"><b>No assets indexed for ${esc(CH[S.chain].name)}</b>CoinGecko returned nothing for the “${esc(CH[S.chain].cg)}” category. Slugs get renamed occasionally — the mapping is the CHAINS table in data.js.</div>`
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
   }

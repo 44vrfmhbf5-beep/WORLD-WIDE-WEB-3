@@ -72,7 +72,7 @@ http.createServer(async (req,res)=>{
   const f=path.join(ROOT,p==='/'?'index.html':p);
   if(!f.startsWith(ROOT)||!fs.existsSync(f)){res.writeHead(404);return res.end('nope');}
   let body=fs.readFileSync(f);
-  if(p==='/data.js') body=Buffer.from(String(body)
+  if(p==='/data.js' && process.env.REWRITE!=='0') body=Buffer.from(String(body)
     .replace("'https://api.coingecko.com/api/v3'","'/api/v3'")
     .replace("'https://yields.llama.fi'","'/llama'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});

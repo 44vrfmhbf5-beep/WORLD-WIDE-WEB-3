@@ -28,11 +28,11 @@ export class ApiError extends Error {
   constructor(msg, { rateLimited = false } = {}) { super(msg); this.rateLimited = rateLimited; }
 }
 
-async function get(url, tries = 2) {
+async function get(url, { tries = 2, timeout = 25000 } = {}) {
   for (let i = 0; ; i++) {
     let r;
     try {
-      r = await fetch(url, { signal: AbortSignal.timeout(25000) });
+      r = await fetch(url, { signal: AbortSignal.timeout(timeout) });
     } catch {
       if (i >= tries - 1) throw new ApiError('Network unreachable — check your connection.');
       await sleep(600 * 2 ** i); continue;
@@ -120,17 +120,25 @@ export function loadAssets(chainId) {
   });
 }
 
+// Borrow-side fields live on the pool itself in some responses and only in
+// /lendBorrow in others. Accept either, so neither shape breaks lending.
+const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
+  ? { apyBaseBorrow: p.apyBaseBorrow, apyRewardBorrow: p.apyRewardBorrow,
+      totalSupplyUsd: p.totalSupplyUsd, totalBorrowUsd: p.totalBorrowUsd, ltv: p.ltv }
+  : null;
+
 /** Every lending market DeFiLlama tracks, above a size floor. */
 export function loadPools() {
   return cache('pools', TTL, async () => {
     const [pools, lend] = await Promise.all([
-      get(`${YIELDS}/pools`),
-      get(`${YIELDS}/lendBorrow`),
+      get(`${YIELDS}/pools`, { timeout: 60000 }),        // this payload is ~10MB
+      get(`${YIELDS}/lendBorrow`).catch(() => null),     // enrichment, not required
     ]);
     const lb = Object.fromEntries((lend || []).map(x => [x.pool, x]));
     return (pools?.data || [])
-      .filter(p => lb[p.pool] && BY_LLAMA[p.chain] && (lb[p.pool].totalSupplyUsd || 0) > 5e5)
-      .map(p => pool(p, lb[p.pool]))
+      .map(p => [p, lb[p.pool] || borrowOf(p)])
+      .filter(([p, b]) => b && BY_LLAMA[p.chain] && (b.totalSupplyUsd || p.tvlUsd || 0) > 5e5)
+      .map(([p, b]) => pool(p, b))
       .sort((a, b) => b.supplyUsd - a.supplyUsd)
       .slice(0, 1200);
   });
