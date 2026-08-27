@@ -1,5 +1,10 @@
 name: Deploy demo to GitHub Pages
 
+# Dormant until Pages is switched on: a workflow token may not create the Pages
+# site itself, so this checks first and skips cleanly instead of failing. Turn
+# it on under Settings -> Pages -> Source: GitHub Actions and the next push
+# publishes automatically.
+
 on:
   push:
     branches: [claude/web3-blockchain-search-lzaknw]
@@ -15,7 +20,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.probe.outputs.enabled }}
+    steps:
+      - id: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not enabled — skipping deploy. Enable it under Settings > Pages > Source: GitHub Actions and the next push will publish."
+          fi
+
   deploy:
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -31,8 +54,6 @@ jobs:
           cp vendor/fuse.mjs vendor/fuse.LICENSE _site/vendor/
 
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

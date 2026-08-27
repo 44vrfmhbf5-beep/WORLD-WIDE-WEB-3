@@ -9,9 +9,10 @@ Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 ## Live demo
 
 A deploy workflow (`.github/workflows/pages.yml`) publishes the site to GitHub
-Pages on every push to the default branch. It needs Pages switched on once, by
-hand, in **Settings → Pages → Build and deployment → Source: GitHub Actions** —
-a workflow token is not allowed to create the Pages site itself.
+Pages on every push to the default branch. It sits dormant — passing, deploying
+nothing — until Pages is switched on once by hand in **Settings → Pages → Build
+and deployment → Source: GitHub Actions**. A workflow token is not allowed to
+create the Pages site itself, which is why that step stays manual.
 
 This repository is currently **private**, which matters for what happens next:
 
