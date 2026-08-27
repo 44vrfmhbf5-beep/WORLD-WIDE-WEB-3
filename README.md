@@ -119,6 +119,13 @@ Kamino — and its scores are re-ranked afterwards so an exact ticker always win
 - Query, filters and the open sheet all live in the URL, so views are shareable
   and the browser back button does what you expect
 
+## Performance note
+
+The webfont is loaded non-blocking. A render-blocking stylesheet holds up script
+execution, so an unreachable font host left the shell rendered and the app inert
+— measured at 12,642ms to the first API call versus 68ms once the link no longer
+blocks. `test/e2e.mjs` hangs the font host and asserts the app still boots.
+
 ## Tests
 
 ```

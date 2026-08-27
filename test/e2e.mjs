@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const D = path.join(HERE, 'shots') + path.sep;
 const PORT = 8899;
-const U = `http://localhost:${PORT}/index.html`;
+const PAGE = process.env.PAGE || 'index.html';
+const U = `http://localhost:${PORT}/${PAGE}`;
 fs.mkdirSync(D, { recursive: true });
 
 let srv;
@@ -36,11 +37,14 @@ const page = async () => {
 };
 
 console.log('\n# load + render');
-let p = await page(); await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
+let p = await page();
+let logoReqs = 0;
+p.on('request', r => { if (r.url().includes('assets.coingecko.com')) logoReqs++; });
+await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
 ok(await p.locator('.row:not(.sk)').count() > 10, 'rows render from live shapes');
 ok((await p.locator('.gtitle').allTextContents()).join() === 'Assets,Lending markets', 'both groups present, once each');
 ok(/updated/.test(await p.locator('#meta').textContent()), 'freshness shown');
-ok(await p.locator('.tok img').count() > 0, 'real logos requested');
+ok(logoReqs > 0, 'logo URLs from the API are requested');
 
 console.log('\n# XSS: hostile token name from the API must not execute');
 await p.fill('#q', 'script'); await p.waitForTimeout(600);
@@ -95,9 +99,15 @@ ok(await p.evaluate(() => {
   const a = document.querySelector('#q').getAttribute('aria-activedescendant');
   return !!a && document.getElementById(a)?.classList.contains('sel');
 }), 'aria-activedescendant tracks the selection');
-await p.fill('#q', 'usd'); await p.waitForTimeout(800); await tag();   // let entries settle
-await p.fill('#q', 'usdc'); await p.waitForTimeout(250);   // refining a query
-ok(await survivors() > 3, 'typing reorders cached rows instead of recreating them');
+// The invariant is not "most rows survive" — a refined query may return a
+// disjoint set. It is that every row carried over reuses its existing node.
+const idsOf = () => p.evaluate(() => [...document.querySelectorAll('.row')].map(n => n.dataset.id));
+await p.fill('#q', 'kamino'); await p.waitForTimeout(900);
+const before = await idsOf(); await tag();
+await p.fill('#q', 'kamin'); await p.waitForTimeout(350);
+const shared = (await idsOf()).filter(x => before.includes(x)).length;
+const kept = await survivors();
+ok(shared > 3 && kept === shared, `carried-over rows reuse their nodes (${kept}/${shared})`);
 ok(await p.evaluate(() => [...document.querySelectorAll('.row')]
   .every(n => !n.__k || !n.classList.contains('in'))), 'surviving rows do not replay their entry animation');
 
@@ -143,6 +153,25 @@ console.log('\n# survives blocked storage (file://, Safari private, blocked site
   await s.locator('.row .star').first().click(); await s.waitForTimeout(200);
   ok(await s.locator('.star.on').count() === 1, 'watchlist degrades to memory');
   ok(boom.length === 0, 'no uncaught error at module scope');
+  await ctx.close();
+}
+
+console.log('\n# boots even when the font host hangs');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  // never fulfilled: an ad-blocker, corporate proxy or DNS blackhole looks like this.
+  // A render-blocking stylesheet would hold up script execution and leave the
+  // static shell rendered with a search box that ignores input.
+  await ctx.route('https://fonts.googleapis.com/**', () => {});
+  const s = await ctx.newPage();
+  const t = Date.now();
+  await s.goto(U, { waitUntil: 'commit' });
+  await s.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
+  const ms = Date.now() - t;
+  ok(await s.locator('.row:not(.sk)').count() > 5, `app boots with the font host hanging (${ms}ms)`);
+  ok(ms < 5000, `boot is not gated on the font request (${ms}ms)`);
+  await s.fill('#q', 'usdc'); await s.waitForTimeout(300);
+  ok(await s.locator('.row').count() > 0, 'search works with the font host hanging');
   await ctx.close();
 }
 

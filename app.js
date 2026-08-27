@@ -81,9 +81,20 @@ function reindex() {
 }
 
 const size = i => i.kind === 'asset' ? i.mcap : i.supplyUsd;
+
+/* With no query the two kinds are ranked separately. Market cap and supplied-USD
+   are not the same scale — real assets reach $2T where the largest lending market
+   is a few $B — so one combined sort buries every market under the assets. */
+function trending() {
+  const all = scope();
+  if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
+  const top = k => all.filter(i => i.kind === k).sort((x, y) => size(y) - size(x)).slice(0, 20);
+  return [...top('asset'), ...top('pool')];
+}
+
 function compute() {
   const q = S.q.trim();
-  if (!q) return scope().sort((a, b) => size(b) - size(a)).slice(0, 40);
+  if (!q) return trending();
   if (!S.fuse) return [];
   const t = q.toLowerCase();
   const hits = S.fuse.search(q, { limit: 300 }).map(r => {

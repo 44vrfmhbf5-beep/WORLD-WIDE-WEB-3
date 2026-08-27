@@ -9,7 +9,10 @@
 <meta name="theme-color" content="#16161d">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Non-blocking: a pending stylesheet blocks script execution, so a slow or
+     unreachable font host would leave the shell rendered and the app dead. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23ab9ff2'/></svg>">
 <style>
 /* Atlas — Phantom-flavoured onchain search */
@@ -613,9 +616,20 @@ function reindex() {
 }
 
 const size = i => i.kind === 'asset' ? i.mcap : i.supplyUsd;
+
+/* With no query the two kinds are ranked separately. Market cap and supplied-USD
+   are not the same scale — real assets reach $2T where the largest lending market
+   is a few $B — so one combined sort buries every market under the assets. */
+function trending() {
+  const all = scope();
+  if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
+  const top = k => all.filter(i => i.kind === k).sort((x, y) => size(y) - size(x)).slice(0, 20);
+  return [...top('asset'), ...top('pool')];
+}
+
 function compute() {
   const q = S.q.trim();
-  if (!q) return scope().sort((a, b) => size(b) - size(a)).slice(0, 40);
+  if (!q) return trending();
   if (!S.fuse) return [];
   const t = q.toLowerCase();
   const hits = S.fuse.search(q, { limit: 300 }).map(r => {

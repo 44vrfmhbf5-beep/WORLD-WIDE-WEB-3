@@ -6,6 +6,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MODE = process.env.MODE || 'ok';
 const PORT = +(process.env.PORT || 8899);
 
+const EXTRA=[];
+for(let i=0;i<80;i++) EXTRA.push([`coin-${i}`,`TK${i}`,`Token ${i}`]);
 const NAMES = [['bitcoin','BTC','Bitcoin'],['ethereum','ETH','Ethereum'],['solana','SOL','Solana'],
   ['tether','USDT','Tether'],['usd-coin','USDC','USDC'],['binancecoin','BNB','BNB'],
   ['lido-staked-ether','STETH','Lido Staked Ether'],['jito-governance-token','JTO','Jito'],
@@ -14,7 +16,7 @@ const NAMES = [['bitcoin','BTC','Bitcoin'],['ethereum','ETH','Ethereum'],['solan
   ['wrapped-bitcoin','WBTC','Wrapped Bitcoin'],['avalanche-2','AVAX','Avalanche'],
   ['arbitrum','ARB','Arbitrum'],['optimism','OP','Optimism'],['aerodrome-finance','AERO','Aerodrome'],
   // hostile name: onchain strings are attacker-controlled, the UI must escape them
-  ['evil-token','<img src=x onerror="window.__XSS=1">','"><script>window.__XSS=1</script>']];
+  ['evil-token','<img src=x onerror="window.__XSS=1">','"><script>window.__XSS=1</script>'],...EXTRA];
 const PRICES = { BTC:96240, ETH:3412.8, SOL:186.42, USDT:1.0001, USDC:0.9999, BNB:712.3, STETH:3402.1,
   JTO:2.61, JUP:0.94, AAVE:321.4, LINK:22.14, SUI:3.86, APT:9.34, HYPE:34.8, WBTC:96180,
   AVAX:41.2, ARB:0.79, OP:1.64, AERO:1.12 };
@@ -27,13 +29,13 @@ const markets = (cat) => NAMES.map(([id,sym,name],i)=>({
   current_price:PRICES[sym]??1.23, market_cap:(2e12)/(i+1), market_cap_rank:i+1,
   total_volume:(4e10)/(i+1), price_change_percentage_24h:((i%7)-3)*1.4,
   sparkline_in_7d:{price:walk(id,168,PRICES[sym]??1.23)},
-})).slice(0, cat ? 8 : 21);
+})).slice(0, cat ? 40 : 101);
 
 const PROJECTS=['aave-v3','kamino-lend','morpho-blue','compound-v3','venus-core-pool','moonwell','suilend','marginfi','spark','euler-v2'];
 const CHAINS=['Ethereum','Solana','Base','Arbitrum','BSC','Sui','Optimism','Avalanche','Polygon','Aptos'];
 const SYMS=['USDC','ETH','SOL','WBTC','USDT','SUI','STETH','AAVE','ARB','HYPE'];
 const pools=[]; const lend=[];
-for(let i=0;i<160;i++){
+for(let i=0;i<1300;i++){
   const id=`pool-${i}`, sym=SYMS[i%SYMS.length];
   const supply=(1e10)/(i+3), borrow=supply*(.2+((i*7)%60)/100);
   pools.push({pool:id, chain:CHAINS[i%CHAINS.length], project:PROJECTS[i%PROJECTS.length], symbol:sym,
