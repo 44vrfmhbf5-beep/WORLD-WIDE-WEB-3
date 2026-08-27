@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Atlas — search everything onchain</title>
+<meta name="description" content="One search bar for every chain. Assets, lending markets, and the protocols behind them.">
+<meta name="theme-color" content="#16161d">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23ab9ff2'/></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="aurora" aria-hidden="true"></div>
+
+<header class="top">
+  <a class="brand" href="#" aria-label="Atlas home">
+    <span class="mark" aria-hidden="true"></span>
+    <span>atlas</span>
+  </a>
+  <nav class="top-nav">
+    <span class="net" id="netCount"></span>
+    <button class="ghost-btn" id="topSearch">
+      <svg viewBox="0 0 24 24" class="i"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      Search <kbd>/</kbd>
+    </button>
+  </nav>
+</header>
+
+<main class="wrap">
+  <section class="hero" id="hero">
+    <h1>Search everything <em>onchain</em></h1>
+    <p class="sub">Assets and lending markets across <span id="chainWord">12 networks</span> — one bar, no wallet required.</p>
+  </section>
+
+  <div class="searchbar" id="searchbar">
+    <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+    <input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Try “SOL”, “usdc lending”, “kamino”…" aria-label="Search assets and lending markets">
+    <button class="clear" id="clear" hidden aria-label="Clear search">
+      <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <div class="filters">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="chains" id="chains"></div>
+  </div>
+
+  <div class="meta" id="meta"></div>
+  <div id="results" class="results" role="listbox" aria-label="Results"></div>
+</main>
+
+<aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1"></aside>
+<div class="scrim" id="scrim" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
