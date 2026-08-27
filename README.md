@@ -6,7 +6,24 @@ open a market and see the collateral behind it.
 
 Phantom-flavoured dark UI, Google-style omnibox, dApp-style detail sheets.
 
-## Run
+## Live demo
+
+A deploy workflow (`.github/workflows/pages.yml`) publishes the site to GitHub
+Pages on every push to the default branch. It needs Pages switched on once, by
+hand, in **Settings → Pages → Build and deployment → Source: GitHub Actions** —
+a workflow token is not allowed to create the Pages site itself.
+
+This repository is currently **private**, which matters for what happens next:
+
+- **Make it public** → Pages works on any plan and the demo is a public URL.
+- **Keep it private** → Pages needs GitHub Pro or Team, and the demo is only
+  reachable by people with access to the repo.
+
+Either way the URL will be
+`https://44vrfmhbf5-beep.github.io/WORLD-WIDE-WEB-3/`, and the next push
+deploys to it automatically.
+
+## Run it locally
 
 No build step. The app is ES modules, so it needs to be served over HTTP
 (`file://` will not work).
