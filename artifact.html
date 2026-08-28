@@ -21,10 +21,13 @@
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{
-  background:var(--bg); color:var(--text); min-height:100vh;
+  background:var(--bg); color:var(--text); min-height:100svh;
+  /* viewport-fit=cover is declared, so the page runs under the notch and the
+     home indicator unless it pays the insets back */
+  padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
   font:400 15px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased; letter-spacing:-.01em;
-  padding-bottom:80px;
+  padding-bottom:calc(80px + env(safe-area-inset-bottom));
 }
 button,input{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
@@ -219,8 +222,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .hero .sub{font-size:14px;max-width:22em;margin-inline:auto}
   .searchbar{top:60px;height:54px}
   .row{padding:12px 13px;gap:11px}
-  .sheet{width:100%;top:auto;height:92vh;border-left:0;border-top:1px solid var(--line);
-    border-radius:24px 24px 0 0;transform:translateY(100%)}
+  .sheet{width:100%;top:auto;height:92dvh;border-left:0;border-top:1px solid var(--line);
+    border-radius:24px 24px 0 0;transform:translateY(100%);
+    padding-bottom:env(safe-area-inset-bottom)}
   .stats{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -337,6 +341,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railnav .tab[aria-selected=true]::before{background:var(--accent)}
 .railnav .tab .ct{margin-left:auto;font-size:11px;font-weight:600;color:var(--faint);
   font-variant-numeric:tabular-nums}
+.chainbtn{display:none}
 .railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
 .railk{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
   padding-left:11px}
@@ -401,18 +406,59 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 @media (max-width:900px){
   .app{grid-template-columns:minmax(0,1fr)}
+
+  /* Reclaim the first screen. Measured at 390x844 the chrome ran to y=474
+     before a single row: a decorative hero, a results line and a toolbar on
+     separate rows, and generous desktop padding throughout. A search app on a
+     phone should lead with the search box and then get out of the way. */
+  .wrap{display:flex;flex-direction:column;padding:0 14px}
+  .searchbar{order:1;top:54px}
+  #banner{order:2}
+  #statbar{order:3}
+  .bar{order:4}
+  #sortbar{order:5}
+  #results{order:6}
+  .hero{display:none}
+
+  .top{padding:11px 14px}
+  .railnav .tab{padding:8px 13px;font-size:13px}
+  /* stacked label-over-value costs 68px of the first screen; inline costs 34 */
+  .statbar{margin:8px 0 0}
+  .statbar .s{display:flex;align-items:baseline;gap:7px;padding:7px 11px;min-width:0}
+  .statbar .sk{font-size:9.5px}
+  .statbar .sv{font-size:13.5px;margin:0}
+
+  /* results line and density control share one row instead of wrapping */
+  .bar{flex-wrap:nowrap;gap:10px;align-items:center}
+  .bar .meta{padding:10px 2px;flex:1;min-width:0;overflow:hidden;
+    white-space:nowrap;text-overflow:ellipsis}
+  .kbd-hint{display:none}
+  .viewtools{align-self:center}
+  .sortbar:not(:empty){padding-bottom:8px}
+  .sortbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
-  .rail{position:static;height:auto;gap:8px;border-right:0;
-    border-bottom:1px solid var(--line);padding:10px 0;overflow:visible}
-  .railnav,.railchains{flex-direction:row;gap:4px;overflow-x:auto;scrollbar-width:none;
-    padding:0 14px;max-height:none;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .railnav::-webkit-scrollbar,.railchains::-webkit-scrollbar{display:none}
+  /* one row: categories scroll, the network button stays put at the end */
+  .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:8px;
+    border-right:0;border-bottom:1px solid var(--line);padding:7px 0;overflow:visible}
+  .railnav{flex-direction:row;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;
+    padding:0 0 0 14px;max-height:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent)}
+  .railnav::-webkit-scrollbar{display:none}
   .railnav .tab{width:auto;flex:none;padding:6px 12px}
   .railnav .tab::before,.railnav .tab .ct{display:none}
-  .railfoot{margin:0;gap:0;min-width:0}
+  .railfoot{margin:0;gap:0;min-width:0;flex:none;flex-direction:row}
   .railk{display:none}
-  .railchains .chip{white-space:nowrap;flex:none}
+  /* one button instead of a thirty-chip scroller: saves a whole row of the
+     first screen, and finding a network stops being a scroll hunt */
+  .railchains{display:none}
+  .chainbtn{display:flex;align-items:center;gap:7px;margin:0 14px 0 4px;padding:8px 12px;
+    border-radius:999px;background:var(--surface);border:1px solid var(--line);
+    color:var(--dim);font-size:13px;font-weight:600;white-space:nowrap;flex:none;align-self:flex-start}
+  .chainbtn.on{color:var(--text);border-color:color-mix(in srgb,var(--c) 55%,transparent);
+    background:color-mix(in srgb,var(--c) 14%,var(--surface))}
+  .chainbtn .ch{width:14px;height:14px;opacity:.7;margin-left:-2px}
+  .pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pickgrid .chip{width:100%;justify-content:flex-start;padding:11px 12px;border-radius:12px}
   /* one scrolling strip, not three stacked rows eating the first screen */
   .statbar{display:flex;overflow-x:auto;scrollbar-width:none;margin:10px 0 2px;
     -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
@@ -496,6 +542,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   <nav class="railnav" id="tabs" role="tablist" aria-label="Categories"></nav>
   <div class="railfoot">
     <div class="railk">Network</div>
+    <button class="chainbtn" id="chainbtn" aria-haspopup="dialog"><span class="dot"></span><span class="cn">All chains</span>
+      <svg viewBox="0 0 24 24" class="i ch"><path d="m6 9 6 6 6-6"/></svg></button>
     <div class="railchains" id="chains"></div>
   </div>
 </aside>
@@ -2053,7 +2101,9 @@ function render() {
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   el.meta.innerHTML = !list.length ? '' : S.q
     ? `${list.length} result${list.length > 1 ? 's' : ''} for \u201c${esc(S.q.trim())}\u201d \u00b7 ${esc(where)}`
-    : S.tab === 'saved' ? `${list.length} saved` : `Top of ${esc(where)} \u00b7 updated ${ago(S.at)} \u00b7 \u2191\u2193 to browse, \u21b5 to open`;
+    // the keyboard hint is meaningless on a phone, and the line is a whole row there
+    : S.tab === 'saved' ? `${list.length} saved`
+    : `Top of ${esc(where)} \u00b7 updated ${ago(S.at)}<span class="kbd-hint"> \u00b7 \u2191\u2193 to browse, \u21b5 to open</span>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">\u00b7 searching DEXs\u2026</span>';
 
   if (!list.length && S.remote.busy) {
@@ -2393,17 +2443,32 @@ function paintChart(box, it, { pts, live }, days) {
   host.onpointerleave = clear;
 }
 
+function showSheet(html) {
+  el.sheet.style.transform = '';
+  el.sheet.innerHTML = html;
+  el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
+  el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
+}
 function open(id, { push = true } = {}) {
   const it = find(id); if (!it) return;
   const hash = '#' + id.replace(':', '/');
   if (push) history.pushState({ id, depth: ++depth }, '', hash);
   else depth = history.state?.depth ?? 0;
-  el.sheet.style.transform = '';
-  el.sheet.innerHTML = sheetHTML(it);
-  el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
-  el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
+  showSheet(sheetHTML(it));
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
+}
+
+/* Thirty networks in a horizontal scroller is a bad way to find one on a
+   phone. Same chips, laid out as a grid you can see at once. */
+function openPicker() {
+  history.pushState({ picker: true, depth: ++depth }, '', location.href);
+  showSheet(`<div class="grab" aria-hidden="true"></div><div class="sheet-in picker" role="dialog" aria-label="Choose a network">
+    <div class="sheet-top"><div class="ident"><div><h2>Network</h2>
+      <div class="hsub">Filter everything to one chain</div></div></div>
+      <div class="acts"><button class="x" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+    <div class="pickgrid">${$('#chains').innerHTML}</div></div>`);
 }
 function hide() {
   depth = 0;
@@ -2485,6 +2550,10 @@ $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
   document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
+  const btn = $('#chainbtn');
+  btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
+  btn.style.setProperty('--c', S.chain ? CH[S.chain].color : 'var(--accent)');
+  btn.classList.toggle('on', !!S.chain);
 }
 /** How much sits behind each category, so the rail says what it holds. */
 function paintCounts() {
@@ -2551,10 +2620,9 @@ $('#tabs').addEventListener('click', e => {
   paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 let chainSeq = 0;
-$('#chains').addEventListener('click', async e => {
-  const b = e.target.closest('[data-chain]'); if (!b) return;
+async function pickChain(id) {
   const seq = ++chainSeq;
-  S.chain = b.dataset.chain || null; S.sel = 0; paintFilters();
+  S.chain = id || null; S.sel = 0; paintFilters();
   reindex(); render(); scrollToResults(); syncUrl(true);
   if (!S.chain) { S.chainTokens = []; nodes.clear(); reindex(); render(); return; }
   el.res.classList.add('stale');
@@ -2564,7 +2632,21 @@ $('#chains').addEventListener('click', async e => {
   S.chainTokens = toks;
   el.res.classList.remove('stale');
   nodes.clear(); reindex(); render();
-});
+}
+const onChainClick = e => {
+  const b = e.target.closest('[data-chain]'); if (!b) return;
+  const id = b.dataset.chain;
+  // Closing the picker rewinds history, and history.go is async: applying the
+  // chain first meant the back navigation landed afterwards and overwrote the
+  // url we had just written, losing ?chain=. Rewind first, then apply.
+  if (el.sheet.classList.contains('open') && depth > 0) {
+    addEventListener('popstate', () => pickChain(id), { once: true });
+    return close();
+  }
+  pickChain(id);
+};
+$('#chains').addEventListener('click', onChainClick);
+$('#chainbtn').addEventListener('click', openPicker);
 
 function toggleStar(id) {
   const it = find(id); if (!it) return;
@@ -2586,6 +2668,7 @@ el.banner.addEventListener('click', e => e.target.closest('[data-retry]') && loa
 el.sheet.addEventListener('click', e => {
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
   if (e.target.closest('[data-close]')) return close();
+  if (e.target.closest('[data-chain]')) return onChainClick(e);
   if (e.target.closest('[data-back]')) return history.back();
   const d = e.target.closest('[data-days]');
   if (d) {

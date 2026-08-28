@@ -12,10 +12,13 @@
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{
-  background:var(--bg); color:var(--text); min-height:100vh;
+  background:var(--bg); color:var(--text); min-height:100svh;
+  /* viewport-fit=cover is declared, so the page runs under the notch and the
+     home indicator unless it pays the insets back */
+  padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right);
   font:400 15px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased; letter-spacing:-.01em;
-  padding-bottom:80px;
+  padding-bottom:calc(80px + env(safe-area-inset-bottom));
 }
 button,input{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
@@ -210,8 +213,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .hero .sub{font-size:14px;max-width:22em;margin-inline:auto}
   .searchbar{top:60px;height:54px}
   .row{padding:12px 13px;gap:11px}
-  .sheet{width:100%;top:auto;height:92vh;border-left:0;border-top:1px solid var(--line);
-    border-radius:24px 24px 0 0;transform:translateY(100%)}
+  .sheet{width:100%;top:auto;height:92dvh;border-left:0;border-top:1px solid var(--line);
+    border-radius:24px 24px 0 0;transform:translateY(100%);
+    padding-bottom:env(safe-area-inset-bottom)}
   .stats{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -328,6 +332,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railnav .tab[aria-selected=true]::before{background:var(--accent)}
 .railnav .tab .ct{margin-left:auto;font-size:11px;font-weight:600;color:var(--faint);
   font-variant-numeric:tabular-nums}
+.chainbtn{display:none}
 .railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
 .railk{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
   padding-left:11px}
@@ -392,18 +397,59 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 @media (max-width:900px){
   .app{grid-template-columns:minmax(0,1fr)}
+
+  /* Reclaim the first screen. Measured at 390x844 the chrome ran to y=474
+     before a single row: a decorative hero, a results line and a toolbar on
+     separate rows, and generous desktop padding throughout. A search app on a
+     phone should lead with the search box and then get out of the way. */
+  .wrap{display:flex;flex-direction:column;padding:0 14px}
+  .searchbar{order:1;top:54px}
+  #banner{order:2}
+  #statbar{order:3}
+  .bar{order:4}
+  #sortbar{order:5}
+  #results{order:6}
+  .hero{display:none}
+
+  .top{padding:11px 14px}
+  .railnav .tab{padding:8px 13px;font-size:13px}
+  /* stacked label-over-value costs 68px of the first screen; inline costs 34 */
+  .statbar{margin:8px 0 0}
+  .statbar .s{display:flex;align-items:baseline;gap:7px;padding:7px 11px;min-width:0}
+  .statbar .sk{font-size:9.5px}
+  .statbar .sv{font-size:13.5px;margin:0}
+
+  /* results line and density control share one row instead of wrapping */
+  .bar{flex-wrap:nowrap;gap:10px;align-items:center}
+  .bar .meta{padding:10px 2px;flex:1;min-width:0;overflow:hidden;
+    white-space:nowrap;text-overflow:ellipsis}
+  .kbd-hint{display:none}
+  .viewtools{align-self:center}
+  .sortbar:not(:empty){padding-bottom:8px}
+  .sortbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
-  .rail{position:static;height:auto;gap:8px;border-right:0;
-    border-bottom:1px solid var(--line);padding:10px 0;overflow:visible}
-  .railnav,.railchains{flex-direction:row;gap:4px;overflow-x:auto;scrollbar-width:none;
-    padding:0 14px;max-height:none;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .railnav::-webkit-scrollbar,.railchains::-webkit-scrollbar{display:none}
+  /* one row: categories scroll, the network button stays put at the end */
+  .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:8px;
+    border-right:0;border-bottom:1px solid var(--line);padding:7px 0;overflow:visible}
+  .railnav{flex-direction:row;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;
+    padding:0 0 0 14px;max-height:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent)}
+  .railnav::-webkit-scrollbar{display:none}
   .railnav .tab{width:auto;flex:none;padding:6px 12px}
   .railnav .tab::before,.railnav .tab .ct{display:none}
-  .railfoot{margin:0;gap:0;min-width:0}
+  .railfoot{margin:0;gap:0;min-width:0;flex:none;flex-direction:row}
   .railk{display:none}
-  .railchains .chip{white-space:nowrap;flex:none}
+  /* one button instead of a thirty-chip scroller: saves a whole row of the
+     first screen, and finding a network stops being a scroll hunt */
+  .railchains{display:none}
+  .chainbtn{display:flex;align-items:center;gap:7px;margin:0 14px 0 4px;padding:8px 12px;
+    border-radius:999px;background:var(--surface);border:1px solid var(--line);
+    color:var(--dim);font-size:13px;font-weight:600;white-space:nowrap;flex:none;align-self:flex-start}
+  .chainbtn.on{color:var(--text);border-color:color-mix(in srgb,var(--c) 55%,transparent);
+    background:color-mix(in srgb,var(--c) 14%,var(--surface))}
+  .chainbtn .ch{width:14px;height:14px;opacity:.7;margin-left:-2px}
+  .pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .pickgrid .chip{width:100%;justify-content:flex-start;padding:11px 12px;border-radius:12px}
   /* one scrolling strip, not three stacked rows eating the first screen */
   .statbar{display:flex;overflow-x:auto;scrollbar-width:none;margin:10px 0 2px;
     -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}

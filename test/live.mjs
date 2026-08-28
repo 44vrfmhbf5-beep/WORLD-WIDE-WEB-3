@@ -506,6 +506,9 @@ console.log('\n# a chart always draws, even with no history anywhere');
   await ctx.close();
 }
 
+ok(await p.locator('.railchains').isVisible() && !await p.locator('#chainbtn').isVisible(),
+  'desktop keeps the whole chain list in the rail');
+
 console.log('\n# mobile');
 {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
@@ -520,6 +523,7 @@ console.log('\n# mobile');
     'the page never scrolls sideways');
   ok(await q.locator('#results.table').count() === 0, 'a phone gets cards, not five numeric columns');
   ok(!await q.locator('#view').isVisible(), 'and is not offered a table toggle that cannot work');
+  ok(!await q.locator('.hero').isVisible(), 'the decorative hero does not cost a phone its first screen');
 
   // the column headers are the desktop sort control; a phone needs its own
   ok(await q.locator('#sortbar button').count() >= 4, 'sort is reachable as chips');
@@ -540,9 +544,37 @@ console.log('\n# mobile');
   }
   await q.setViewportSize({ width: 390, height: 844 }); await q.waitForTimeout(400);
 
-  // chain chips must be reachable, not parked off-screen behind the categories
-  const chip = await q.locator('.railchains .chip').first().boundingBox();
-  ok(chip && chip.y < 220, `the chain filter is on screen (y=${Math.round(chip?.y ?? -1)})`);
+  // the first screen was 70% chrome: hero, stacked stat cards, and a results
+  // line and toolbar on separate rows, with the first row at y=474 of 844
+  const geo = await q.evaluate(() => {
+    const fr = document.querySelector('#results .row');
+    const vis = [...document.querySelectorAll('#results .row')].filter(r => {
+      const b = r.getBoundingClientRect(); return b.top < innerHeight && b.bottom > 0; });
+    return { rail: Math.round(document.querySelector('.rail').getBoundingClientRect().height),
+      firstRow: Math.round(fr.getBoundingClientRect().top), rows: vis.length };
+  });
+  ok(geo.rail < 70, `the rail is one row, not two (${geo.rail}px)`);
+  ok(geo.firstRow < 340, `content starts in the top half of the screen (y=${geo.firstRow})`);
+  // this fixture carries only two lending markets, so ask for what exists
+  const total = await q.locator('#results .row').count();
+  ok(geo.rows >= Math.min(7, total), `and fills it with rows (${geo.rows} of ${total})`);
+
+  // thirty chains in a horizontal scroller is a scroll hunt; a grid is not
+  ok(await q.locator('#chainbtn').isVisible(), 'the network filter is one button');
+  await q.click('#chainbtn'); await q.waitForTimeout(600);
+  ok(await q.locator('.pickgrid .chip').count() === 31, 'which opens every network at once');
+  await q.locator('.pickgrid [data-chain=sol]').click(); await q.waitForTimeout(1800);
+  ok(await q.locator('.sheet.open').count() === 0, 'picking one closes the picker');
+  ok(/Solana/.test(await q.locator('#chainbtn .cn').textContent()), 'and the button reports it');
+  // closing the picker rewinds history, and history.go is async — applying the
+  // chain before that landed used to overwrite the url and drop ?chain=
+  ok(/chain=sol/.test(q.url()), `the filter survives the picker closing (${q.url().split('?')[1]})`);
+  await q.click('#chainbtn'); await q.waitForTimeout(500);
+  await q.goBack(); await q.waitForTimeout(600);
+  ok(await q.locator('.sheet.open').count() === 0, 'back closes the picker');
+  ok(/chain=sol/.test(q.url()), 'without undoing the filter');
+  await q.locator('#chainbtn').click(); await q.waitForTimeout(500);
+  await q.locator('.pickgrid [data-chain=""]').click(); await q.waitForTimeout(1500);
 
   // a bottom sheet you cannot throw away feels stuck
   await q.locator('.row').first().click();

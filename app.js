@@ -519,7 +519,9 @@ function render() {
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   el.meta.innerHTML = !list.length ? '' : S.q
     ? `${list.length} result${list.length > 1 ? 's' : ''} for “${esc(S.q.trim())}” · ${esc(where)}`
-    : S.tab === 'saved' ? `${list.length} saved` : `Top of ${esc(where)} · updated ${ago(S.at)} · ↑↓ to browse, ↵ to open`;
+    // the keyboard hint is meaningless on a phone, and the line is a whole row there
+    : S.tab === 'saved' ? `${list.length} saved`
+    : `Top of ${esc(where)} · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ to browse, ↵ to open</span>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
 
   if (!list.length && S.remote.busy) {
@@ -859,17 +861,32 @@ function paintChart(box, it, { pts, live }, days) {
   host.onpointerleave = clear;
 }
 
+function showSheet(html) {
+  el.sheet.style.transform = '';
+  el.sheet.innerHTML = html;
+  el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
+  el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
+}
 function open(id, { push = true } = {}) {
   const it = find(id); if (!it) return;
   const hash = '#' + id.replace(':', '/');
   if (push) history.pushState({ id, depth: ++depth }, '', hash);
   else depth = history.state?.depth ?? 0;
-  el.sheet.style.transform = '';
-  el.sheet.innerHTML = sheetHTML(it);
-  el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
-  el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
+  showSheet(sheetHTML(it));
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
+}
+
+/* Thirty networks in a horizontal scroller is a bad way to find one on a
+   phone. Same chips, laid out as a grid you can see at once. */
+function openPicker() {
+  history.pushState({ picker: true, depth: ++depth }, '', location.href);
+  showSheet(`<div class="grab" aria-hidden="true"></div><div class="sheet-in picker" role="dialog" aria-label="Choose a network">
+    <div class="sheet-top"><div class="ident"><div><h2>Network</h2>
+      <div class="hsub">Filter everything to one chain</div></div></div>
+      <div class="acts"><button class="x" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+    <div class="pickgrid">${$('#chains').innerHTML}</div></div>`);
 }
 function hide() {
   depth = 0;
@@ -951,6 +968,10 @@ $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
   document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
+  const btn = $('#chainbtn');
+  btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
+  btn.style.setProperty('--c', S.chain ? CH[S.chain].color : 'var(--accent)');
+  btn.classList.toggle('on', !!S.chain);
 }
 /** How much sits behind each category, so the rail says what it holds. */
 function paintCounts() {
@@ -1017,10 +1038,9 @@ $('#tabs').addEventListener('click', e => {
   paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 let chainSeq = 0;
-$('#chains').addEventListener('click', async e => {
-  const b = e.target.closest('[data-chain]'); if (!b) return;
+async function pickChain(id) {
   const seq = ++chainSeq;
-  S.chain = b.dataset.chain || null; S.sel = 0; paintFilters();
+  S.chain = id || null; S.sel = 0; paintFilters();
   reindex(); render(); scrollToResults(); syncUrl(true);
   if (!S.chain) { S.chainTokens = []; nodes.clear(); reindex(); render(); return; }
   el.res.classList.add('stale');
@@ -1030,7 +1050,21 @@ $('#chains').addEventListener('click', async e => {
   S.chainTokens = toks;
   el.res.classList.remove('stale');
   nodes.clear(); reindex(); render();
-});
+}
+const onChainClick = e => {
+  const b = e.target.closest('[data-chain]'); if (!b) return;
+  const id = b.dataset.chain;
+  // Closing the picker rewinds history, and history.go is async: applying the
+  // chain first meant the back navigation landed afterwards and overwrote the
+  // url we had just written, losing ?chain=. Rewind first, then apply.
+  if (el.sheet.classList.contains('open') && depth > 0) {
+    addEventListener('popstate', () => pickChain(id), { once: true });
+    return close();
+  }
+  pickChain(id);
+};
+$('#chains').addEventListener('click', onChainClick);
+$('#chainbtn').addEventListener('click', openPicker);
 
 function toggleStar(id) {
   const it = find(id); if (!it) return;
@@ -1052,6 +1086,7 @@ el.banner.addEventListener('click', e => e.target.closest('[data-retry]') && loa
 el.sheet.addEventListener('click', e => {
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
   if (e.target.closest('[data-close]')) return close();
+  if (e.target.closest('[data-chain]')) return onChainClick(e);
   if (e.target.closest('[data-back]')) return history.back();
   const d = e.target.closest('[data-days]');
   if (d) {
