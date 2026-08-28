@@ -72,16 +72,39 @@ Live, keyless, straight from the browser — no backend, no wallet.
 
 | Host | Used for | Endpoints |
 | --- | --- | --- |
-| `api.coingecko.com` | prices, market caps, volume, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
-| `yields.llama.fi` | lending markets and yield farms: APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
-| `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/dexs`, `/overview/fees`, `/overview/derivatives`, `/overview/options`, `/v2/chains`, `/raises`, `/hacks` |
+| `api.coingecko.com` | assets, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
+| `api.coinpaprika.com` | assets and 24h/7d/30d/1y moves when CoinGecko refuses the origin | `/tickers` |
+| `api.binance.com` | price history when neither of the above answers | `/klines` |
+| `yields.llama.fi` | lending markets and yield farms, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
+| `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/{dexs,fees,derivatives,options}`, `/v2/chains`, `/raises`, `/hacks` |
 | `stablecoins.llama.fi` | stablecoin supply, peg and mechanism | `/stablecoins` |
 | `bridges.llama.fi` | cross-chain bridge volume | `/bridges` |
 | `api.dexscreener.com` | live DEX pair search — the long tail | `/latest/dex/search` |
-| `api.geckoterminal.com` | trending DEX pools | `/networks/trending_pools` |
+| `api.geckoterminal.com` | trending pools, per-chain tokens, pair OHLCV, second DEX search | `/networks/trending_pools`, `/networks/{net}/pools`, `/networks/{net}/pools/{addr}/ohlcv/{tf}`, `/search/pools` |
 
-Nineteen endpoints across seven hosts, all keyless and CORS-open, called
-straight from the browser.
+Twenty-five endpoints across nine hosts, all keyless and CORS-open.
+
+### No single source can empty the app
+
+CoinGecko refuses some browser origins, which used to take the whole asset layer
+down. Assets are now requested from CoinGecko and CoinPaprika together and the
+first to answer wins. Charts try CoinGecko, then Binance klines, then the 7-day
+sparkline, and finally draw a flat line at the current value labelled as having
+no history — a chart never renders as an empty box.
+
+### Charts
+
+One component for every kind. The line animates in, the pointer reads out any
+point, and the headline percentage is computed from the range on screen rather
+than a fixed 24 hours — switch to 1Y and it reports the year.
+
+### 30 networks
+
+Including Robinhood Chain, Berachain, Monad, Sonic, Blast, Scroll, Linea,
+zkSync Era, Sei, Unichain, Ink, Abstract, Plume, Story, Mantle, TON, Tron and
+Celo. Selecting a chain pulls that network's own traded tokens from
+GeckoTerminal, so a chain is useful the day it launches rather than when an
+aggregator gets round to it.
 
 ### Ten kinds, one index
 

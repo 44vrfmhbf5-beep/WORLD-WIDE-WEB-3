@@ -56,7 +56,7 @@ http.createServer(async (req,res)=>{
   const u=new URL(req.url,'http://x'); const p=u.pathname;
   const json=(o,code=200)=>{res.writeHead(code,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(o));};
   if(MODE==='slow') await new Promise(r=>setTimeout(r,900));
-  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')||p.startsWith('/dex/')||p.startsWith('/gt/')){
+  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')||p.startsWith('/dex/')||p.startsWith('/gt/')||p.startsWith('/pk/')||p.startsWith('/bn/')){
     if(MODE==='down') return json({error:'nope'},503);
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
     if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
@@ -101,6 +101,22 @@ http.createServer(async (req,res)=>{
       priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd: n==='TinyCoin' ? 1800 : (9e5)/(i+1)},
       volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
   }
+  if(p==='/pk/tickers') return json(Array.from({length:60},(_,i)=>({
+    id:'pk-'+i, name:'Paprika '+i, symbol:'PK'+i, rank:i+1,
+    quotes:{USD:{price:1000/(i+1), market_cap:2e12/(i+1), volume_24h:1e10/(i+1),
+      percent_change_24h:((i%7)-3)*1.2, percent_change_7d:((i%5)-2)*3.1,
+      percent_change_30d:((i%9)-4)*6.4, percent_change_1y:((i%11)-5)*22.5}}})));
+  if(p==='/bn/klines'){ const n=+(u.searchParams.get('limit')||100);
+    return json(walk('bn'+u.searchParams.get('symbol'),n,100).map(v=>[0,0,0,0,String(v),0])); }
+  if(/^\/gt\/networks\/[^/]+\/pools$/.test(p)){
+    const rows=[]; for(let i=0;i<10;i++) rows.push({id:'net_p'+i,type:'pool',
+      attributes:{name:'CHAINTOK'+i+' / SOL',address:'ct'+i,base_token_price_usd:String(0.5*(i+1)),
+        price_change_percentage:{h24:'3.2'},reserve_in_usd:String(2e6/(i+1)),
+        volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}});
+    return json({data:rows});
+  }
+  if(/ohlcv/.test(p)) return json({data:{attributes:{ohlcv_list:
+    walk('ohlcv'+p,60,1).map((v,i)=>[i,0,0,0,v,0])}}});
   if(p==='/gt/search/pools'){
     const q=(u.searchParams.get('query')||'').toLowerCase();
     const rows=[];
@@ -140,7 +156,9 @@ http.createServer(async (req,res)=>{
     .replace("'https://stablecoins.llama.fi'","'/stable'")
     .replace("'https://bridges.llama.fi'","'/bridge'")
     .replace("'https://api.dexscreener.com'","'/dex'")
-    .replace("'https://api.geckoterminal.com/api/v2'","'/gt'"));
+    .replace("'https://api.geckoterminal.com/api/v2'","'/gt'")
+    .replace("'https://api.coinpaprika.com/v1'","'/pk'")
+    .replace("'https://api.binance.com/api/v3'","'/bn'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

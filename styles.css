@@ -279,3 +279,21 @@ body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6
 .sample b{color:var(--text);font-weight:600}
 .pulse{color:var(--accent);animation:blink 1.2s ease-in-out infinite}
 @keyframes blink{50%{opacity:.4}}
+
+/* ---- interactive chart ---- */
+.chart-svg{position:relative;height:110px}
+.chart-svg svg{display:block;width:100%;height:110px;touch-action:none}
+.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
+.chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fadein{to{opacity:1}}
+.chart-svg .cx{position:absolute;top:0;bottom:0;width:1px;background:var(--line2);
+  opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .cdot{position:absolute;width:9px;height:9px;border-radius:50%;margin:-4.5px 0 0 -4.5px;
+  box-shadow:0 0 0 2px var(--surface);opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:3px 8px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;pointer-events:none}
+.nohist{position:absolute;inset:auto 0 8px;text-align:center;color:var(--faint);font-size:11.5px}
+@media (prefers-reduced-motion:reduce){.chart-svg .line{animation:none;stroke-dashoffset:0}
+  .chart-svg .area{animation:none;opacity:1}}

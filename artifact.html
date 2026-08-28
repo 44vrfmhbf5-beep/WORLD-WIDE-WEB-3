@@ -289,6 +289,24 @@ body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6
 .pulse{color:var(--accent);animation:blink 1.2s ease-in-out infinite}
 @keyframes blink{50%{opacity:.4}}
 
+/* ---- interactive chart ---- */
+.chart-svg{position:relative;height:110px}
+.chart-svg svg{display:block;width:100%;height:110px;touch-action:none}
+.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
+.chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fadein{to{opacity:1}}
+.chart-svg .cx{position:absolute;top:0;bottom:0;width:1px;background:var(--line2);
+  opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .cdot{position:absolute;width:9px;height:9px;border-radius:50%;margin:-4.5px 0 0 -4.5px;
+  box-shadow:0 0 0 2px var(--surface);opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:3px 8px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;pointer-events:none}
+.nohist{position:absolute;inset:auto 0 8px;text-align:center;color:var(--faint);font-size:11.5px}
+@media (prefers-reduced-motion:reduce){.chart-svg .line{animation:none;stroke-dashoffset:0}
+  .chart-svg .area{animation:none;opacity:1}}
+
 </style>
 
 <div class="aurora" aria-hidden="true"></div>
@@ -475,6 +493,12 @@ window.__ATLAS_SAMPLE__ = {
         priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
         volume: { h24: vol }, fdv: liq * 14 }));
   },
+  klines(sym, n) { return walk('k' + sym, n, 100).map(v => [0, 0, 0, 0, String(v), 0]); },
+  ohlcv(addr, n) { return walk('o' + addr, n, 1).map((v, i) => [i, 0, 0, 0, v, 0]); },
+  chainPools(net) {
+    return this.trending.slice(0, 8).map((r, i) => ({ ...r, id: net + '_c' + i,
+      attributes: { ...r.attributes, address: net + 'addr' + i } }));
+  },
   gtSearch(q) {
     const s = q.toLowerCase();
     return this.pairs(s).slice(0, 3).map((p, i) => ({ id: p.chainId + '_gt' + i, type: 'pool',
@@ -552,7 +576,7 @@ const Fuse = (() => {
  */
 function e(e){return Array.isArray?Array.isArray(e):u(e)===`[object Array]`}function t(e){if(typeof e==`string`)return e;if(typeof e==`bigint`)return e.toString();let t=e+``;return t==`0`&&1/e==-1/0?`-0`:t}function n(e){return e==null?``:t(e)}function r(e){return typeof e==`string`}function i(e){return typeof e==`number`}function a(e){return e===!0||e===!1||s(e)&&u(e)==`[object Boolean]`}function o(e){return typeof e==`object`}function s(e){return o(e)&&e!==null}function c(e){return e!=null}function l(e){return!e.trim().length}function u(e){return e==null?e===void 0?`[object Undefined]`:`[object Null]`:Object.prototype.toString.call(e)}const d=`Invalid doc index: must be a non-negative integer within the bounds of the docs array`,f=e=>`Pattern length exceeds max of ${e}.`,p=e=>`Missing ${e} property in key`,m=e=>`Property 'weight' in key '${e}' must be a positive integer`,h=Object.prototype.hasOwnProperty;var g=class{constructor(e){this._keys=[],this._keyMap={};let t=0;e.forEach(e=>{let n=_(e);this._keys.push(n),this._keyMap[n.id]=n,t+=n.weight}),this._keys.forEach(e=>{e.weight/=t})}get(e){return this._keyMap[e]}keys(){return this._keys}toJSON(){return JSON.stringify(this._keys)}};function _(t){let n=null,i=null,a=null,o=1,s=null;if(r(t)||e(t))a=t,n=v(t),i=y(t);else{if(!h.call(t,`name`))throw Error(p(`name`));let e=t.name;if(a=e,h.call(t,`weight`)&&t.weight!==void 0&&(o=t.weight,o<=0))throw Error(m(y(e)));n=v(e),i=y(e),s=t.getFn??null}return{path:n,id:i,weight:o,src:a,getFn:s}}function v(t){return e(t)?t:t.split(`.`)}function y(t){return e(t)?t.join(`.`):t}function b(t,o){let s=[],l=!1,u=(t,o,d,f)=>{if(c(t))if(!o[d])s.push(f===void 0?t:{v:t,i:f});else{let p=t[o[d]];if(!c(p))return;if(d===o.length-1&&(r(p)||i(p)||a(p)||typeof p==`bigint`))s.push(f===void 0?n(p):{v:n(p),i:f});else if(e(p)){l=!0;for(let e=0,t=p.length;e<t;e+=1)u(p[e],o,d+1,e)}else o.length&&u(p,o,d+1,f)}};return u(t,r(o)?o.split(`.`):o,0),l?s:s[0]}const x={includeMatches:!1,findAllMatches:!1,minMatchCharLength:1},S={isCaseSensitive:!1,ignoreDiacritics:!1,includeScore:!1,keys:[],shouldSort:!0,sortFn:(e,t)=>e.score===t.score?e.idx<t.idx?-1:1:e.score<t.score?-1:1},C={location:0,threshold:.6,distance:100},w={useExtendedSearch:!1,useTokenSearch:!1,tokenize:void 0,tokenMatch:`any`,getFn:b,ignoreLocation:!1,ignoreFieldNorm:!1,fieldNormWeight:1},T=Object.freeze({...S,...x,...C,...w});function E(e){return e>=9&&e<=13||e===32||e===160}function D(e=1,t=3){let n=new Map,r=10**t;return{get(t){let i=0,a=!1;for(let e=0;e<t.length;e++)E(t.charCodeAt(e))?a=!1:a||(i++,a=!0);if(i===0&&(i=1),n.has(i))return n.get(i);let o=Math.round(r/i**(.5*e))/r;return n.set(i,o),o},clear(){n.clear()}}}var O=class{constructor({getFn:e=T.getFn,fieldNormWeight:t=T.fieldNormWeight}={}){this.norm=D(t,3),this.getFn=e,this.isCreated=!1,this.docs=[],this.keys=[],this._keysMap={},this.setIndexRecords()}setSources(e=[]){this.docs=e}setIndexRecords(e=[]){this.records=e}setKeys(e=[]){this.keys=e,this._keysMap={},e.forEach((e,t)=>{this._keysMap[e.id]=t})}create(){if(this.isCreated||!this.docs.length)return;this.isCreated=!0;let e=this.docs.length;this.records=Array(e);let t=0;if(r(this.docs[0]))for(let n=0;n<e;n++){let e=this._createStringRecord(this.docs[n],n);e&&(this.records[t++]=e)}else for(let n=0;n<e;n++)this.records[t++]=this._createObjectRecord(this.docs[n],n);this.records.length=t,this.norm.clear()}add(e,t){if(!Number.isInteger(t)||t<0)throw Error(d);if(r(e)){let n=this._createStringRecord(e,t);return n&&this.records.push(n),n}let n=this._createObjectRecord(e,t);return this.records.push(n),n}removeAt(e){if(!Number.isInteger(e)||e<0)throw Error(d);for(let t=0,n=this.records.length;t<n;t+=1)if(this.records[t].i===e){this.records.splice(t,1);break}for(let t=0,n=this.records.length;t<n;t+=1)this.records[t].i>e&&--this.records[t].i}removeAll(e){let t=new Set;for(let n of e)Number.isInteger(n)&&n>=0&&t.add(n);if(t.size===0)return;this.records=this.records.filter(e=>!t.has(e.i));let n=Array.from(t).sort((e,t)=>e-t);for(let e of this.records){let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e.i?t=i+1:r=i}e.i-=t}}getValueForItemAtKeyId(e,t){return e[this._keysMap[t]]}size(){return this.records.length}_createStringRecord(e,t){return!c(e)||l(e)?null:{v:e,i:t,n:this.norm.get(e)}}_createObjectRecord(t,i){let a={i,$:{}};for(let i=0,o=this.keys.length;i<o;i++){let o=this.keys[i],s=o.getFn?o.getFn(t):this.getFn(t,o.path);if(c(s)){if(e(s)){let e=[];for(let t=0,i=s.length;t<i;t+=1){let i=s[t];if(c(i)){if(r(i)){if(!l(i)){let n={v:i,i:t,n:this.norm.get(i)};e.push(n)}}else if(c(i.v)){let t=r(i.v)?i.v:n(i.v);if(!l(t)){let n={v:t,i:i.i,n:this.norm.get(t)};e.push(n)}}}}a.$[i]=e}else if(r(s)&&!l(s)){let e={v:s,n:this.norm.get(s)};a.$[i]=e}}}return a}toJSON(){return{keys:this.keys.map(({getFn:e,...t})=>t),records:this.records}}};function k(e,t,{getFn:n=T.getFn,fieldNormWeight:r=T.fieldNormWeight}={}){let i=new O({getFn:n,fieldNormWeight:r});return i.setKeys(e.map(_)),i.setSources(t),i.create(),i}function A(e,{getFn:t=T.getFn,fieldNormWeight:n=T.fieldNormWeight}={}){let{keys:r,records:i}=e,a=new O({getFn:t,fieldNormWeight:n});return a.setKeys(r),a.setIndexRecords(i),a}function j(e=[],t=T.minMatchCharLength){let n=[],r=-1,i=-1,a=0;for(let o=e.length;a<o;a+=1){let o=e[a];o&&r===-1?r=a:!o&&r!==-1&&(i=a-1,i-r+1>=t&&n.push([r,i]),r=-1)}return e[a-1]&&a-r>=t&&n.push([r,a-1]),n}function M(e,t,n,{location:r=T.location,distance:i=T.distance,threshold:a=T.threshold,findAllMatches:o=T.findAllMatches,minMatchCharLength:s=T.minMatchCharLength,includeMatches:c=T.includeMatches,ignoreLocation:l=T.ignoreLocation}={}){if(t.length>32)throw Error(f(32));let u=t.length,d=e.length,p=Math.max(0,Math.min(r,d)),m=a,h=p,g=(e,t)=>{let n=e/u;if(l)return n;let r=Math.abs(p-t);return i?n+r/i:r?1:n},_=s>1||c,v=_?Array(d):[],y;for(;(y=e.indexOf(t,h))>-1;){let e=g(0,y);if(m=Math.min(e,m),h=y+u,_){let e=0;for(;e<u;)v[y+e]=1,e+=1}}h=-1;let b=[],x=1,S=0,C=u+d,w=1<<u-1;for(let t=0;t<u;t+=1){let r=0,i=C;for(;r<i;)g(t,p+i)<=m?r=i:C=i,i=Math.floor((C-r)/2+r);C=i;let a=Math.max(1,p-i+1),s=o?d:Math.min(p+i,d)+u,c=Array(s+2);c[s+1]=(1<<t)-1;for(let r=s;r>=a;--r){let i=r-1,o=n[e[i]];if(c[r]=(c[r+1]<<1|1)&o,t&&(c[r]|=(b[r+1]|b[r])<<1|1|b[r+1]),c[r]&w&&(x=g(t,i),x<=m)){if(m=x,h=i,S=t,h<=p)break;a=Math.max(1,2*p-h)}}if(g(t+1,p)>m)break;b=c}if(_&&h>=0){let t=Math.min(d-1,h+u-1+S);for(let r=h;r<=t;r+=1)n[e[r]]&&(v[r]=1)}let E={isMatch:h>=0,score:Math.max(.001,x)};if(_){let e=j(v,s);e.length?c&&(E.indices=e):E.isMatch=!1}return E}function N(e){let t={};for(let n=0,r=e.length;n<r;n+=1){let i=e.charAt(n);t[i]=(t[i]||0)|1<<r-n-1}return t}function P(e){if(e.length<=1)return e;e.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let t=[e[0]];for(let n=1,r=e.length;n<r;n+=1){let r=t[t.length-1],i=e[n];i[0]<=r[1]+1?r[1]=Math.max(r[1],i[1]):t.push(i)}return t}const F={\u0142:`l`,\u0141:`L`,\u0111:`d`,\u0110:`D`,\u00f8:`o`,\u00d8:`O`,\u0127:`h`,\u0126:`H`,\u0167:`t`,\u0166:`T`,\u0131:`i`,\u00df:`ss`},I=RegExp(`[`+Object.keys(F).join(``)+`]`,`g`),L=typeof String.prototype.normalize==`function`?e=>e.normalize(`NFD`).replace(/[\u0300-\u036F\u0483-\u0489\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0711\u0730-\u074A\u07A6-\u07B0\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u08D3-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A70\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B62\u0B63\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0C00-\u0C04\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D82\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0EB1\u0EB4-\u0EB9\u0EBB\u0EBC\u0EC8-\u0ECD\u0F18\u0F19\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F\u109A-\u109D\u135D-\u135F\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u180B-\u180D\u1885\u1886\u18A9\u1920-\u192B\u1930-\u193B\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F\u1AB0-\u1ABE\u1B00-\u1B04\u1B34-\u1B44\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BE6-\u1BF3\u1C24-\u1C37\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF2-\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DF9\u1DFB-\u1DFF\u20D0-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\uA66F-\uA672\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA880\uA881\uA8B4-\uA8C5\uA8E0-\uA8F1\uA8FF\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9E5\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F]/g,``).replace(I,e=>F[e]):e=>e;var R=class{constructor(e,{location:t=T.location,threshold:n=T.threshold,distance:r=T.distance,includeMatches:i=T.includeMatches,findAllMatches:a=T.findAllMatches,minMatchCharLength:o=T.minMatchCharLength,isCaseSensitive:s=T.isCaseSensitive,ignoreDiacritics:c=T.ignoreDiacritics,ignoreLocation:l=T.ignoreLocation}={}){if(this.options={location:t,threshold:n,distance:r,includeMatches:i,findAllMatches:a,minMatchCharLength:o,isCaseSensitive:s,ignoreDiacritics:c,ignoreLocation:l},e=s?e:e.toLowerCase(),e=c?L(e):e,this.pattern=e,this.chunks=[],!this.pattern.length)return;let u=(e,t)=>{this.chunks.push({pattern:e,alphabet:N(e),startIndex:t})},d=this.pattern.length;if(d>32){let e=0,t=d%32,n=d-t;for(;e<n;)u(this.pattern.substr(e,32),e),e+=32;if(t){let e=d-32;u(this.pattern.substr(e),e)}}else u(this.pattern,0)}searchIn(e){let{isCaseSensitive:t,ignoreDiacritics:n,includeMatches:r}=this.options;if(e=t?e:e.toLowerCase(),e=n?L(e):e,this.pattern===e){if(e.length<this.options.minMatchCharLength)return{isMatch:!1,score:1};let t={isMatch:!0,score:0};return r&&(t.indices=[[0,e.length-1]]),t}let{location:i,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,ignoreLocation:l}=this.options,u=[],d=0,f=!1;this.chunks.forEach(({pattern:t,alphabet:n,startIndex:p})=>{let{isMatch:m,score:h,indices:g}=M(e,t,n,{location:i+p,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,includeMatches:r,ignoreLocation:l});m&&(f=!0),d+=h,m&&g&&u.push(...g)});let p={isMatch:f,score:f?d/this.chunks.length:1};return f&&r&&(p.indices=P(u)),p}};const z=[];function B(...e){z.push(...e)}function V(e,t){for(let n=0,r=z.length;n<r;n+=1){let r=z[n];if(r.condition(e,t))return new r(e,t)}return new R(e,t)}function H(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){let n=1;return e.forEach(({key:e,norm:r,score:i})=>{let a=e?e.weight:null;n*=(i===0&&a?2**-52:i)**+((a||1)*(t?1:r))}),n}function U(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){e.forEach(e=>{e.score=H(e.matches,{ignoreFieldNorm:t})})}var W=class{constructor(e,t){this.limit=e,this.heap=[],this.comparator=t}get size(){return this.heap.length}insert(e){this.size<this.limit?(this.heap.push(e),this._bubbleUp(this.size-1)):this.comparator(e,this.heap[0])<0&&(this.heap[0]=e,this._sinkDown(0))}extractSorted(){return this.heap.sort(this.comparator)}_bubbleUp(e){let t=this.heap;for(;e>0;){let n=e-1>>1;if(this.comparator(t[e],t[n])<=0)break;let r=t[e];t[e]=t[n],t[n]=r,e=n}}_sinkDown(e){let t=this.heap,n=t.length,r=e;do{e=r;let i=2*e+1,a=2*e+2;if(i<n&&this.comparator(t[i],t[r])>0&&(r=i),a<n&&this.comparator(t[a],t[r])>0&&(r=a),r!==e){let n=t[e];t[e]=t[r],t[r]=n}}while(r!==e)}};function G(e){let t=[];return e.matches.forEach(e=>{if(!c(e.indices)||!e.indices.length)return;let n={indices:e.indices,value:e.value};e.key&&(n.key=e.key.id),e.idx>-1&&(n.refIndex=e.idx),t.push(n)}),t}function K(e,t,{includeMatches:n=T.includeMatches,includeScore:r=T.includeScore}={}){return e.map(e=>{let{idx:i}=e,a={item:t[i],refIndex:i};return n&&(a.matches=G(e)),r&&(a.score=e.score),a})}const q=/[\p{L}\p{M}\p{N}_]+/gu;function J(e){return typeof e==`function`?t=>e(t):e instanceof RegExp?(e.global,t=>t.match(e)||[]):e=>e.match(q)||[]}function Y({isCaseSensitive:e=!1,ignoreDiacritics:t=!1,tokenize:n}={}){let r=J(n);return{tokenize(n){return e||(n=n.toLowerCase()),t&&(n=L(n)),r(n)}}}function X(e,t,n,r){let i=r.tokenize(t);if(!i.length)return;e.fieldCount++,e.docFieldCount.set(n,(e.docFieldCount.get(n)||0)+1);let a=new Set(i),o=e.docTermFieldHits.get(n);o||(o=new Map,e.docTermFieldHits.set(n,o));for(let t of a)o.set(t,(o.get(t)||0)+1),e.df.set(t,(e.df.get(t)||0)+1)}function Z(e,t,n,r){let{i,v:a,$:o}=t;if(a!==void 0){X(e,a,i,r);return}if(o)for(let t=0;t<n;t++){let n=o[t];if(n)if(Array.isArray(n))for(let t of n)X(e,t.v,i,r);else X(e,n.v,i,r)}}function ee(e,t,n){let r={fieldCount:0,df:new Map,docFieldCount:new Map,docTermFieldHits:new Map};for(let i of e)Z(r,i,t,n);return r}function te(e,t,n,r){Z(e,t,n,r)}function ne(e,t){let n=e.docFieldCount.get(t);if(n===void 0)return;e.fieldCount-=n,e.docFieldCount.delete(t);let r=e.docTermFieldHits.get(t);if(r){for(let[t,n]of r){let r=(e.df.get(t)||0)-n;r<=0?e.df.delete(t):e.df.set(t,r)}e.docTermFieldHits.delete(t)}}function Q(e,t){if(t.length===0)return;let n=Array.from(new Set(t)).sort((e,t)=>e-t);for(let t of n)ne(e,t);let r=e=>{let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e?t=i+1:r=i}return e-t},i=n[0],a=new Map;for(let[t,n]of e.docFieldCount)a.set(t>i?r(t):t,n);e.docFieldCount=a;let o=new Map;for(let[t,n]of e.docTermFieldHits)o.set(t>i?r(t):t,n);e.docTermFieldHits=o}var $=class{constructor(e,t,n){if(this.options={...T,...t},this.options.useExtendedSearch)throw Error(`Extended search is not available`);if(this.options.useTokenSearch)throw Error(`Token search is not available`);this._keyStore=new g(this.options.keys),this._docs=e,this._myIndex=null,this._invertedIndex=null,this.setCollection(e,n),this._lastQuery=null,this._lastSearcher=null}_getSearcher(e){if(this._lastQuery===e)return this._lastSearcher;let t=V(e,this._invertedIndex?{...this.options,_invertedIndex:this._invertedIndex}:this.options);return this._lastQuery=e,this._lastSearcher=t,t}setCollection(e,t){if(this._docs=e,t&&!(t instanceof O))throw Error(`Incorrect 'index' type`);if(this._myIndex=t||k(this.options.keys,this._docs,{getFn:this.options.getFn,fieldNormWeight:this.options.fieldNormWeight}),this.options.useTokenSearch){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});this._invertedIndex=ee(this._myIndex.records,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}add(e){if(!c(e))return;this._docs.push(e);let t=this._myIndex.add(e,this._docs.length-1);if(this._invertedIndex&&t){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});te(this._invertedIndex,t,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}remove(e=()=>!1){let t=[],n=[];for(let r=0,i=this._docs.length;r<i;r+=1)e(this._docs[r],r)&&(t.push(this._docs[r]),n.push(r));if(n.length){this._invertedIndex&&Q(this._invertedIndex,n);let e=new Set(n);this._docs=this._docs.filter((t,n)=>!e.has(n)),this._myIndex.removeAll(n),this._invalidateSearcherCache()}return t}removeAt(e){if(!Number.isInteger(e)||e<0||e>=this._docs.length)throw Error(d);this._invertedIndex&&Q(this._invertedIndex,[e]);let t=this._docs.splice(e,1)[0];return this._myIndex.removeAt(e),this._invalidateSearcherCache(),t}_invalidateSearcherCache(){this._lastQuery=null,this._lastSearcher=null}getIndex(){return this._myIndex}_normalizedKeys(){return this._myIndex.keys.map(e=>this._keyStore.get(e.id)||e)}search(e,t){let{limit:n=-1}=t||{},{includeMatches:a,includeScore:o,shouldSort:s,sortFn:c,ignoreFieldNorm:l}=this.options;if(r(e)&&!e.trim()){let e=this._docs.map((e,t)=>({item:e,refIndex:t}));return i(n)&&n>-1&&(e=e.slice(0,n)),e}let u=s&&i(n)&&n>0&&r(e),d=c,f=(e,t)=>d(e,t)||e.idx-t.idx,p;if(u){let t=new W(n,f);r(this._docs[0])?this._searchStringList(e,{heap:t,ignoreFieldNorm:l}):this._searchObjectList(e,{heap:t,ignoreFieldNorm:l}),p=t.extractSorted()}else p=r(e)?r(this._docs[0])?this._searchStringList(e):this._searchObjectList(e):this._searchLogical(e),U(p,{ignoreFieldNorm:l}),s&&p.sort(r(e)?f:d),i(n)&&n>-1&&(p=p.slice(0,n));return K(p,this._docs,{includeMatches:a,includeScore:o})}_searchStringList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=t?null:[];return a.forEach(({v:e,i:a,n:s})=>{if(!c(e))return;let l=r.searchIn(e);if(l.isMatch){let r={score:l.score,value:e,norm:s,indices:l.indices};i&&(r.matchedMask=l.matchedMask,r.matchedTerms=l.matchedTerms,r.termCount=l.termCount);let c=[r];if(!i||this._coversAllTokens(c)){let r={item:e,idx:a,matches:c};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):o.push(r)}}}),o}_searchLogical(e){throw Error(`Logical search is not available`)}_searchObjectList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=this._normalizedKeys(),s=t?null:[];return a.forEach(({$:e,i:a})=>{if(!c(e))return;let l=[],u=!1,d=!1;if(o.forEach((t,n)=>{let i=this._findMatches({key:t,value:e[n],searcher:r});i.length?(l.push(...i),i[0].hasInverse&&(d=!0)):u=!0}),!(d&&u)&&l.length&&(!i||this._coversAllTokens(l))){let r={idx:a,item:e,matches:l};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):s.push(r)}}),s}_findMatches({key:t,value:n,searcher:r}){if(!c(n))return[];let i=[];if(e(n))n.forEach(({v:e,i:n,n:a})=>{if(!c(e))return;let o=r.searchIn(e);if(o.isMatch){let r={score:o.score,key:t,value:e,idx:n,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(r.matchedMask=o.matchedMask,r.matchedTerms=o.matchedTerms,r.termCount=o.termCount),i.push(r)}});else{let{v:e,n:a}=n,o=r.searchIn(e);if(o.isMatch){let n={score:o.score,key:t,value:e,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(n.matchedMask=o.matchedMask,n.matchedTerms=o.matchedTerms,n.termCount=o.termCount),i.push(n)}}return i}_coversAllTokens(e){let t=e.length?e[0].termCount:void 0;if(t===void 0)return!0;if(t<=31){let n=0;for(let t=0;t<e.length;t++)n|=e[t].matchedMask||0;return n===2**t-1}let n=new Set;for(let t=0;t<e.length;t++){let r=e[t].matchedTerms;if(r)for(let e of r)n.add(e)}return n.size===t}};$.version=`7.5.0`,$.createIndex=k,$.parseIndex=A,$.config=T,$.match=function(e,t,n){if(n&&n.useTokenSearch)throw Error(`Fuse.match does not support useTokenSearch: token search requires corpus-level statistics (df, fieldCount) that a one-off string comparison does not have. Use new Fuse(...).search(...) instead.`);return V(e,{...T,...n}).searchIn(t)},$.use=function(...e){e.forEach(e=>B(e))};var re=$;return re;
 })();
-const { CHAINS, CH, ApiError, flags, loadAssets, loadPools, loadAssetChart, loadPoolChart, loadProtocols, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadProtocolChart, searchPairs, loadTrendingPairs, links } = (() => {
+const { CHAINS, CH, ApiError, flags, loadAssets, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadProtocolChart, searchPairs, loadTrendingPairs, links } = (() => {
 /* data.js \u2014 live data, no API keys and no backend: every source below allows
    direct browser calls.
 
@@ -572,26 +596,50 @@ const LLAMA = 'https://api.llama.fi';
 const STABLE = 'https://stablecoins.llama.fi';
 const BRIDGES = 'https://bridges.llama.fi';
 const DEXS = 'https://api.dexscreener.com';
+const PAPRIKA = 'https://api.coinpaprika.com/v1';
+const BINANCE = 'https://api.binance.com/api/v3';
 const GT = 'https://api.geckoterminal.com/api/v2';
 
-// id, label, colour, CoinGecko category slug, DeFiLlama chain name
+// id, label, colour, DeFiLlama chain name
 const CHAINS = [
-  ['sol',  'Solana',      '#14f195', 'solana-ecosystem',    'Solana'],
-  ['eth',  'Ethereum',    '#7b8cf5', 'ethereum-ecosystem',  'Ethereum'],
-  ['base', 'Base',        '#3b7cff', 'base-ecosystem',      'Base'],
-  ['arb',  'Arbitrum',    '#28a0f0', 'arbitrum-ecosystem',  'Arbitrum'],
-  ['op',   'Optimism',    '#ff5c6c', 'optimism-ecosystem',  'Optimism'],
-  ['poly', 'Polygon',     '#a06bf0', 'polygon-ecosystem',   'Polygon'],
-  ['bnb',  'BNB Chain',   '#f0b90b', 'binance-smart-chain', 'BSC'],
-  ['avax', 'Avalanche',   '#e84142', 'avalanche-ecosystem', 'Avalanche'],
-  ['sui',  'Sui',         '#4da2ff', 'sui-ecosystem',       'Sui'],
-  ['apt',  'Aptos',       '#2ed3b7', 'aptos-ecosystem',     'Aptos'],
-  ['btc',  'Bitcoin',     '#f7931a', 'bitcoin-ecosystem',   'Bitcoin'],
-  ['hl',   'Hyperliquid', '#97fce4', 'hyperliquid-ecosystem', 'Hyperliquid'],
+  ['eth',   'Ethereum',    '#7b8cf5', 'Ethereum'],
+  ['sol',   'Solana',      '#14f195', 'Solana'],
+  ['base',  'Base',        '#3b7cff', 'Base'],
+  ['arb',   'Arbitrum',    '#28a0f0', 'Arbitrum'],
+  ['bnb',   'BNB Chain',   '#f0b90b', 'BSC'],
+  ['hl',    'Hyperliquid', '#97fce4', 'Hyperliquid'],
+  ['op',    'Optimism',    '#ff5c6c', 'Optimism'],
+  ['poly',  'Polygon',     '#a06bf0', 'Polygon'],
+  ['avax',  'Avalanche',   '#e84142', 'Avalanche'],
+  ['sui',   'Sui',         '#4da2ff', 'Sui'],
+  ['apt',   'Aptos',       '#2ed3b7', 'Aptos'],
+  ['tron',  'Tron',        '#ff4a4a', 'Tron'],
+  ['ton',   'TON',         '#3aa8f0', 'TON'],
+  ['btc',   'Bitcoin',     '#f7931a', 'Bitcoin'],
+  ['bera',  'Berachain',   '#c46a2b', 'Berachain'],
+  ['sonic', 'Sonic',       '#f2c14e', 'Sonic'],
+  ['mnt',   'Mantle',      '#57b8a9', 'Mantle'],
+  ['blast', 'Blast',       '#fcfc03', 'Blast'],
+  ['scrl',  'Scroll',      '#ffb682', 'Scroll'],
+  ['linea', 'Linea',       '#9fe870', 'Linea'],
+  ['zks',   'zkSync Era',  '#8c8dfc', 'zkSync Era'],
+  ['sei',   'Sei',         '#e05c5c', 'Sei'],
+  ['uni',   'Unichain',    '#ff6fb0', 'Unichain'],
+  ['ink',   'Ink',         '#7a5cff', 'Ink'],
+  ['abs',   'Abstract',    '#6fe3a1', 'Abstract'],
+  ['plume', 'Plume',       '#f08a5c', 'Plume'],
+  ['story', 'Story',       '#b1b6c9', 'Story'],
+  ['monad', 'Monad',       '#8b5cf6', 'Monad'],
+  ['celo',  'Celo',        '#f5d130', 'Celo'],
+  ['rhc',   'Robinhood Chain', '#63d16a', 'Robinhood Chain'],
 ];
-const CH = Object.fromEntries(CHAINS.map(([id, name, color, cg, llama]) =>
-  [id, { id, name, color, cg, llama }]));
-const BY_LLAMA = Object.fromEntries(CHAINS.map(c => [c[4], c[0]]));
+const CH = Object.fromEntries(CHAINS.map(([id, name, color, llama]) =>
+  [id, { id, name, color, llama }]));
+const BY_LLAMA = Object.fromEntries(CHAINS.map(c => [c[3], c[0]]));
+// DeFiLlama is not always consistent about a chain's display name
+for (const [alias, id] of Object.entries({ 'BNB': 'bnb', 'Binance': 'bnb', 'Avalanche C-Chain': 'avax',
+  'zkSync': 'zks', 'Era': 'zks', 'Polygon zkEVM': 'poly', 'op_bnb': 'bnb', 'Robinhood': 'rhc' }))
+  if (!BY_LLAMA[alias]) BY_LLAMA[alias] = id;
 
 /* ---------- plumbing ---------- */
 class ApiError extends Error {
@@ -638,6 +686,10 @@ function sampleFor(url) {
   if (u.pathname.endsWith('/hacks')) return S.hacks;
   if (u.pathname.includes('/dex/search')) return { pairs: S.pairs(u.searchParams.get('q') || '') };
   if (u.pathname.includes('/search/pools')) return { data: S.gtSearch(u.searchParams.get('query') || '') };
+  if (/\/networks\/[^/]+\/pools$/.test(u.pathname)) return { data: S.chainPools(u.pathname.split('/')[3]) };
+  if (u.pathname.includes('/ohlcv/')) return { data: { attributes: { ohlcv_list: S.ohlcv(u.pathname, 60) } } };
+  if (u.pathname.endsWith('/klines')) return S.klines(u.searchParams.get('symbol') || '', 100);
+  if (u.pathname.endsWith('/tickers')) return [];
   if (u.pathname.includes('trending_pools')) return { data: S.trending };
   return null;
 }
@@ -707,6 +759,10 @@ function asset(c, chain) {
     kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
     chain, price: c.current_price ?? 0, chg: c.price_change_percentage_24h ?? 0,
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
+    chgBy: { 1: c.price_change_percentage_24h_in_currency ?? c.price_change_percentage_24h ?? 0,
+      7: c.price_change_percentage_7d_in_currency ?? 0,
+      30: c.price_change_percentage_30d_in_currency ?? 0,
+      365: c.price_change_percentage_1y_in_currency ?? 0 },
     spark: spark.slice(-24), color: colorOf(sym),
     key: `${sym} ${c.name || ''} ${CH[chain]?.name || ''} token coin asset price`,
   };
@@ -733,25 +789,58 @@ function pool(p, lb) {
 /* ---------- public API ---------- */
 
 /** Top assets. `chainId` null = global market leaders, else that chain's ecosystem. */
-function loadAssets(chainId) {
-  const cat = chainId ? CH[chainId].cg : '';
-  return cache(`assets:${chainId || 'all'}`, TTL, async () => {
-    const q = `${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1` +
-      `&sparkline=true&price_change_percentage=24h${cat ? '&category=' + cat : ''}`;
-    const rows = await get(q);
-    // the global endpoint carries no chain \u2014 leave it unset rather than guessing one
-    return (Array.isArray(rows) ? rows : []).map(c => asset(c, chainId || null));
+/* CoinGecko refuses some browser origins outright, which used to take the whole
+   asset layer with it. Two independent price sources are tried and the first
+   that answers wins; CoinPaprika also carries 7d/30d/1y moves, which the charts
+   use to label a range. */
+function paprikaAsset(p, i) {
+  const q = p.quotes?.USD || {};
+  const sym = String(p.symbol || '?').toUpperCase();
+  return {
+    kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
+    chain: null, price: num(q.price), chg: num(q.percent_change_24h),
+    chgBy: { 1: num(q.percent_change_24h), 7: num(q.percent_change_7d),
+      30: num(q.percent_change_30d), 365: num(q.percent_change_1y) },
+    mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
+    color: colorOf(sym),
+    key: `${sym} ${p.name || ''} token coin asset price`,
+  };
+}
+
+/** Top assets by market cap, from whichever price source is reachable. */
+function loadAssets() {
+  return cache('assets:all', TTL, async () => {
+    const cg = get(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1` +
+      `&sparkline=true&price_change_percentage=24h,7d,30d,1y`);
+    const pk = get(`${PAPRIKA}/tickers?quotes=USD`, { timeout: 30000 });
+    const [a, b] = await Promise.allSettled([cg, pk]);
+    if (a.status === 'fulfilled' && Array.isArray(a.value) && a.value.length)
+      return a.value.map(c => asset(c, null));
+    if (b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length)
+      return b.value.slice(0, 150).map(paprikaAsset);
+    throw a.reason || b.reason || new ApiError('No price source answered.');
   });
 }
 
-// Borrow-side fields live on the pool itself in some responses and only in
-// /lendBorrow in others. Accept either, so neither shape breaks lending.
-const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
-  ? { apyBaseBorrow: p.apyBaseBorrow, apyRewardBorrow: p.apyRewardBorrow,
-      totalSupplyUsd: p.totalSupplyUsd, totalBorrowUsd: p.totalBorrowUsd, ltv: p.ltv }
-  : null;
+/* GeckoTerminal network slugs. A chain missing here simply has no per-chain
+   token list; everything else about it still works. */
+const GT_NET = { eth: 'eth', sol: 'solana', base: 'base', arb: 'arbitrum', bnb: 'bsc',
+  poly: 'polygon_pos', avax: 'avax', op: 'optimism', sui: 'sui-network', apt: 'aptos',
+  ton: 'ton', tron: 'tron', bera: 'berachain', sonic: 'sonic', mnt: 'mantle',
+  blast: 'blast', scrl: 'scroll', linea: 'linea', zks: 'zksync', sei: 'sei-evm',
+  uni: 'unichain', ink: 'ink', abs: 'abstract', hl: 'hyperliquid', celo: 'celo',
+  monad: 'monad', plume: 'plume', story: 'story' };
 
-/** Every lending market DeFiLlama tracks, above a size floor. */
+/** The tokens actually trading on one chain. */
+function loadChainTokens(chainId) {
+  const net = GT_NET[chainId];
+  if (!net) return Promise.resolve([]);
+  return cache(`chaintok:${chainId}`, TTL, async () => {
+    const j = await get(`${GT}/networks/${net}/pools?page=1`, { tries: 1 }).catch(() => null);
+    return mergePairs([(j?.data || []).map(gtPool)]).map(p => ({ ...p, chain: chainId })).slice(0, 40);
+  });
+}
+
 function farm(p) {
   const sym = (p.symbol || '?').toUpperCase();
   const proto = title(p.project || '');
@@ -764,6 +853,13 @@ function farm(p) {
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} yield farm pool apy earn staking liquidity`,
   };
 }
+
+// Borrow-side fields live on the pool itself in some responses and only in
+// /lendBorrow in others. Accept either, so neither shape breaks lending.
+const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
+  ? { apyBaseBorrow: p.apyBaseBorrow, apyRewardBorrow: p.apyRewardBorrow,
+      totalSupplyUsd: p.totalSupplyUsd, totalBorrowUsd: p.totalBorrowUsd, ltv: p.ltv }
+  : null;
 
 /** Lending markets and yield farms \u2014 one ~10MB payload feeds both. */
 function loadPools() {
@@ -790,20 +886,67 @@ function loadPools() {
   });
 }
 
-/** Asset price history. days: 1 | 7 | 30 | 365 \u2192 [[ms, price], \u2026] */
-function loadAssetChart(cgId, days) {
-  return cache(`chart:${cgId}:${days}`, TTL, async () => {
-    const j = await get(`${CG}/coins/${encodeURIComponent(cgId)}/market_chart?vs_currency=usd&days=${days}`);
-    return (j?.prices || []).map(p => p[1]);
+/* Charts must always draw. Sources are tried in order and, if none answers,
+   a flat series at the current value is returned with live:false so the UI can
+   say so rather than showing an empty box. */
+const KLINE = { 1: ['15m', 96], 7: ['1h', 168], 30: ['4h', 180], 90: ['12h', 180], 365: ['1d', 365] };
+
+async function binance(sym, days) {
+  const [interval, limit] = KLINE[days] || KLINE[30];
+  const j = await get(`${BINANCE}/klines?symbol=${encodeURIComponent(sym)}USDT&interval=${interval}&limit=${limit}`,
+    { tries: 1, timeout: 12000 });
+  return (Array.isArray(j) ? j : []).map(k => Number(k[4])).filter(Number.isFinite);
+}
+
+const flat = v => Array.from({ length: 24 }, () => Number(v) || 0);
+
+/** Asset price history, days: 1 | 7 | 30 | 365 */
+function loadAssetChart(a, days) {
+  return cache(`chart:${a.id}:${days}`, TTL, async () => {
+    if (a.cg) {
+      try {
+        const j = await get(`${CG}/coins/${encodeURIComponent(a.cg)}/market_chart?vs_currency=usd&days=${days}`);
+        const pts = (j?.prices || []).map(p => p[1]).filter(Number.isFinite);
+        if (pts.length > 1) return { pts, live: true };
+      } catch { /* try the next source */ }
+    }
+    try {
+      const pts = await binance(a.sym, days);
+      if (pts.length > 1) return { pts, live: true };
+    } catch { /* try the next source */ }
+    if (days <= 7 && a.spark?.length > 1) return { pts: a.spark, live: true };
+    return { pts: flat(a.price), live: false };
+  });
+}
+
+/** DEX pair history from GeckoTerminal OHLCV. */
+const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 365: ['day', 365] };
+function loadPairChart(p, days) {
+  return cache(`pchart:${p.id}:${days}`, TTL, async () => {
+    const net = GT_NET[p.chain];
+    if (net && p.addr) {
+      try {
+        const [tf, limit] = OHLCV[days] || OHLCV[7];
+        const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(p.addr)}/ohlcv/${tf}?limit=${limit}`,
+          { tries: 1, timeout: 12000 });
+        const pts = (j?.data?.attributes?.ohlcv_list || []).map(r => Number(r[4]))
+          .filter(Number.isFinite).reverse();
+        if (pts.length > 1) return { pts, live: true };
+      } catch { /* fall through */ }
+    }
+    return { pts: flat(p.price), live: false };
   });
 }
 
 /** Lending market APY history. Llama returns daily points; slice to the range. */
-function loadPoolChart(poolId, days) {
-  return cache(`pchart:${poolId}`, TTL, async () => {
-    const j = await get(`${YIELDS}/chart/${encodeURIComponent(poolId)}`);
-    return (j?.data || []).map(d => d.apy ?? 0);
-  }).then(all => days >= 365 ? all : all.slice(-days));
+function loadPoolChart(pool, days) {
+  return cache(`apy:${pool.pool}`, TTL, async () => {
+    const j = await get(`${YIELDS}/chart/${encodeURIComponent(pool.pool)}`).catch(() => null);
+    return (j?.data || []).map(d => num(d.apy));
+  }).then(all => {
+    const pts = days >= 365 ? all : all.slice(-days);
+    return pts.length > 1 ? { pts, live: true } : { pts: flat(pool.sup), live: false };
+  });
 }
 
 /* ---------- protocols, chains, stablecoins ---------- */
@@ -948,11 +1091,14 @@ function loadHacks() {
 }
 
 /** Protocol TVL history. */
-function loadProtocolChart(slug, days) {
-  return cache(`rchart:${slug}`, TTL, async () => {
-    const j = await get(`${LLAMA}/protocol/${encodeURIComponent(slug)}`, { timeout: 45000 });
+function loadProtocolChart(r, days) {
+  return cache(`rchart:${r.slug}`, TTL, async () => {
+    const j = await get(`${LLAMA}/protocol/${encodeURIComponent(r.slug)}`, { timeout: 45000 }).catch(() => null);
     return (j?.tvl || []).map(p => num(p.totalLiquidityUSD));
-  }).then(all => days >= 3650 ? all : all.slice(-days));
+  }).then(all => {
+    const pts = days >= 3650 ? all : all.slice(-days);
+    return pts.length > 1 ? { pts, live: true } : { pts: flat(r.tvl), live: false };
+  });
 }
 
 /* ---------- DEX pairs ----------
@@ -1055,7 +1201,7 @@ const links = {
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };
 
-return { CHAINS, CH, ApiError, flags, loadAssets, loadPools, loadAssetChart, loadPoolChart, loadProtocols, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadProtocolChart, searchPairs, loadTrendingPairs, links };
+return { CHAINS, CH, ApiError, flags, loadAssets, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadProtocolChart, searchPairs, loadTrendingPairs, links };
 })();
 /* Atlas \u2014 search across chains. Live data via data.js; this file is UI only. */
 
@@ -1104,7 +1250,7 @@ const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
-  pairs: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
+  pairs: [], chainTokens: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -1118,7 +1264,7 @@ const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.valu
 async function load({ force } = {}) {
   if (force) { try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {} }
   S.loading = true; S.err = S.warn = null; render();
-  const [a, p] = await Promise.allSettled([loadAssets(S.chain), loadPools()]);
+  const [a, p] = await Promise.allSettled([loadAssets(), loadPools()]);
   S.assets = a.status === 'fulfilled' ? a.value : [];
   const m = p.status === 'fulfilled' ? p.value : { lending: [], yields: [] };
   S.pools = m.lending; S.yields = m.yields;
@@ -1154,7 +1300,7 @@ async function enrich() {
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 const pooled = () => S.pools.filter(onChain);
 const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
-  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainRows];
+  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainTokens, ...S.chainRows];
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
@@ -1427,7 +1573,7 @@ function render() {
       S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
       : !S.q && S.chain && !S.assets.length
-        ? `<div class="empty"><b>No assets indexed for ${esc(CH[S.chain].name)}</b>CoinGecko returned nothing for the \u201c${esc(CH[S.chain].cg)}\u201d category. Slugs get renamed occasionally \u2014 the mapping is the CHAINS table in data.js.</div>`
+        ? `<div class="empty"><b>Nothing indexed for ${esc(CH[S.chain].name)} yet</b>No source returned data for this network. Newer chains often appear here before the aggregators cover them.</div>`
       : `<div class="empty"><b>Nothing matched \u201c${esc(S.q.trim())}\u201d</b>Try a ticker like SOL, a protocol like Aave, or \u201cusdc lending\u201d.</div>`;
     return;
   }
@@ -1479,7 +1625,7 @@ function sheetHTML(it) {
 
   if (it.kind === 'asset') {
     const markets = S.pools.filter(p => p.sym === it.sym).sort((a, b) => b.supplyUsd - a.supplyUsd).slice(0, 6);
-    return `<div class="sheet-in" data-kind="asset" data-cg="${esc(it.cg)}" data-up="${it.chg >= 0}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="asset">
       ${head(it.name, [it.sym, c?.name, it.rank ? '#' + it.rank : ''].filter(Boolean).join(' \u00b7 '))}
       <div class="big">${usd(it.price)}</div>
       <div class="chgline"><span class="${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</span><span class="mute">past 24 hours</span></div>
@@ -1503,10 +1649,11 @@ function sheetHTML(it) {
   if (g) {
     const s = g(it);
     const nets = (it.chains || []).map(c => S.chainRows.find(x => x.chain === c)).filter(Boolean).slice(0, 6);
-    return `<div class="sheet-in" data-kind="${esc(it.kind)}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="${esc(it.kind)}">
       ${head(s.head || KIND[it.kind].title(it), s.sub)}
       <div class="big ${s.cls || ''}">${esc(s.big)}</div>
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
+      ${s.chart ? chartBox(s.chart[0], s.chart[1]) : ''}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
@@ -1519,7 +1666,7 @@ function sheetHTML(it) {
   if (it.kind === 'protocol') {
     const markets = S.pools.filter(p => p.slug === it.slug).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 6);
     const nets = S.chainRows.filter(c => it.chains.includes(c.chain)).slice(0, 6);
-    return `<div class="sheet-in" data-kind="protocol" data-slug="${esc(it.slug)}" data-up="${it.chg1d >= 0}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="protocol">
       ${head(it.name, [it.cat, it.chains.length + ' chain' + (it.chains.length === 1 ? '' : 's')].join(' \u00b7 '))}
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
@@ -1541,7 +1688,7 @@ function sheetHTML(it) {
   if (it.kind === 'chain') {
     const prots = S.protocols.filter(r => r.chains.includes(it.chain)).slice(0, 6);
     const markets = S.pools.filter(p => p.chain === it.chain).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 5);
-    return `<div class="sheet-in" data-kind="chain">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="chain">
       ${head(it.name, 'Network')}
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="mute">total value locked across ${prots.length ? S.protocols.filter(r => r.chains.includes(it.chain)).length : 0} indexed protocols</span></div>
@@ -1560,7 +1707,7 @@ function sheetHTML(it) {
 
   const a = S.assets.find(x => x.sym === it.sym);
   const others = S.pools.filter(p => p.sym === it.sym && p.id !== it.id).sort((x, y) => y.sup - x.sup).slice(0, 4);
-  return `<div class="sheet-in" data-kind="pool" data-pool="${esc(it.pool)}" data-up="true">
+  return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="pool">
     ${head(it.proto, `${it.sym}${it.meta ? ' \u00b7 ' + it.meta : ''} \u00b7 ${c?.name || ''}`)}
     <div class="big up">${apy(it.sup)}</div>
     <div class="chgline"><span class="mute">supply APY${it.supReward ? ` \u00b7 ${apy(it.supBase)} base + ${apy(it.supReward)} rewards` : ''}</span></div>
@@ -1615,7 +1762,8 @@ const SHEET = {
     body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
     link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
 
-  pair: it => ({ big: it.price ? usd(it.price) : '\u2014',
+  pair: it => ({ chart: [7, [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']]],
+    big: it.price ? usd(it.price) : '\u2014',
     cls: it.chg >= 0 ? 'up' : 'down',
     caption: it.chg ? `${pct(it.chg)} in 24 hours` : 'traded on a DEX',
     sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, it.net].filter(Boolean).join(' \u00b7 '),
@@ -1643,26 +1791,91 @@ function miniHTML(it) {
         <div class="n2 ${k.cls ? k.cls(it) : 'mute'}">${esc(k.n2(it))}</div></div></div>`;
 }
 
+/* ---------- chart ----------
+   One component for every kind. It animates in, follows the pointer, and always
+   draws: when a source has no history the series is flat at the current value
+   and the chart says so instead of showing an empty box. */
+const CW = 300, CHH = 110, CPAD = 8;
+let chartSeq = 0;
+
+const chartValue = (it, v) => it.kind === 'pool' ? apy(v)
+  : it.kind === 'protocol' ? '$' + compact(v)
+  : usd(v);
+const RANGE_LABEL = { 1: 'past 24 hours', 7: 'past 7 days', 30: 'past 30 days',
+  90: 'past 3 months', 365: 'past year', 3650: 'all time' };
+
 async function drawChart(days) {
   const box = el.sheet.querySelector('.sheet-in'); if (!box) return;
-  const host = box.querySelector('.chart-svg');
-  const token = host.dataset.token = String(Date.now());
+  const it = find(box.dataset.id); if (!it) return;
+  const host = box.querySelector('.chart-svg'); if (!host) return;
+  const token = host.dataset.token = String(++chartSeq);
   host.innerHTML = '<div class="cload"></div>';
-  let pts = [];
+  let res = { pts: [], live: false };
   try {
-    pts = box.dataset.kind === 'asset' ? await loadAssetChart(box.dataset.cg, days)
-      : box.dataset.kind === 'protocol' ? await loadProtocolChart(box.dataset.slug, days)
-      : await loadPoolChart(box.dataset.pool, days);
-  } catch { /* fall through to the empty state */ }
-  if (host.dataset.token !== token) return;              // a newer range won
-  if (pts.length < 2) { host.innerHTML = '<div class="cload err">No history available</div>'; return; }
-  const stroke = box.dataset.up === 'true' ? 'var(--up)' : 'var(--down)';
-  const d = path(pts, 300, 96, 6);
-  host.innerHTML = `<svg viewBox="0 0 300 108" preserveAspectRatio="none">
-    <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${stroke}" stop-opacity=".28"/><stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
-    <path d="${d}L300 108L0 108Z" fill="url(#cg)"/>
-    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+    res = it.kind === 'asset' ? await loadAssetChart(it, days)
+      : it.kind === 'pair' ? await loadPairChart(it, days)
+      : it.kind === 'protocol' ? await loadProtocolChart(it, days)
+      : await loadPoolChart(it, days);
+  } catch { res = { pts: [], live: false }; }
+  if (host.dataset.token !== token) return;               // a newer range won
+  paintChart(box, it, res, days);
+}
+
+function paintChart(box, it, { pts, live }, days) {
+  const host = box.querySelector('.chart-svg');
+  if (!pts?.length) pts = [0, 0];
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const first = pts[0], last = pts[pts.length - 1];
+  const move = first ? (last - first) / Math.abs(first) * 100 : 0;
+  const up = move >= 0;
+  const stroke = up ? 'var(--up)' : 'var(--down)';
+  const d = path(pts, CW, CHH, CPAD);
+
+  host.innerHTML = `
+    <svg viewBox="0 0 ${CW} ${CHH}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
+        <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
+      <path class="area" d="${d}L${CW} ${CHH}L0 ${CHH}Z" fill="url(#cgrad)"/>
+      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
+    <div class="tip"></div>
+    ${live ? '' : `<div class="nohist">No price history available \u2014 showing the current value</div>`}`;
+
+  // the headline follows the range, not a fixed 24 hours
+  const head = box.querySelector('.chgline');
+  const big = box.querySelector('.big');
+  const baseBig = chartValue(it, last);
+  const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
+    <span class="mute">${esc(RANGE_LABEL[days] || '')}${live ? '' : ' \u00b7 no history'}</span>`;
+  if (big) big.textContent = baseBig;
+  if (head) head.innerHTML = summary;
+
+  const yOf = v => CPAD + (1 - (v - lo) / span) * (CHH - CPAD * 2);
+  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot'), tip = host.querySelector('.tip');
+
+  const at = i => {
+    const v = pts[i], xp = i / (pts.length - 1) * 100;
+    cx.style.cssText = `left:${xp}%;opacity:1`;
+    dot.style.cssText = `left:${xp}%;top:${yOf(v) / CHH * 100}%;background:${stroke};opacity:1`;
+    tip.textContent = chartValue(it, v);
+    tip.style.cssText = `left:${xp}%;opacity:1`;
+    if (big) big.textContent = chartValue(it, v);
+    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
+      <span class="mute">from the start of this range</span>`;
+  };
+  const clear = () => {
+    cx.style.opacity = dot.style.opacity = tip.style.opacity = 0;
+    if (big) big.textContent = baseBig;
+    if (head) head.innerHTML = summary;
+  };
+  host.onpointermove = e => {
+    const r = host.getBoundingClientRect();
+    at(Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1)))));
+  };
+  host.onpointerleave = clear;
 }
 
 function open(id, { push = true } = {}) {
@@ -1673,9 +1886,8 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  if (it.kind === 'asset') drawChart(1);
-  else if (it.kind === 'protocol') drawChart(90);
-  else if (it.kind === 'pool') drawChart(30);
+  const first = { asset: 1, pair: 7, protocol: 90, pool: 30 }[it.kind];
+  if (first) drawChart(first);
 }
 function hide() {
   depth = 0;
@@ -1761,14 +1973,15 @@ $('#chains').addEventListener('click', async e => {
   const b = e.target.closest('[data-chain]'); if (!b) return;
   const seq = ++chainSeq;
   S.chain = b.dataset.chain || null; S.sel = 0; paintFilters();
-  S.loading = true; el.res.classList.add('stale'); render();
-  let assets = null, err = null;
-  try { assets = await loadAssets(S.chain); } catch (e2) { err = e2; }
+  reindex(); render(); scrollToResults(); syncUrl(true);
+  if (!S.chain) { S.chainTokens = []; nodes.clear(); reindex(); render(); return; }
+  el.res.classList.add('stale');
+  let toks = [];
+  try { toks = await loadChainTokens(S.chain); } catch { /* the chain still filters */ }
   if (seq !== chainSeq) return;                 // a newer chain click won the race
-  S.assets = assets || [];
-  S.warn = err ? 'Asset prices unavailable \u2014 ' + err.message : null;
-  S.loading = false; el.res.classList.remove('stale');
-  nodes.clear(); reindex(); render(); scrollToResults(); syncUrl(true);
+  S.chainTokens = toks;
+  el.res.classList.remove('stale');
+  nodes.clear(); reindex(); render();
 });
 
 function toggleStar(id) {

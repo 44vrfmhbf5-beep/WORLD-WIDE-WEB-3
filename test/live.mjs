@@ -222,20 +222,89 @@ await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', ''); await p.waitForTimeout(400);
 
 console.log('\n# per-chain and chart endpoints');
-await p.click('[data-chain=sol]'); await p.waitForTimeout(1200);
-ok(hit(/category=solana-ecosystem/), 'chain tab requests the CoinGecko ecosystem category');
+await p.click('[data-chain=sol]'); await p.waitForTimeout(1500);
+ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1$/),
+  'a chain tab pulls that network\'s own tokens');
 await p.click('[data-chain=""]'); await p.waitForTimeout(800);
 await p.fill('#q', 'bitcoin'); await p.waitForTimeout(500);
 await p.locator('.row').first().click();
 await p.waitForSelector('.chart svg path', { timeout: 15000 });
 ok(hit(/\/coins\/bitcoin\/market_chart\?vs_currency=usd&days=1$/), 'asset chart hits /market_chart with the coin id');
+ok(await p.locator('.chart svg .line').count() === 1, 'the chart draws an animated line');
+{
+  const head = await p.locator('.chgline').textContent();
+  ok(/past 24 hours/.test(head), 'the headline names the chart range, not a fixed window');
+}
 await p.click('[data-days="365"]'); await p.waitForTimeout(1200);
 ok(hit(/\/market_chart\?vs_currency=usd&days=365$/), 'range switch changes the days param');
+ok(/past year/.test(await p.locator('.chgline').textContent()), 'the percentage follows the range');
+{
+  const box = await p.locator('.chart-svg').boundingBox();
+  const before = await p.locator('.big').textContent();
+  await p.mouse.move(box.x + box.width * 0.35, box.y + box.height / 2);
+  await p.waitForTimeout(220);
+  ok((await p.locator('.big').textContent()) !== before, 'hovering the chart reads out that point');
+  await p.mouse.move(box.x + box.width * 0.35, box.y - 80); await p.waitForTimeout(220);
+  ok((await p.locator('.big').textContent()) === before, 'leaving the chart restores the headline');
+}
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', 'kamino'); await p.waitForTimeout(600);
 await p.locator('.row[data-id^="p:"]').first().click();
 await p.waitForSelector('.chart svg path, .cload.err', { timeout: 15000 });
 ok(hit(/^https:\/\/yields\.llama\.fi\/chart\/bb22$/), 'market chart hits /chart/{poolId}');
+
+console.log('\n# CoinGecko refusing the origin must not empty the app');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  q.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
+  await ctx.route('https://api.coingecko.com/**', r => r.abort('failed'));   // what production reported
+  await ctx.route('https://api.coinpaprika.com/**', r => r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify(Array.from({ length: 40 }, (_, i) => ({
+      id: 'pk-' + i, name: 'Paprika Coin ' + i, symbol: 'PK' + i, rank: i + 1,
+      quotes: { USD: { price: 1000 / (i + 1), market_cap: 2e12 / (i + 1), volume_24h: 1e9,
+        percent_change_24h: 1.5, percent_change_7d: 4.2, percent_change_30d: -3.1, percent_change_1y: 88 } } }))) }));
+  await ctx.route('https://yields.llama.fi/**', r => r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify(r.request().url().endsWith('/pools') ? llamaPools : []) }));
+  await ctx.route('https://api.llama.fi/**', r => r.fulfill({ contentType: 'application/json', body: '[]' }));
+  await ctx.route('https://stablecoins.llama.fi/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await ctx.route('https://bridges.llama.fi/**', r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await ctx.route('https://api.geckoterminal.com/**', r => r.fulfill({ contentType: 'application/json', body: '{"data":[]}' }));
+  await ctx.route('https://api.dexscreener.com/**', r => r.fulfill({ contentType: 'application/json', body: '{"pairs":[]}' }));
+  await ctx.route('https://api.binance.com/**', r => r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify(Array.from({ length: 100 }, (_, i) => [0, 0, 0, 0, String(100 + i), 0])) }));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
+  const body = await q.locator('#results').textContent();
+  ok(body.includes('Paprika Coin'), 'CoinPaprika carries the asset list when CoinGecko refuses');
+  ok(await q.locator('.warn').count() === 0, 'a working fallback raises no warning');
+  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
+  ok(await q.locator('.chart svg .line').count() === 1, 'charts fall back to Binance klines');
+  await ctx.close();
+}
+
+console.log('\n# a chart always draws, even with no history anywhere');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  await ctx.route('https://api.coingecko.com/**', r => r.request().url().includes('market_chart')
+    ? r.abort('failed')
+    : r.fulfill({ contentType: 'application/json',
+        // no sparkline either, so there is genuinely nothing to draw from
+        body: JSON.stringify(markets.map(({ sparkline_in_7d, ...m }) => m)) }));
+  await ctx.route('https://api.binance.com/**', r => r.abort('failed'));
+  for (const h of ['https://yields.llama.fi/**', 'https://api.llama.fi/**', 'https://stablecoins.llama.fi/**',
+    'https://bridges.llama.fi/**', 'https://api.geckoterminal.com/**', 'https://api.dexscreener.com/**'])
+    await ctx.route(h, r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
+  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
+  ok(await q.locator('.chart svg .line').count() === 1, 'the chart still draws with every source down');
+  ok(await q.locator('.nohist').count() === 1, 'and says plainly that there is no history');
+  await ctx.close();
+}
 
 console.log(fail ? `\n${fail} FAILING\n` : '\nall green\n');
 await b.close(); srv.kill(); process.exit(fail ? 1 : 0);

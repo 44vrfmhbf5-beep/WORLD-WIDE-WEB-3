@@ -133,6 +133,12 @@ window.__ATLAS_SAMPLE__ = {
         priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
         volume: { h24: vol }, fdv: liq * 14 }));
   },
+  klines(sym, n) { return walk('k' + sym, n, 100).map(v => [0, 0, 0, 0, String(v), 0]); },
+  ohlcv(addr, n) { return walk('o' + addr, n, 1).map((v, i) => [i, 0, 0, 0, v, 0]); },
+  chainPools(net) {
+    return this.trending.slice(0, 8).map((r, i) => ({ ...r, id: net + '_c' + i,
+      attributes: { ...r.attributes, address: net + 'addr' + i } }));
+  },
   gtSearch(q) {
     const s = q.toLowerCase();
     return this.pairs(s).slice(0, 3).map((p, i) => ({ id: p.chainId + '_gt' + i, type: 'pool',

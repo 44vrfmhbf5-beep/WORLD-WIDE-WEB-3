@@ -2,7 +2,8 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadAssetChart, loadPoolChart, loadProtocolChart, links, flags } from './data.js';
+  loadChainTokens, loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
+  links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -47,7 +48,7 @@ const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
-  pairs: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
+  pairs: [], chainTokens: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -61,7 +62,7 @@ const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.valu
 async function load({ force } = {}) {
   if (force) { try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {} }
   S.loading = true; S.err = S.warn = null; render();
-  const [a, p] = await Promise.allSettled([loadAssets(S.chain), loadPools()]);
+  const [a, p] = await Promise.allSettled([loadAssets(), loadPools()]);
   S.assets = a.status === 'fulfilled' ? a.value : [];
   const m = p.status === 'fulfilled' ? p.value : { lending: [], yields: [] };
   S.pools = m.lending; S.yields = m.yields;
@@ -97,7 +98,7 @@ async function enrich() {
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 const pooled = () => S.pools.filter(onChain);
 const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
-  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainRows];
+  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainTokens, ...S.chainRows];
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
@@ -370,7 +371,7 @@ function render() {
       S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
       : !S.q && S.chain && !S.assets.length
-        ? `<div class="empty"><b>No assets indexed for ${esc(CH[S.chain].name)}</b>CoinGecko returned nothing for the “${esc(CH[S.chain].cg)}” category. Slugs get renamed occasionally — the mapping is the CHAINS table in data.js.</div>`
+        ? `<div class="empty"><b>Nothing indexed for ${esc(CH[S.chain].name)} yet</b>No source returned data for this network. Newer chains often appear here before the aggregators cover them.</div>`
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
   }
@@ -422,7 +423,7 @@ function sheetHTML(it) {
 
   if (it.kind === 'asset') {
     const markets = S.pools.filter(p => p.sym === it.sym).sort((a, b) => b.supplyUsd - a.supplyUsd).slice(0, 6);
-    return `<div class="sheet-in" data-kind="asset" data-cg="${esc(it.cg)}" data-up="${it.chg >= 0}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="asset">
       ${head(it.name, [it.sym, c?.name, it.rank ? '#' + it.rank : ''].filter(Boolean).join(' · '))}
       <div class="big">${usd(it.price)}</div>
       <div class="chgline"><span class="${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</span><span class="mute">past 24 hours</span></div>
@@ -446,10 +447,11 @@ function sheetHTML(it) {
   if (g) {
     const s = g(it);
     const nets = (it.chains || []).map(c => S.chainRows.find(x => x.chain === c)).filter(Boolean).slice(0, 6);
-    return `<div class="sheet-in" data-kind="${esc(it.kind)}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="${esc(it.kind)}">
       ${head(s.head || KIND[it.kind].title(it), s.sub)}
       <div class="big ${s.cls || ''}">${esc(s.big)}</div>
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
+      ${s.chart ? chartBox(s.chart[0], s.chart[1]) : ''}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
@@ -462,7 +464,7 @@ function sheetHTML(it) {
   if (it.kind === 'protocol') {
     const markets = S.pools.filter(p => p.slug === it.slug).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 6);
     const nets = S.chainRows.filter(c => it.chains.includes(c.chain)).slice(0, 6);
-    return `<div class="sheet-in" data-kind="protocol" data-slug="${esc(it.slug)}" data-up="${it.chg1d >= 0}">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="protocol">
       ${head(it.name, [it.cat, it.chains.length + ' chain' + (it.chains.length === 1 ? '' : 's')].join(' · '))}
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
@@ -484,7 +486,7 @@ function sheetHTML(it) {
   if (it.kind === 'chain') {
     const prots = S.protocols.filter(r => r.chains.includes(it.chain)).slice(0, 6);
     const markets = S.pools.filter(p => p.chain === it.chain).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 5);
-    return `<div class="sheet-in" data-kind="chain">
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="chain">
       ${head(it.name, 'Network')}
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="mute">total value locked across ${prots.length ? S.protocols.filter(r => r.chains.includes(it.chain)).length : 0} indexed protocols</span></div>
@@ -503,7 +505,7 @@ function sheetHTML(it) {
 
   const a = S.assets.find(x => x.sym === it.sym);
   const others = S.pools.filter(p => p.sym === it.sym && p.id !== it.id).sort((x, y) => y.sup - x.sup).slice(0, 4);
-  return `<div class="sheet-in" data-kind="pool" data-pool="${esc(it.pool)}" data-up="true">
+  return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="pool">
     ${head(it.proto, `${it.sym}${it.meta ? ' · ' + it.meta : ''} · ${c?.name || ''}`)}
     <div class="big up">${apy(it.sup)}</div>
     <div class="chgline"><span class="mute">supply APY${it.supReward ? ` · ${apy(it.supBase)} base + ${apy(it.supReward)} rewards` : ''}</span></div>
@@ -558,7 +560,8 @@ const SHEET = {
     body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
     link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
 
-  pair: it => ({ big: it.price ? usd(it.price) : '—',
+  pair: it => ({ chart: [7, [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']]],
+    big: it.price ? usd(it.price) : '—',
     cls: it.chg >= 0 ? 'up' : 'down',
     caption: it.chg ? `${pct(it.chg)} in 24 hours` : 'traded on a DEX',
     sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, it.net].filter(Boolean).join(' · '),
@@ -586,26 +589,91 @@ function miniHTML(it) {
         <div class="n2 ${k.cls ? k.cls(it) : 'mute'}">${esc(k.n2(it))}</div></div></div>`;
 }
 
+/* ---------- chart ----------
+   One component for every kind. It animates in, follows the pointer, and always
+   draws: when a source has no history the series is flat at the current value
+   and the chart says so instead of showing an empty box. */
+const CW = 300, CHH = 110, CPAD = 8;
+let chartSeq = 0;
+
+const chartValue = (it, v) => it.kind === 'pool' ? apy(v)
+  : it.kind === 'protocol' ? '$' + compact(v)
+  : usd(v);
+const RANGE_LABEL = { 1: 'past 24 hours', 7: 'past 7 days', 30: 'past 30 days',
+  90: 'past 3 months', 365: 'past year', 3650: 'all time' };
+
 async function drawChart(days) {
   const box = el.sheet.querySelector('.sheet-in'); if (!box) return;
-  const host = box.querySelector('.chart-svg');
-  const token = host.dataset.token = String(Date.now());
+  const it = find(box.dataset.id); if (!it) return;
+  const host = box.querySelector('.chart-svg'); if (!host) return;
+  const token = host.dataset.token = String(++chartSeq);
   host.innerHTML = '<div class="cload"></div>';
-  let pts = [];
+  let res = { pts: [], live: false };
   try {
-    pts = box.dataset.kind === 'asset' ? await loadAssetChart(box.dataset.cg, days)
-      : box.dataset.kind === 'protocol' ? await loadProtocolChart(box.dataset.slug, days)
-      : await loadPoolChart(box.dataset.pool, days);
-  } catch { /* fall through to the empty state */ }
-  if (host.dataset.token !== token) return;              // a newer range won
-  if (pts.length < 2) { host.innerHTML = '<div class="cload err">No history available</div>'; return; }
-  const stroke = box.dataset.up === 'true' ? 'var(--up)' : 'var(--down)';
-  const d = path(pts, 300, 96, 6);
-  host.innerHTML = `<svg viewBox="0 0 300 108" preserveAspectRatio="none">
-    <defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${stroke}" stop-opacity=".28"/><stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
-    <path d="${d}L300 108L0 108Z" fill="url(#cg)"/>
-    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+    res = it.kind === 'asset' ? await loadAssetChart(it, days)
+      : it.kind === 'pair' ? await loadPairChart(it, days)
+      : it.kind === 'protocol' ? await loadProtocolChart(it, days)
+      : await loadPoolChart(it, days);
+  } catch { res = { pts: [], live: false }; }
+  if (host.dataset.token !== token) return;               // a newer range won
+  paintChart(box, it, res, days);
+}
+
+function paintChart(box, it, { pts, live }, days) {
+  const host = box.querySelector('.chart-svg');
+  if (!pts?.length) pts = [0, 0];
+  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const first = pts[0], last = pts[pts.length - 1];
+  const move = first ? (last - first) / Math.abs(first) * 100 : 0;
+  const up = move >= 0;
+  const stroke = up ? 'var(--up)' : 'var(--down)';
+  const d = path(pts, CW, CHH, CPAD);
+
+  host.innerHTML = `
+    <svg viewBox="0 0 ${CW} ${CHH}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
+        <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
+      <path class="area" d="${d}L${CW} ${CHH}L0 ${CHH}Z" fill="url(#cgrad)"/>
+      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
+    <div class="tip"></div>
+    ${live ? '' : `<div class="nohist">No price history available — showing the current value</div>`}`;
+
+  // the headline follows the range, not a fixed 24 hours
+  const head = box.querySelector('.chgline');
+  const big = box.querySelector('.big');
+  const baseBig = chartValue(it, last);
+  const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
+    <span class="mute">${esc(RANGE_LABEL[days] || '')}${live ? '' : ' · no history'}</span>`;
+  if (big) big.textContent = baseBig;
+  if (head) head.innerHTML = summary;
+
+  const yOf = v => CPAD + (1 - (v - lo) / span) * (CHH - CPAD * 2);
+  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot'), tip = host.querySelector('.tip');
+
+  const at = i => {
+    const v = pts[i], xp = i / (pts.length - 1) * 100;
+    cx.style.cssText = `left:${xp}%;opacity:1`;
+    dot.style.cssText = `left:${xp}%;top:${yOf(v) / CHH * 100}%;background:${stroke};opacity:1`;
+    tip.textContent = chartValue(it, v);
+    tip.style.cssText = `left:${xp}%;opacity:1`;
+    if (big) big.textContent = chartValue(it, v);
+    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
+      <span class="mute">from the start of this range</span>`;
+  };
+  const clear = () => {
+    cx.style.opacity = dot.style.opacity = tip.style.opacity = 0;
+    if (big) big.textContent = baseBig;
+    if (head) head.innerHTML = summary;
+  };
+  host.onpointermove = e => {
+    const r = host.getBoundingClientRect();
+    at(Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1)))));
+  };
+  host.onpointerleave = clear;
 }
 
 function open(id, { push = true } = {}) {
@@ -616,9 +684,8 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  if (it.kind === 'asset') drawChart(1);
-  else if (it.kind === 'protocol') drawChart(90);
-  else if (it.kind === 'pool') drawChart(30);
+  const first = { asset: 1, pair: 7, protocol: 90, pool: 30 }[it.kind];
+  if (first) drawChart(first);
 }
 function hide() {
   depth = 0;
@@ -704,14 +771,15 @@ $('#chains').addEventListener('click', async e => {
   const b = e.target.closest('[data-chain]'); if (!b) return;
   const seq = ++chainSeq;
   S.chain = b.dataset.chain || null; S.sel = 0; paintFilters();
-  S.loading = true; el.res.classList.add('stale'); render();
-  let assets = null, err = null;
-  try { assets = await loadAssets(S.chain); } catch (e2) { err = e2; }
+  reindex(); render(); scrollToResults(); syncUrl(true);
+  if (!S.chain) { S.chainTokens = []; nodes.clear(); reindex(); render(); return; }
+  el.res.classList.add('stale');
+  let toks = [];
+  try { toks = await loadChainTokens(S.chain); } catch { /* the chain still filters */ }
   if (seq !== chainSeq) return;                 // a newer chain click won the race
-  S.assets = assets || [];
-  S.warn = err ? 'Asset prices unavailable — ' + err.message : null;
-  S.loading = false; el.res.classList.remove('stale');
-  nodes.clear(); reindex(); render(); scrollToResults(); syncUrl(true);
+  S.chainTokens = toks;
+  el.res.classList.remove('stale');
+  nodes.clear(); reindex(); render();
 });
 
 function toggleStar(id) {

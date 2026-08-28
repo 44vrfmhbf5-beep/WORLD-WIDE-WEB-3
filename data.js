@@ -17,26 +17,50 @@ const LLAMA = 'https://api.llama.fi';
 const STABLE = 'https://stablecoins.llama.fi';
 const BRIDGES = 'https://bridges.llama.fi';
 const DEXS = 'https://api.dexscreener.com';
+const PAPRIKA = 'https://api.coinpaprika.com/v1';
+const BINANCE = 'https://api.binance.com/api/v3';
 const GT = 'https://api.geckoterminal.com/api/v2';
 
-// id, label, colour, CoinGecko category slug, DeFiLlama chain name
+// id, label, colour, DeFiLlama chain name
 export const CHAINS = [
-  ['sol',  'Solana',      '#14f195', 'solana-ecosystem',    'Solana'],
-  ['eth',  'Ethereum',    '#7b8cf5', 'ethereum-ecosystem',  'Ethereum'],
-  ['base', 'Base',        '#3b7cff', 'base-ecosystem',      'Base'],
-  ['arb',  'Arbitrum',    '#28a0f0', 'arbitrum-ecosystem',  'Arbitrum'],
-  ['op',   'Optimism',    '#ff5c6c', 'optimism-ecosystem',  'Optimism'],
-  ['poly', 'Polygon',     '#a06bf0', 'polygon-ecosystem',   'Polygon'],
-  ['bnb',  'BNB Chain',   '#f0b90b', 'binance-smart-chain', 'BSC'],
-  ['avax', 'Avalanche',   '#e84142', 'avalanche-ecosystem', 'Avalanche'],
-  ['sui',  'Sui',         '#4da2ff', 'sui-ecosystem',       'Sui'],
-  ['apt',  'Aptos',       '#2ed3b7', 'aptos-ecosystem',     'Aptos'],
-  ['btc',  'Bitcoin',     '#f7931a', 'bitcoin-ecosystem',   'Bitcoin'],
-  ['hl',   'Hyperliquid', '#97fce4', 'hyperliquid-ecosystem', 'Hyperliquid'],
+  ['eth',   'Ethereum',    '#7b8cf5', 'Ethereum'],
+  ['sol',   'Solana',      '#14f195', 'Solana'],
+  ['base',  'Base',        '#3b7cff', 'Base'],
+  ['arb',   'Arbitrum',    '#28a0f0', 'Arbitrum'],
+  ['bnb',   'BNB Chain',   '#f0b90b', 'BSC'],
+  ['hl',    'Hyperliquid', '#97fce4', 'Hyperliquid'],
+  ['op',    'Optimism',    '#ff5c6c', 'Optimism'],
+  ['poly',  'Polygon',     '#a06bf0', 'Polygon'],
+  ['avax',  'Avalanche',   '#e84142', 'Avalanche'],
+  ['sui',   'Sui',         '#4da2ff', 'Sui'],
+  ['apt',   'Aptos',       '#2ed3b7', 'Aptos'],
+  ['tron',  'Tron',        '#ff4a4a', 'Tron'],
+  ['ton',   'TON',         '#3aa8f0', 'TON'],
+  ['btc',   'Bitcoin',     '#f7931a', 'Bitcoin'],
+  ['bera',  'Berachain',   '#c46a2b', 'Berachain'],
+  ['sonic', 'Sonic',       '#f2c14e', 'Sonic'],
+  ['mnt',   'Mantle',      '#57b8a9', 'Mantle'],
+  ['blast', 'Blast',       '#fcfc03', 'Blast'],
+  ['scrl',  'Scroll',      '#ffb682', 'Scroll'],
+  ['linea', 'Linea',       '#9fe870', 'Linea'],
+  ['zks',   'zkSync Era',  '#8c8dfc', 'zkSync Era'],
+  ['sei',   'Sei',         '#e05c5c', 'Sei'],
+  ['uni',   'Unichain',    '#ff6fb0', 'Unichain'],
+  ['ink',   'Ink',         '#7a5cff', 'Ink'],
+  ['abs',   'Abstract',    '#6fe3a1', 'Abstract'],
+  ['plume', 'Plume',       '#f08a5c', 'Plume'],
+  ['story', 'Story',       '#b1b6c9', 'Story'],
+  ['monad', 'Monad',       '#8b5cf6', 'Monad'],
+  ['celo',  'Celo',        '#f5d130', 'Celo'],
+  ['rhc',   'Robinhood Chain', '#63d16a', 'Robinhood Chain'],
 ];
-export const CH = Object.fromEntries(CHAINS.map(([id, name, color, cg, llama]) =>
-  [id, { id, name, color, cg, llama }]));
-const BY_LLAMA = Object.fromEntries(CHAINS.map(c => [c[4], c[0]]));
+export const CH = Object.fromEntries(CHAINS.map(([id, name, color, llama]) =>
+  [id, { id, name, color, llama }]));
+const BY_LLAMA = Object.fromEntries(CHAINS.map(c => [c[3], c[0]]));
+// DeFiLlama is not always consistent about a chain's display name
+for (const [alias, id] of Object.entries({ 'BNB': 'bnb', 'Binance': 'bnb', 'Avalanche C-Chain': 'avax',
+  'zkSync': 'zks', 'Era': 'zks', 'Polygon zkEVM': 'poly', 'op_bnb': 'bnb', 'Robinhood': 'rhc' }))
+  if (!BY_LLAMA[alias]) BY_LLAMA[alias] = id;
 
 /* ---------- plumbing ---------- */
 export class ApiError extends Error {
@@ -83,6 +107,10 @@ function sampleFor(url) {
   if (u.pathname.endsWith('/hacks')) return S.hacks;
   if (u.pathname.includes('/dex/search')) return { pairs: S.pairs(u.searchParams.get('q') || '') };
   if (u.pathname.includes('/search/pools')) return { data: S.gtSearch(u.searchParams.get('query') || '') };
+  if (/\/networks\/[^/]+\/pools$/.test(u.pathname)) return { data: S.chainPools(u.pathname.split('/')[3]) };
+  if (u.pathname.includes('/ohlcv/')) return { data: { attributes: { ohlcv_list: S.ohlcv(u.pathname, 60) } } };
+  if (u.pathname.endsWith('/klines')) return S.klines(u.searchParams.get('symbol') || '', 100);
+  if (u.pathname.endsWith('/tickers')) return [];
   if (u.pathname.includes('trending_pools')) return { data: S.trending };
   return null;
 }
@@ -152,6 +180,10 @@ function asset(c, chain) {
     kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
     chain, price: c.current_price ?? 0, chg: c.price_change_percentage_24h ?? 0,
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
+    chgBy: { 1: c.price_change_percentage_24h_in_currency ?? c.price_change_percentage_24h ?? 0,
+      7: c.price_change_percentage_7d_in_currency ?? 0,
+      30: c.price_change_percentage_30d_in_currency ?? 0,
+      365: c.price_change_percentage_1y_in_currency ?? 0 },
     spark: spark.slice(-24), color: colorOf(sym),
     key: `${sym} ${c.name || ''} ${CH[chain]?.name || ''} token coin asset price`,
   };
@@ -178,25 +210,58 @@ function pool(p, lb) {
 /* ---------- public API ---------- */
 
 /** Top assets. `chainId` null = global market leaders, else that chain's ecosystem. */
-export function loadAssets(chainId) {
-  const cat = chainId ? CH[chainId].cg : '';
-  return cache(`assets:${chainId || 'all'}`, TTL, async () => {
-    const q = `${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1` +
-      `&sparkline=true&price_change_percentage=24h${cat ? '&category=' + cat : ''}`;
-    const rows = await get(q);
-    // the global endpoint carries no chain — leave it unset rather than guessing one
-    return (Array.isArray(rows) ? rows : []).map(c => asset(c, chainId || null));
+/* CoinGecko refuses some browser origins outright, which used to take the whole
+   asset layer with it. Two independent price sources are tried and the first
+   that answers wins; CoinPaprika also carries 7d/30d/1y moves, which the charts
+   use to label a range. */
+function paprikaAsset(p, i) {
+  const q = p.quotes?.USD || {};
+  const sym = String(p.symbol || '?').toUpperCase();
+  return {
+    kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
+    chain: null, price: num(q.price), chg: num(q.percent_change_24h),
+    chgBy: { 1: num(q.percent_change_24h), 7: num(q.percent_change_7d),
+      30: num(q.percent_change_30d), 365: num(q.percent_change_1y) },
+    mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
+    color: colorOf(sym),
+    key: `${sym} ${p.name || ''} token coin asset price`,
+  };
+}
+
+/** Top assets by market cap, from whichever price source is reachable. */
+export function loadAssets() {
+  return cache('assets:all', TTL, async () => {
+    const cg = get(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1` +
+      `&sparkline=true&price_change_percentage=24h,7d,30d,1y`);
+    const pk = get(`${PAPRIKA}/tickers?quotes=USD`, { timeout: 30000 });
+    const [a, b] = await Promise.allSettled([cg, pk]);
+    if (a.status === 'fulfilled' && Array.isArray(a.value) && a.value.length)
+      return a.value.map(c => asset(c, null));
+    if (b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length)
+      return b.value.slice(0, 150).map(paprikaAsset);
+    throw a.reason || b.reason || new ApiError('No price source answered.');
   });
 }
 
-// Borrow-side fields live on the pool itself in some responses and only in
-// /lendBorrow in others. Accept either, so neither shape breaks lending.
-const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
-  ? { apyBaseBorrow: p.apyBaseBorrow, apyRewardBorrow: p.apyRewardBorrow,
-      totalSupplyUsd: p.totalSupplyUsd, totalBorrowUsd: p.totalBorrowUsd, ltv: p.ltv }
-  : null;
+/* GeckoTerminal network slugs. A chain missing here simply has no per-chain
+   token list; everything else about it still works. */
+const GT_NET = { eth: 'eth', sol: 'solana', base: 'base', arb: 'arbitrum', bnb: 'bsc',
+  poly: 'polygon_pos', avax: 'avax', op: 'optimism', sui: 'sui-network', apt: 'aptos',
+  ton: 'ton', tron: 'tron', bera: 'berachain', sonic: 'sonic', mnt: 'mantle',
+  blast: 'blast', scrl: 'scroll', linea: 'linea', zks: 'zksync', sei: 'sei-evm',
+  uni: 'unichain', ink: 'ink', abs: 'abstract', hl: 'hyperliquid', celo: 'celo',
+  monad: 'monad', plume: 'plume', story: 'story' };
 
-/** Every lending market DeFiLlama tracks, above a size floor. */
+/** The tokens actually trading on one chain. */
+export function loadChainTokens(chainId) {
+  const net = GT_NET[chainId];
+  if (!net) return Promise.resolve([]);
+  return cache(`chaintok:${chainId}`, TTL, async () => {
+    const j = await get(`${GT}/networks/${net}/pools?page=1`, { tries: 1 }).catch(() => null);
+    return mergePairs([(j?.data || []).map(gtPool)]).map(p => ({ ...p, chain: chainId })).slice(0, 40);
+  });
+}
+
 function farm(p) {
   const sym = (p.symbol || '?').toUpperCase();
   const proto = title(p.project || '');
@@ -209,6 +274,13 @@ function farm(p) {
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} yield farm pool apy earn staking liquidity`,
   };
 }
+
+// Borrow-side fields live on the pool itself in some responses and only in
+// /lendBorrow in others. Accept either, so neither shape breaks lending.
+const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
+  ? { apyBaseBorrow: p.apyBaseBorrow, apyRewardBorrow: p.apyRewardBorrow,
+      totalSupplyUsd: p.totalSupplyUsd, totalBorrowUsd: p.totalBorrowUsd, ltv: p.ltv }
+  : null;
 
 /** Lending markets and yield farms — one ~10MB payload feeds both. */
 export function loadPools() {
@@ -235,20 +307,67 @@ export function loadPools() {
   });
 }
 
-/** Asset price history. days: 1 | 7 | 30 | 365 → [[ms, price], …] */
-export function loadAssetChart(cgId, days) {
-  return cache(`chart:${cgId}:${days}`, TTL, async () => {
-    const j = await get(`${CG}/coins/${encodeURIComponent(cgId)}/market_chart?vs_currency=usd&days=${days}`);
-    return (j?.prices || []).map(p => p[1]);
+/* Charts must always draw. Sources are tried in order and, if none answers,
+   a flat series at the current value is returned with live:false so the UI can
+   say so rather than showing an empty box. */
+const KLINE = { 1: ['15m', 96], 7: ['1h', 168], 30: ['4h', 180], 90: ['12h', 180], 365: ['1d', 365] };
+
+async function binance(sym, days) {
+  const [interval, limit] = KLINE[days] || KLINE[30];
+  const j = await get(`${BINANCE}/klines?symbol=${encodeURIComponent(sym)}USDT&interval=${interval}&limit=${limit}`,
+    { tries: 1, timeout: 12000 });
+  return (Array.isArray(j) ? j : []).map(k => Number(k[4])).filter(Number.isFinite);
+}
+
+const flat = v => Array.from({ length: 24 }, () => Number(v) || 0);
+
+/** Asset price history, days: 1 | 7 | 30 | 365 */
+export function loadAssetChart(a, days) {
+  return cache(`chart:${a.id}:${days}`, TTL, async () => {
+    if (a.cg) {
+      try {
+        const j = await get(`${CG}/coins/${encodeURIComponent(a.cg)}/market_chart?vs_currency=usd&days=${days}`);
+        const pts = (j?.prices || []).map(p => p[1]).filter(Number.isFinite);
+        if (pts.length > 1) return { pts, live: true };
+      } catch { /* try the next source */ }
+    }
+    try {
+      const pts = await binance(a.sym, days);
+      if (pts.length > 1) return { pts, live: true };
+    } catch { /* try the next source */ }
+    if (days <= 7 && a.spark?.length > 1) return { pts: a.spark, live: true };
+    return { pts: flat(a.price), live: false };
+  });
+}
+
+/** DEX pair history from GeckoTerminal OHLCV. */
+const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 365: ['day', 365] };
+export function loadPairChart(p, days) {
+  return cache(`pchart:${p.id}:${days}`, TTL, async () => {
+    const net = GT_NET[p.chain];
+    if (net && p.addr) {
+      try {
+        const [tf, limit] = OHLCV[days] || OHLCV[7];
+        const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(p.addr)}/ohlcv/${tf}?limit=${limit}`,
+          { tries: 1, timeout: 12000 });
+        const pts = (j?.data?.attributes?.ohlcv_list || []).map(r => Number(r[4]))
+          .filter(Number.isFinite).reverse();
+        if (pts.length > 1) return { pts, live: true };
+      } catch { /* fall through */ }
+    }
+    return { pts: flat(p.price), live: false };
   });
 }
 
 /** Lending market APY history. Llama returns daily points; slice to the range. */
-export function loadPoolChart(poolId, days) {
-  return cache(`pchart:${poolId}`, TTL, async () => {
-    const j = await get(`${YIELDS}/chart/${encodeURIComponent(poolId)}`);
-    return (j?.data || []).map(d => d.apy ?? 0);
-  }).then(all => days >= 365 ? all : all.slice(-days));
+export function loadPoolChart(pool, days) {
+  return cache(`apy:${pool.pool}`, TTL, async () => {
+    const j = await get(`${YIELDS}/chart/${encodeURIComponent(pool.pool)}`).catch(() => null);
+    return (j?.data || []).map(d => num(d.apy));
+  }).then(all => {
+    const pts = days >= 365 ? all : all.slice(-days);
+    return pts.length > 1 ? { pts, live: true } : { pts: flat(pool.sup), live: false };
+  });
 }
 
 /* ---------- protocols, chains, stablecoins ---------- */
@@ -393,11 +512,14 @@ export function loadHacks() {
 }
 
 /** Protocol TVL history. */
-export function loadProtocolChart(slug, days) {
-  return cache(`rchart:${slug}`, TTL, async () => {
-    const j = await get(`${LLAMA}/protocol/${encodeURIComponent(slug)}`, { timeout: 45000 });
+export function loadProtocolChart(r, days) {
+  return cache(`rchart:${r.slug}`, TTL, async () => {
+    const j = await get(`${LLAMA}/protocol/${encodeURIComponent(r.slug)}`, { timeout: 45000 }).catch(() => null);
     return (j?.tvl || []).map(p => num(p.totalLiquidityUSD));
-  }).then(all => days >= 3650 ? all : all.slice(-days));
+  }).then(all => {
+    const pts = days >= 3650 ? all : all.slice(-days);
+    return pts.length > 1 ? { pts, live: true } : { pts: flat(r.tvl), live: false };
+  });
 }
 
 /* ---------- DEX pairs ----------
