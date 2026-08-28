@@ -56,7 +56,7 @@ http.createServer(async (req,res)=>{
   const u=new URL(req.url,'http://x'); const p=u.pathname;
   const json=(o,code=200)=>{res.writeHead(code,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(o));};
   if(MODE==='slow') await new Promise(r=>setTimeout(r,900));
-  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')){
+  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')){
     if(MODE==='down') return json({error:'nope'},503);
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
     if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
@@ -77,8 +77,22 @@ http.createServer(async (req,res)=>{
   if(p==='/dl/v2/chains') return json(CHAINS.map((c,i)=>({name:c,tvl:(9e10)/(i+1),tokenSymbol:c.slice(0,3).toUpperCase()})));
   if(p.startsWith('/dl/protocol/')) return json({tvl:walk(p,400,1e9).map((v,i)=>({date:i,totalLiquidityUSD:v}))});
   if(p==='/stable/stablecoins') return json({peggedAssets:[
-    {symbol:'USDC',circulating:{peggedUSD:4.1e10},price:1.0001},
-    {symbol:'USDT',circulating:{peggedUSD:1.18e11},price:0.9998}]});
+    {id:'1',symbol:'USDC',name:'USD Coin',circulating:{peggedUSD:4.1e10},price:1.0001,pegMechanism:'fiat-backed',chains:['Ethereum','Solana']},
+    {id:'2',symbol:'USDT',name:'Tether',circulating:{peggedUSD:1.18e11},price:0.9998,pegMechanism:'fiat-backed',chains:['Ethereum','BSC']}]});
+  if(p==='/dl/overview/derivatives') return json({protocols:[{name:'Aave V3',total24h:4.2e8}]});
+  if(p==='/dl/overview/options') return json({protocols:[{name:'Aave V3',total24h:1.1e7}]});
+  if(p==='/bridge/bridges') return json({bridges:Array.from({length:14},(_,i)=>({
+    id:i, name:'bridge'+i, displayName:'Bridge '+i, chains:[CHAINS[i%CHAINS.length],CHAINS[(i+2)%CHAINS.length]],
+    lastDailyVolume:(4e8)/(i+1), volumePrev2Day:(3.6e8)/(i+1) }))});
+  if(p==='/dl/raises') return json({raises:Array.from({length:40},(_,i)=>({
+    date: Math.floor(Date.now()/1000)-i*86400*9, name:'Venture Co '+i, round:['Seed','Series A','Series B'][i%3],
+    amount:(120)/(i+1), chains:[CHAINS[i%CHAINS.length]], sector:'Infrastructure',
+    leadInvestors:['Paradigm'], otherInvestors:['a16z','Polychain'], valuation:(900)/(i+1),
+    source:'https://example.invalid/raise'+i }))});
+  if(p==='/dl/hacks') return json(Array.from({length:24},(_,i)=>({
+    date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit', amount:(6e7)/(i+1),
+    technique:['Flash loan','Price oracle','Private key','Reentrancy'][i%4],
+    chains:[CHAINS[i%CHAINS.length]], source:'https://example.invalid/hack'+i })));
   if(p==='/llama/pools') return json({status:'success',data:pools});
   if(p==='/llama/lendBorrow') return json(lend);
   if(p.startsWith('/llama/chart/')) return json({data:walk(p,400,6).map((v,i)=>({timestamp:i,apy:v,tvlUsd:1e8}))});
@@ -91,7 +105,8 @@ http.createServer(async (req,res)=>{
     .replace("'https://api.coingecko.com/api/v3'","'/api/v3'")
     .replace("'https://yields.llama.fi'","'/llama'")
     .replace("'https://api.llama.fi'","'/dl'")
-    .replace("'https://stablecoins.llama.fi'","'/stable'"));
+    .replace("'https://stablecoins.llama.fi'","'/stable'")
+    .replace("'https://bridges.llama.fi'","'/bridge'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

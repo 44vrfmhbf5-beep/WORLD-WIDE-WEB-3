@@ -85,12 +85,25 @@ await p.route('https://api.llama.fi/**', r => {
   if (u.includes('/v2/chains')) return J([{ name: 'Ethereum', tvl: 6.2e10 }, { name: 'Solana', tvl: 9.4e9 }]);
   if (u.includes('/protocol/')) return J({ tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
   if (u.endsWith('/protocols')) return J(protocols);
+  if (u.includes('/overview/derivatives')) return J({ protocols: [{ name: 'Aave V3', total24h: 4.2e8 }] });
+  if (u.includes('/overview/options')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.1e7 }] });
+  if (u.endsWith('/raises')) return J({ raises: [{ date: Math.floor(Date.now() / 1000) - 86400,
+    name: 'Ondo Finance', round: 'Series A', amount: 20, chains: ['Ethereum'], sector: 'RWA',
+    leadInvestors: ['Pantera'], otherInvestors: ['Coinbase Ventures'], source: 'https://example.invalid' }] });
+  if (u.endsWith('/hacks')) return J([{ date: Math.floor(Date.now() / 1000) - 86400 * 5,
+    name: 'Curve Finance exploit', amount: 6.1e7, technique: 'Reentrancy', chains: ['Ethereum'] }]);
   r.fulfill({ status: 404, body: '[]' });
 });
 await p.route('https://stablecoins.llama.fi/**', r => {
   seen.push(r.request().url());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ peggedAssets: [
-    { symbol: 'USDC', circulating: { peggedUSD: 4.1e10 }, price: 1.0001 }] }) });
+    { id: '1', symbol: 'USDC', name: 'USD Coin', circulating: { peggedUSD: 4.1e10 },
+      price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] }] }) });
+});
+await p.route('https://bridges.llama.fi/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ bridges: [
+    { id: 1, displayName: 'Across', chains: ['Ethereum', 'Base'], lastDailyVolume: 4.2e8, volumePrev2Day: 3.9e8 }] }) });
 });
 await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
@@ -118,6 +131,20 @@ ok(hit(/\/overview\/dexs\?excludeTotalDataChart=true/), 'DeFiLlama /overview/dex
 ok(hit(/\/overview\/fees\?excludeTotalDataChart=true/), 'DeFiLlama /overview/fees');
 ok(hit(/^https:\/\/api\.llama\.fi\/v2\/chains$/), 'DeFiLlama /v2/chains');
 ok(hit(/^https:\/\/stablecoins\.llama\.fi\/stablecoins\?includePrices=true$/), 'DeFiLlama /stablecoins');
+ok(hit(/^https:\/\/bridges\.llama\.fi\/bridges\?includeChains=true$/), 'DeFiLlama /bridges');
+ok(hit(/^https:\/\/api\.llama\.fi\/raises$/), 'DeFiLlama /raises');
+ok(hit(/^https:\/\/api\.llama\.fi\/hacks$/), 'DeFiLlama /hacks');
+ok(hit(/\/overview\/derivatives\?/), 'DeFiLlama /overview/derivatives');
+ok(hit(/\/overview\/options\?/), 'DeFiLlama /overview/options');
+{
+  await p.fill('#q', 'pantera'); await p.waitForTimeout(500);
+  ok(await p.locator('.row[data-id^="f:"]').count() > 0, 'funding rounds are searchable by investor');
+  await p.fill('#q', 'reentrancy'); await p.waitForTimeout(500);
+  ok(await p.locator('.row[data-id^="h:"]').count() > 0, 'exploits are searchable by technique');
+  await p.fill('#q', 'across'); await p.waitForTimeout(500);
+  ok(await p.locator('.row[data-id^="b:"]').count() > 0, 'bridges are searchable by name');
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
 {
   const body = await p.locator('#results').textContent();
   ok(body.includes('Aave V3'), 'protocols render as their own kind');

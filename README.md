@@ -73,12 +73,27 @@ Live, keyless, straight from the browser — no backend, no wallet.
 | Host | Used for | Endpoints |
 | --- | --- | --- |
 | `api.coingecko.com` | prices, market caps, volume, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
-| `yields.llama.fi` | lending markets: supply/borrow APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
-| `api.llama.fi` | protocols, TVL history, DEX volume, fees and revenue, per-chain TVL | `/protocols`, `/protocol/{slug}`, `/overview/dexs`, `/overview/fees`, `/v2/chains` |
-| `stablecoins.llama.fi` | stablecoin circulating supply | `/stablecoins` |
+| `yields.llama.fi` | lending markets and yield farms: APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
+| `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/dexs`, `/overview/fees`, `/overview/derivatives`, `/overview/options`, `/v2/chains`, `/raises`, `/hacks` |
+| `stablecoins.llama.fi` | stablecoin supply, peg and mechanism | `/stablecoins` |
+| `bridges.llama.fi` | cross-chain bridge volume | `/bridges` |
 
-Eleven endpoints across four hosts, all keyless and CORS-open, called straight
-from the browser.
+Seventeen endpoints across five hosts, all keyless and CORS-open, called
+straight from the browser.
+
+### Nine kinds, one index
+
+Assets · lending markets · yield farms · protocols · stablecoins · bridges ·
+funding rounds · exploits · networks.
+
+Each is a row in one `KIND` table in `app.js` that drives its token, its
+labels, its numbers, its group heading and its search scope. Adding a kind is a
+table entry, not another branch through the renderer. The five simplest kinds
+share one generic detail sheet described the same way.
+
+Two of the nine cost no extra request: yield farms and lending markets come out
+of the same `/pools` payload, split on whether a borrow side exists, and
+stablecoins were already being fetched to price pegs.
 
 ### How they join up
 

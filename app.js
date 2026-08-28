@@ -1,6 +1,7 @@
 /* Atlas — search across chains. Live data via data.js; this file is UI only. */
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
+  loadBridges, loadRaises, loadHacks,
   loadAssetChart, loadPoolChart, loadProtocolChart, links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -16,6 +17,8 @@ const usd = n => !isFinite(n) ? '—' : n >= 1e4 ? '$' + n.toLocaleString('en-US
 const pct = n => (n > 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
 const apy = n => (n >= 1000 ? compact(n) : (n ?? 0).toFixed(2)) + '%';
 const ago = t => { const m = (Date.now() - t) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0}m ago` : `${m / 60 | 0}h ago`; };
+const when = t => { const d = (Date.now() - t) / 864e5;
+  return !t ? '' : d < 1 ? 'today' : d < 30 ? `${d | 0}d ago` : d < 365 ? `${d / 30 | 0}mo ago` : `${(d / 365).toFixed(0)}y ago`; };
 
 function path(pts, w, h, pad = 2) {
   if (pts.length < 2) return '';
@@ -43,7 +46,7 @@ const readWatch = () => {
 const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
-  protocols: [], chainRows: [], stables: {}, byProto: {},
+  protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [], byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -59,7 +62,8 @@ async function load({ force } = {}) {
   S.loading = true; S.err = S.warn = null; render();
   const [a, p] = await Promise.allSettled([loadAssets(S.chain), loadPools()]);
   S.assets = a.status === 'fulfilled' ? a.value : [];
-  S.pools = p.status === 'fulfilled' ? p.value : [];
+  const m = p.status === 'fulfilled' ? p.value : { lending: [], yields: [] };
+  S.pools = m.lending; S.yields = m.yields;
   enrich();                       // protocols, chains and stables land behind this
   if (a.status === 'rejected' && p.status === 'rejected') S.err = a.reason?.message || 'Could not reach the data sources.';
   else if (a.status === 'rejected') S.warn = 'Asset prices unavailable — ' + (a.reason?.message || 'CoinGecko is not responding.');
@@ -75,10 +79,14 @@ async function load({ force } = {}) {
 let enriched = false;
 async function enrich() {
   if (enriched) return; enriched = true;
-  const [r, c, s] = await Promise.allSettled([loadProtocols(), loadChains(), loadStables()]);
-  S.protocols = r.status === 'fulfilled' ? r.value : [];
-  S.chainRows = c.status === 'fulfilled' ? c.value : [];
-  S.stables = s.status === 'fulfilled' ? s.value : {};
+  const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
+    loadBridges(), loadRaises(), loadHacks()]);
+  const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
+  S.protocols = val(0, []);
+  S.chainRows = val(1, []);
+  const st = val(2, { rows: [], bySym: {} });
+  S.stables = st.rows; S.bySym = st.bySym;
+  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
   // a lending market now carries the protocol behind it
   for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
@@ -87,7 +95,8 @@ async function enrich() {
 
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 const pooled = () => S.pools.filter(onChain);
-const everything = () => [...S.assets, ...S.pools, ...S.protocols, ...S.chainRows];
+const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
+  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.chainRows];
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
@@ -95,8 +104,9 @@ function scope() {
   }
   if (S.tab === 'assets') return S.assets.filter(onChain);
   if (S.tab === 'lending') return pooled();
+  if (S.tab === 'yield') return S.yields.filter(onChain);
   if (S.tab === 'protocols') return S.protocols.filter(onChain);
-  return [...S.assets.filter(onChain), ...pooled(), ...S.protocols.filter(onChain), ...S.chainRows.filter(onChain)];
+  return everything().filter(onChain);
 }
 function reindex() {
   S.fuse = new Fuse(scope(), {
@@ -105,8 +115,7 @@ function reindex() {
   });
 }
 
-const KINDS = ['asset', 'pool', 'protocol', 'chain'];
-const size = i => i.kind === 'asset' ? i.mcap : i.kind === 'pool' ? i.supplyUsd : i.tvl;
+const size = i => KIND[i.kind].size(i);
 
 /* With no query the two kinds are ranked separately. Market cap and supplied-USD
    are not the same scale — real assets reach $2T where the largest lending market
@@ -114,8 +123,9 @@ const size = i => i.kind === 'asset' ? i.mcap : i.kind === 'pool' ? i.supplyUsd 
 function trending() {
   const all = scope();
   if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
-  const top = (k, n) => all.filter(i => i.kind === k).sort((x, y) => size(y) - size(x)).slice(0, n);
-  return [...top('asset', 15), ...top('pool', 15), ...top('protocol', 12), ...top('chain', 12)];
+  const per = { asset: 12, pool: 10, yield: 10, protocol: 10, stablecoin: 8, bridge: 6, raise: 8, hack: 6, chain: 12 };
+  return KINDS.flatMap(k => all.filter(i => i.kind === k)
+    .sort((x, y) => size(y) - size(x)).slice(0, per[k] || 6));
 }
 
 function compute() {
@@ -170,9 +180,7 @@ function compute() {
 
 /* ---------- rows ---------- */
 const tok = (it, sq) => {
-  const label = it.kind === 'asset' ? (it.sym.length <= 4 ? it.sym : it.sym.slice(0, 3))
-    : it.kind === 'pool' ? (it.proto || '?').slice(0, 2).toUpperCase()
-    : (it.name || '?').slice(0, 2).toUpperCase();
+  const label = KIND[it.kind].label(it);
   const c = CH[it.chain];
   return `<div class="tok${sq ? ' sq' : ''}${label.length > 3 ? ' t4' : ''}" style="--c:${it.color}${c ? ';--c2:' + c.color : ''}">${esc(label)}` +
     (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
@@ -183,50 +191,86 @@ const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-
 
 const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
-const sigOf = it => it.kind === 'asset' ? `${it.price}|${it.chg}|${it.mcap}`
-  : it.kind === 'pool' ? `${it.sup}|${it.bor}|${it.supplyUsd}|${!!it.protocol}`
-  : `${it.tvl}|${it.chg1d || 0}|${it.vol24 || 0}`;
+const sigOf = it => `${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
+
+/* One descriptor per kind drives the rows, the group headings and the search
+   scope. Adding a kind is a table entry, not another branch through render. */
+const KIND = {
+  asset: { group: 'Assets', size: i => i.mcap, spark: true,
+    label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
+    title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
+    meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
+    n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
+
+  pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true,
+    label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
+    title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
+    meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
+    n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
+
+  yield: { group: 'Yield', size: i => i.tvl, sq: true,
+    label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
+    title: i => i.proto, sub: i => i.sym, tag: i => i.stable ? 'Stable yield' : 'Yield',
+    meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.tvl)} TVL`,
+    n1: i => apy(i.apy), n1cls: 'up',
+    n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
+
+  protocol: { group: 'Protocols', size: i => i.tvl, sq: true,
+    label: i => (i.name || '?').slice(0, 2).toUpperCase(),
+    title: i => i.name, tag: i => i.cat,
+    meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
+    tail: i => i.vol24 ? `$${compact(i.vol24)} 24h volume` : `$${compact(i.tvl)} TVL`,
+    n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
+
+  stablecoin: { group: 'Stablecoins', size: i => i.circulating,
+    label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
+    title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
+    meta: i => i.mech || 'Pegged', tail: i => `$${compact(i.circulating)} circulating`,
+    n1: i => usd(i.price), n2: i => 'peg', cls: () => 'mute' },
+
+  bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
+    label: i => (i.name || '?').slice(0, 2).toUpperCase(),
+    title: i => i.name, tag: () => 'Bridge',
+    meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
+    tail: i => `$${compact(i.vol24)} 24h volume`,
+    n1: i => '$' + compact(i.vol24),
+    n2: i => i.volPrev ? pct((i.vol24 - i.volPrev) / i.volPrev * 100) : '24h',
+    cls: i => i.volPrev && i.vol24 >= i.volPrev ? 'up' : i.volPrev ? 'down' : 'mute' },
+
+  raise: { group: 'Funding rounds', size: i => i.amount, sq: true,
+    label: i => (i.name || '?').slice(0, 2).toUpperCase(),
+    title: i => i.name, tag: i => i.round || 'Raise',
+    meta: i => i.sector || 'Funding',
+    tail: i => i.investors.length ? `${i.investors.length} investors` : when(i.date),
+    n1: i => '$' + compact(i.amount), n2: i => when(i.date), cls: () => 'mute' },
+
+  hack: { group: 'Exploits', size: i => i.amount, sq: true,
+    label: () => '!!', title: i => i.name, tag: () => 'Exploit',
+    meta: i => i.technique, tail: i => when(i.date),
+    n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
+
+  chain: { group: 'Networks', size: i => i.tvl, sq: true,
+    label: i => (i.name || '?').slice(0, 2).toUpperCase(),
+    title: i => i.name, tag: () => 'Network',
+    meta: i => `${S.protocols.filter(r => r.chains.includes(i.chain)).length} protocols`,
+    tail: i => `${S.pools.filter(p => p.chain === i.chain).length} lending markets`,
+    n1: i => '$' + compact(i.tvl), n2: () => 'TVL', cls: () => 'mute' },
+};
+const KINDS = Object.keys(KIND);
 
 function rowHTML(it) {
-  const c = CH[it.chain];
-  const head = `class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"`;
-  if (it.kind === 'asset') return `<div ${head}>
-    ${tok(it)}
+  const k = KIND[it.kind];
+  const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
+  return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
+    ${tok(it, k.sq)}
     <div class="body">
-      <div class="t1">${esc(it.name)} <span class="sym">${esc(it.sym)}</span></div>
-      <div class="t2">${it.rank ? `<span class="tag">#${it.rank}</span>` : ''}${c ? ' ' + esc(c.name) : ''} <span class="tail">${c ? '<span class="sep">·</span> ' : ''}$${compact(it.mcap)} cap</span></div>
+      <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}</div>
+      <div class="t2">${tag ? `<span class="tag">${esc(tag)}</span> ` : ''}${esc(meta || '')}
+        ${tail ? `<span class="tail">${meta ? '<span class="sep">·</span> ' : ''}${esc(tail)}</span>` : ''}</div>
     </div>
-    ${spark(it.spark, it.chg >= 0)}
-    <div class="num"><div class="n1">${usd(it.price)}</div><div class="n2 ${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</div></div>
-    ${star(it)}</div>`;
-  if (it.kind === 'pool') return `<div ${head}>
-    ${tok(it, 1)}
-    <div class="body">
-      <div class="t1">${esc(it.proto)} <span class="sym">${esc(it.sym)}</span></div>
-      <div class="t2"><span class="tag">Lending</span> ${esc(c?.name || '')} <span class="tail"><span class="sep">·</span> $${compact(it.supplyUsd)} supplied</span></div>
-    </div>
-    <div class="num"><div class="n1 up">${apy(it.sup)}</div><div class="n2 mute">${apy(it.bor)} borrow</div></div>
-    ${star(it)}</div>`;
-
-  if (it.kind === 'protocol') return `<div ${head}>
-    ${tok(it, 1)}
-    <div class="body">
-      <div class="t1">${esc(it.name)}</div>
-      <div class="t2"><span class="tag">${esc(it.cat)}</span> ${it.chains.length} chain${it.chains.length === 1 ? '' : 's'}
-        <span class="tail"><span class="sep">·</span> ${it.vol24 ? '$' + compact(it.vol24) + ' 24h volume' : '$' + compact(it.tvl) + ' TVL'}</span></div>
-    </div>
-    <div class="num"><div class="n1">$${compact(it.tvl)}</div>
-      <div class="n2 ${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</div></div>
-    ${star(it)}</div>`;
-
-  return `<div ${head}>
-    ${tok(it, 1)}
-    <div class="body">
-      <div class="t1">${esc(it.name)}</div>
-      <div class="t2"><span class="tag">Network</span> ${S.protocols.filter(r => r.chains.includes(it.chain)).length} protocols
-        <span class="tail"><span class="sep">·</span> ${S.pools.filter(p => p.chain === it.chain).length} lending markets</span></div>
-    </div>
-    <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 mute">TVL</div></div>
+    ${k.spark ? spark(it.spark, it.chg >= 0) : ''}
+    <div class="num"><div class="n1 ${k.n1cls || ''}">${esc(k.n1(it))}</div>
+      <div class="n2 ${k.cls ? k.cls(it) : 'mute'}">${esc(k.n2(it))}</div></div>
     ${star(it)}</div>`;
 }
 
@@ -319,7 +363,7 @@ function render() {
       if (it.kind !== last) {
       const h = document.createElement('div');
       h.className = 'gtitle'; h.setAttribute('role', 'presentation');
-      h.textContent = { asset: 'Assets', pool: 'Lending markets', protocol: 'Protocols', chain: 'Networks' }[it.kind];
+      h.textContent = KIND[it.kind].group;
       frag.appendChild(h); last = it.kind;
       }
     }
@@ -363,6 +407,23 @@ function sheetHTML(it) {
       </div>
       <div class="cta"><a class="p" href="${esc(links.asset(it))}" target="_blank" rel="noopener noreferrer">View on CoinGecko ↗</a></div>
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live prices from CoinGecko.'} Not financial advice.</div>
+    </div>`;
+  }
+
+  const g = SHEET[it.kind];
+  if (g) {
+    const s = g(it);
+    const nets = (it.chains || []).map(c => S.chainRows.find(x => x.chain === c)).filter(Boolean).slice(0, 6);
+    return `<div class="sheet-in" data-kind="${esc(it.kind)}">
+      ${head(s.head || KIND[it.kind].title(it), s.sub)}
+      <div class="big ${s.cls || ''}">${esc(s.big)}</div>
+      <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
+      <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
+      ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
+      ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
+      ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
+      <div class="cta"><a class="p" href="${esc(s.link[1])}" target="_blank" rel="noopener noreferrer">${esc(s.link[0])} ↗</a></div>
+      <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live data from DeFiLlama.'} Not financial advice.</div>
     </div>`;
   }
 
@@ -431,21 +492,57 @@ function sheetHTML(it) {
   </div>`;
 }
 
+const SHEET = {
+  yield: it => ({ big: apy(it.apy), cls: 'up', caption: 'annual percentage yield',
+    sub: [it.sym, CH[it.chain]?.name, it.meta].filter(Boolean).join(' · '),
+    stats: [['Protocol', it.proto], ['Asset', it.sym], ['TVL', '$' + compact(it.tvl)],
+      ['Network', CH[it.chain]?.name || '—'],
+      it.apyReward ? ['Base APY', apy(it.apyBase)] : null,
+      it.apyReward ? ['Rewards', apy(it.apyReward)] : null,
+      it.risk ? ['IL risk', title2(it.risk)] : null],
+    related: S.pools.filter(p => p.sym === it.sym).slice(0, 3), relatedTitle: `Lend ${it.sym} instead`,
+    link: ['Open on DeFiLlama', links.yield(it)] }),
+
+  stablecoin: it => ({ big: usd(it.price), caption: `peg — ${it.circulating ? '$' + compact(it.circulating) + ' circulating' : ''}`,
+    sub: [it.sym, it.mech, `${it.chains.length} chains`].filter(Boolean).join(' · '),
+    stats: [['Circulating', '$' + compact(it.circulating)], ['Price', usd(it.price)],
+      ['Mechanism', it.mech || '—'], ['Networks', String(it.chains.length)]],
+    related: S.pools.filter(p => p.sym === it.sym).slice(0, 4), relatedTitle: `Lend or borrow ${it.sym}`,
+    link: ['Stablecoins on DeFiLlama', links.stablecoin(it)] }),
+
+  bridge: it => ({ big: '$' + compact(it.vol24), caption: 'volume, past 24 hours',
+    sub: `Bridge · ${it.chains.length} networks`,
+    stats: [['24h volume', '$' + compact(it.vol24)],
+      ['Previous day', it.volPrev ? '$' + compact(it.volPrev) : '—'],
+      ['Change', it.volPrev ? pct((it.vol24 - it.volPrev) / it.volPrev * 100) : '—'],
+      ['Networks', String(it.chains.length)]],
+    link: ['Bridges on DeFiLlama', links.bridge(it)] }),
+
+  raise: it => ({ big: '$' + compact(it.amount), caption: `raised · ${when(it.date)}`,
+    sub: [it.round, it.sector].filter(Boolean).join(' · '),
+    stats: [['Round', it.round || '—'], ['Raised', '$' + compact(it.amount)],
+      ['Sector', it.sector || '—'],
+      ['Valuation', it.valuation ? '$' + compact(it.valuation * 1e6) : '—']],
+    body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
+    link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
+
+  hack: it => ({ big: '$' + compact(it.amount), cls: 'down', caption: `lost · ${when(it.date)}`,
+    sub: it.technique,
+    stats: [['Amount lost', '$' + compact(it.amount)], ['Technique', it.technique],
+      ['When', new Date(it.date).toISOString().slice(0, 10)],
+      ['Networks', it.chains.length ? it.chains.map(c => CH[c]?.name).join(', ') : '—']],
+    link: [it.source ? 'Read the post-mortem' : 'Hacks on DeFiLlama', links.hack(it)] }),
+};
+const title2 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+
 function miniHTML(it) {
   const c = CH[it.chain];
-  if (it.kind === 'protocol') return `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, 1)}
-      <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">${esc(it.cat)} · ${it.chains.length} chains</div></div>
-      <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 ${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</div></div></div>`;
-  if (it.kind === 'chain') return `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, 1)}
-      <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">Network</div></div>
-      <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 mute">TVL</div></div></div>`;
-  return it.kind === 'asset'
-    ? `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it)}
-        <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">${[esc(it.sym), esc(c?.name || '')].filter(Boolean).join(' · ')}</div></div>
-        <div class="num"><div class="n1">${usd(it.price)}</div><div class="n2 ${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</div></div></div>`
-    : `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, 1)}
-        <div class="body"><div class="t1">${esc(it.proto)}</div><div class="t2">${[esc(c?.name || ''), esc(it.meta), '$' + compact(it.supplyUsd) + ' supplied'].filter(Boolean).join(' · ')}</div></div>
-        <div class="num"><div class="n1 up">${apy(it.sup)}</div><div class="n2 mute">supply</div></div></div>`;
+  const k = KIND[it.kind];
+  return `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, k.sq)}
+      <div class="body"><div class="t1">${esc(k.title(it))}</div>
+        <div class="t2">${esc([k.sub?.(it), k.meta?.(it) || c?.name].filter(Boolean).join(' · '))}</div></div>
+      <div class="num"><div class="n1 ${k.n1cls || ''}">${esc(k.n1(it))}</div>
+        <div class="n2 ${k.cls ? k.cls(it) : 'mute'}">${esc(k.n2(it))}</div></div></div>`;
 }
 
 async function drawChart(days) {
@@ -478,7 +575,9 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  if (it.kind !== 'chain') drawChart(it.kind === 'asset' ? 1 : it.kind === 'protocol' ? 90 : 30);
+  if (it.kind === 'asset') drawChart(1);
+  else if (it.kind === 'protocol') drawChart(90);
+  else if (it.kind === 'pool') drawChart(30);
 }
 function hide() {
   depth = 0;
@@ -509,12 +608,12 @@ function fromUrl() {
   const p = new URLSearchParams(location.search);
   S.q = el.q.value = p.get('q') || '';
   S.chain = CH[p.get('chain')] ? p.get('chain') : null;
-  S.tab = ['assets', 'lending', 'protocols', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
+  S.tab = ['assets', 'lending', 'yield', 'protocols', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
   paintFilters();
 }
 
 /* ---------- chrome ---------- */
-const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['protocols', 'Protocols'], ['saved', 'Saved']];
+const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['yield', 'Yield'], ['protocols', 'Protocols'], ['saved', 'Saved']];
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${l}</button>`).join('');
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${name}</button>`).join('');

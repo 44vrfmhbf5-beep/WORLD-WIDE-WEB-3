@@ -15,6 +15,7 @@ const CG = 'https://api.coingecko.com/api/v3';
 const YIELDS = 'https://yields.llama.fi';
 const LLAMA = 'https://api.llama.fi';
 const STABLE = 'https://stablecoins.llama.fi';
+const BRIDGES = 'https://bridges.llama.fi';
 
 // id, label, colour, CoinGecko category slug, DeFiLlama chain name
 export const CHAINS = [
@@ -75,6 +76,9 @@ function sampleFor(url) {
   if (u.pathname.includes('/protocol/'))
     return { tvl: S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, totalLiquidityUSD: v })) };
   if (u.pathname.endsWith('/stablecoins')) return { peggedAssets: S.stables };
+  if (u.pathname.endsWith('/bridges')) return { bridges: S.bridges };
+  if (u.pathname.endsWith('/raises')) return { raises: S.raises };
+  if (u.pathname.endsWith('/hacks')) return S.hacks;
   return null;
 }
 
@@ -188,19 +192,41 @@ const borrowOf = p => p.totalSupplyUsd != null || p.apyBaseBorrow != null
   : null;
 
 /** Every lending market DeFiLlama tracks, above a size floor. */
+function farm(p) {
+  const sym = (p.symbol || '?').toUpperCase();
+  const proto = title(p.project || '');
+  const chain = BY_LLAMA[p.chain];
+  return {
+    kind: 'yield', id: `y:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
+    apy: num(p.apy ?? p.apyBase), apyBase: num(p.apyBase), apyReward: num(p.apyReward),
+    tvl: num(p.tvlUsd), meta: p.poolMeta || '', stable: !!p.stablecoin,
+    risk: p.ilRisk || '', color: colorOf(sym),
+    key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} yield farm pool apy earn staking liquidity`,
+  };
+}
+
+/** Lending markets and yield farms — one ~10MB payload feeds both. */
 export function loadPools() {
   return cache('pools', TTL, async () => {
     const [pools, lend] = await Promise.all([
-      get(`${YIELDS}/pools`, { timeout: 60000 }),        // this payload is ~10MB
+      get(`${YIELDS}/pools`, { timeout: 60000 }),
       get(`${YIELDS}/lendBorrow`).catch(() => null),     // enrichment, not required
     ]);
     const lb = Object.fromEntries((lend || []).map(x => [x.pool, x]));
-    return (pools?.data || [])
+    const rows = (pools?.data || []).filter(p => BY_LLAMA[p.chain]);
+    const lending = rows
       .map(p => [p, lb[p.pool] || borrowOf(p)])
-      .filter(([p, b]) => b && BY_LLAMA[p.chain] && (b.totalSupplyUsd || p.tvlUsd || 0) > 5e5)
+      .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 5e5)
       .map(([p, b]) => pool(p, b))
       .sort((a, b) => b.supplyUsd - a.supplyUsd)
       .slice(0, 1200);
+    const borrowed = new Set(lending.map(l => l.pool));
+    const yields = rows
+      .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 1e6 && num(p.apy ?? p.apyBase) > 0)
+      .map(farm)
+      .sort((a, b) => b.tvl - a.tvl)
+      .slice(0, 1200);
+    return { lending, yields };
   });
 }
 
@@ -224,7 +250,7 @@ export function loadPoolChart(poolId, days) {
 const slugOf = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const num = v => (typeof v === 'number' && isFinite(v) ? v : 0);
 
-function protocol(p, dex, fee) {
+function protocol(p, dex, fee, perp, opt) {
   const chains = (p.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
   const name = p.name || p.slug || '?';
   return {
@@ -234,6 +260,7 @@ function protocol(p, dex, fee) {
     url: p.url || '', img: p.logo || null, color: colorOf(name),
     vol24: num(dex?.total24h), fees24: num(fee?.total24h),
     rev24: num(fee?.revenue24h ?? fee?.dailyRevenue),
+    perps24: num(perp?.total24h), opts24: num(opt?.total24h),
     key: `${name} ${p.category || ''} ${(p.chains || []).join(' ')} protocol dapp defi tvl`,
   };
 }
@@ -242,16 +269,18 @@ function protocol(p, dex, fee) {
 export function loadProtocols() {
   return cache('protocols', TTL, async () => {
     const q = '?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
-    const [ps, dex, fees] = await Promise.all([
+    const [ps, dex, fees, perps, opts] = await Promise.all([
       get(`${LLAMA}/protocols`, { timeout: 60000 }),
-      get(`${LLAMA}/overview/dexs${q}`).catch(() => null),    // enrichment, optional
-      get(`${LLAMA}/overview/fees${q}`).catch(() => null),
+      get(`${LLAMA}/overview/dexs${q}`).catch(() => null),          // all enrichment,
+      get(`${LLAMA}/overview/fees${q}`).catch(() => null),          // none required
+      get(`${LLAMA}/overview/derivatives${q}`).catch(() => null),
+      get(`${LLAMA}/overview/options${q}`).catch(() => null),
     ]);
     const index = l => Object.fromEntries((l?.protocols || []).map(x => [slugOf(x.name), x]));
-    const dv = index(dex), fv = index(fees);
+    const dv = index(dex), fv = index(fees), pv = index(perps), ov = index(opts);
     return (Array.isArray(ps) ? ps : [])
       .filter(p => num(p.tvl) > 1e6)
-      .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)]))
+      .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)], pv[slugOf(p.name)], ov[slugOf(p.name)]))
       .sort((a, b) => b.tvl - a.tvl)
       .slice(0, 500);
   });
@@ -270,14 +299,91 @@ export function loadChains() {
   });
 }
 
-/** Circulating supply per stablecoin, keyed by ticker. */
+/** Stablecoins: searchable in their own right, and a peg lookup for assets. */
 export function loadStables() {
   return cache('stables', TTL, async () => {
     const j = await get(`${STABLE}/stablecoins?includePrices=true`).catch(() => null);
-    return Object.fromEntries((j?.peggedAssets || []).map(s => [
-      String(s.symbol || '').toUpperCase(),
-      { circulating: num(s.circulating?.peggedUSD), price: num(s.price) },
-    ]));
+    const rows = (j?.peggedAssets || [])
+      .map(s => {
+        const sym = String(s.symbol || '?').toUpperCase();
+        const chains = (s.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
+        return {
+          kind: 'stablecoin', id: `s:${s.id ?? sym}`, sym, name: s.name || sym,
+          circulating: num(s.circulating?.peggedUSD), price: num(s.price) || 1,
+          peg: s.pegType || 'peggedUSD', mech: title(s.pegMechanism || ''),
+          chains, chain: chains[0] || null, color: colorOf(sym),
+          key: `${s.name || ''} ${sym} stablecoin peg ${s.pegMechanism || ''} ${(s.chains || []).join(' ')}`,
+        };
+      })
+      .filter(s => s.circulating > 1e6)
+      .sort((a, b) => b.circulating - a.circulating)
+      .slice(0, 120);
+    return { rows, bySym: Object.fromEntries(rows.map(s => [s.sym, s])) };
+  });
+}
+
+/** Cross-chain bridges, by recent volume. */
+export function loadBridges() {
+  return cache('bridges', TTL, async () => {
+    const j = await get(`${BRIDGES}/bridges?includeChains=true`).catch(() => null);
+    return (j?.bridges || [])
+      .map(b => {
+        const chains = (b.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
+        const name = b.displayName || b.name || '?';
+        return {
+          kind: 'bridge', id: `b:${b.id ?? slugOf(name)}`, name,
+          vol24: num(b.lastDailyVolume ?? b.volumePrevDay), volPrev: num(b.volumePrev2Day),
+          chains, chain: chains[0] || null, color: colorOf(name),
+          key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
+        };
+      })
+      .filter(b => b.vol24 > 0)
+      .sort((a, b) => b.vol24 - a.vol24)
+      .slice(0, 120);
+  });
+}
+
+/** Funding rounds. */
+export function loadRaises() {
+  return cache('raises', TTL, async () => {
+    const j = await get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null);
+    return (j?.raises || [])
+      .filter(r => num(r.amount) > 0 && r.name)
+      .map(r => {
+        const investors = [...(r.leadInvestors || []), ...(r.otherInvestors || [])];
+        const chains = (r.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
+        return {
+          kind: 'raise', id: `f:${slugOf(r.name)}-${r.date}`, name: r.name,
+          amount: num(r.amount) * 1e6, round: r.round || '', date: num(r.date) * 1000,
+          sector: r.sector || r.category || '', investors, valuation: num(r.valuation),
+          source: r.source || '', chains, chain: chains[0] || null, color: colorOf(r.name),
+          key: `${r.name} ${r.round || ''} ${r.sector || ''} funding raise round investors ${investors.join(' ')}`,
+        };
+      })
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 600);
+  });
+}
+
+/** Exploits and hacks. */
+export function loadHacks() {
+  return cache('hacks', TTL, async () => {
+    const rows = await get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null);
+    return (Array.isArray(rows) ? rows : [])
+      .filter(h => num(h.amount) > 0 && h.name)
+      .map(h => {
+        const list = h.chains || (h.chain ? [h.chain] : []);
+        const chains = list.map(c => BY_LLAMA[c]).filter(Boolean);
+        return {
+          kind: 'hack', id: `h:${slugOf(h.name)}-${h.date}`, name: h.name,
+          amount: num(h.amount), date: num(h.date) * 1000,
+          technique: h.technique || h.classification || 'Exploit',
+          source: h.source || '', chains, chain: chains[0] || null, color: '#ff6b81',
+          key: `${h.name} hack exploit ${h.technique || ''} ${h.classification || ''} ${list.join(' ')}`,
+        };
+      })
+      .sort((a, b) => b.date - a.date)
+      .slice(0, 400);
   });
 }
 
@@ -293,5 +399,10 @@ export const links = {
   asset: a => `https://www.coingecko.com/en/coins/${a.cg}`,
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
   protocol: r => r.url || `https://defillama.com/protocol/${r.slug}`,
+  stablecoin: () => 'https://defillama.com/stablecoins',
+  bridge: () => 'https://defillama.com/bridges',
+  raise: r => r.source || 'https://defillama.com/raises',
+  hack: h => h.source || 'https://defillama.com/hacks',
+  yield: y => `https://defillama.com/yields/pool/${y.pool}`,
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };
