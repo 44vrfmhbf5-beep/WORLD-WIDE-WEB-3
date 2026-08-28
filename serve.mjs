@@ -16,6 +16,7 @@ http.createServer((req, res) => {
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404); return res.end('Not found');
   }
-  res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+  const type = MIME[path.extname(file)];
+  res.writeHead(200, { 'content-type': type ? type + '; charset=utf-8' : 'application/octet-stream' });
   res.end(fs.readFileSync(file));
 }).listen(PORT, () => console.log(`Atlas on http://localhost:${PORT}`));

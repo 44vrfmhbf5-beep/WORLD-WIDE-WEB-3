@@ -1,6 +1,6 @@
 /* Atlas — search across chains. Live data via data.js; this file is UI only. */
 import Fuse from './vendor/fuse.mjs';
-import { CHAINS, CH, loadAssets, loadPools, loadAssetChart, loadPoolChart, links } from './data.js';
+import { CHAINS, CH, loadAssets, loadPools, loadAssetChart, loadPoolChart, links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -61,6 +61,7 @@ async function load({ force } = {}) {
   if (a.status === 'rejected' && p.status === 'rejected') S.err = a.reason?.message || 'Could not reach the data sources.';
   else if (a.status === 'rejected') S.warn = 'Asset prices unavailable — ' + (a.reason?.message || 'CoinGecko is not responding.');
   else if (p.status === 'rejected') S.warn = 'Lending markets unavailable — ' + (p.reason?.message || 'DeFiLlama is not responding.');
+  if (flags.sample) { S.err = null; S.warn = null; }   // sample data stood in
   S.loading = false; S.at = Date.now();
   nodes.clear(); reindex(); render();
 }
@@ -97,13 +98,41 @@ function compute() {
   if (!q) return trending();
   if (!S.fuse) return [];
   const t = q.toLowerCase();
-  const hits = S.fuse.search(q, { limit: 300 }).map(r => {
-    const i = r.item; let s = 1 - (r.score ?? 1);
+  const toks = t.split(/\s+/).filter(Boolean);
+
+  // Fuse matches a query as one contiguous pattern, so "usdc lending" scores
+  // "Hyperlend" on the second word alone. Run each word separately and keep
+  // what every word matched — that is what a two-word query actually means.
+  const run = w => new Map(S.fuse.search(w, { limit: 400 })
+    .map(r => [r.item.id, [r.item, 1 - (r.score ?? 1)]]));
+
+  let hits;
+  if (toks.length === 1) {
+    hits = [...run(toks[0]).values()];
+  } else {
+    const sets = toks.map(run);
+    const all = [];
+    for (const [id, [item, score]] of sets[0]) {
+      let total = score;
+      const every = sets.slice(1).every(s => {
+        const h = s.get(id); if (!h) return false;
+        total += h[1]; return true;
+      });
+      if (every) all.push([item, total / toks.length + 0.5]);
+    }
+    hits = all.length ? all : [...run(t).values()];   // nothing matched all words
+  }
+
+  for (const h of hits) {
+    const i = h[0];
     const sym = (i.sym || '').toLowerCase(), nm = (i.name || '').toLowerCase(), pr = (i.proto || '').toLowerCase();
-    if (sym === t) s += 3; else if (sym.startsWith(t)) s += 1.5;
-    if (pr.startsWith(t)) s += 1; if (nm.startsWith(t)) s += 0.6;
-    return [i, s];
-  }).sort((a, b) => b[1] - a[1] || size(b[0]) - size(a[0]));
+    if (sym === t || sym === toks[0]) h[1] += 3;
+    else if (sym.startsWith(toks[0])) h[1] += 1.5;
+    if (pr.startsWith(toks[0])) h[1] += 1;
+    if (nm.startsWith(toks[0])) h[1] += 0.6;
+  }
+  hits.sort((x, y) => y[1] - x[1] || size(y[0]) - size(x[0]));
+
   const g = k => hits.filter(x => x[0].kind === k);
   const [A, P] = [g('asset'), g('pool')];
   const top = x => x.length ? x[0][1] : -1;
@@ -197,7 +226,10 @@ function render() {
   document.body.classList.toggle('searching', !!S.q);
   el.clear.hidden = !S.q;
 
-  el.banner.innerHTML = S.warn && !S.err
+  el.banner.innerHTML = flags.sample
+    ? `<div class="sample"><b>Sample data.</b> This page can't reach CoinGecko or DeFiLlama, so every
+        figure below is illustrative — explore the interface, don't trade on it.</div>`
+    : S.warn && !S.err
     ? `<div class="warn">${esc(S.warn)} <button data-retry>Retry</button></div>` : '';
 
   if (S.loading && !S.assets.length && !S.pools.length) {
@@ -275,7 +307,7 @@ function sheetHTML(it) {
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
       </div>
       <div class="cta"><a class="p" href="${esc(links.asset(it))}" target="_blank" rel="noopener noreferrer">View on CoinGecko ↗</a></div>
-      <div class="note">Live prices from CoinGecko. Not financial advice.</div>
+      <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live prices from CoinGecko.'} Not financial advice.</div>
     </div>`;
   }
 
@@ -297,7 +329,7 @@ function sheetHTML(it) {
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
     <div class="cta"><a class="p" href="${esc(links.pool(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
-    <div class="note">Live yields from DeFiLlama. Not financial advice.</div>
+    <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live yields from DeFiLlama.'} Not financial advice.</div>
   </div>`;
 }
 

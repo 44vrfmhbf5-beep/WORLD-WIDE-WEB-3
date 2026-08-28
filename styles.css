@@ -270,3 +270,10 @@ body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6
 .chip,.tab,.row,.mini{-webkit-tap-highlight-color:transparent}
 .mini{transition:background .15s var(--ease),border-color .15s var(--ease),transform .15s var(--ease)}
 .mini:active{transform:scale(.99)}
+
+/* sample-data notice: informational, not an error — reads as part of the system */
+.sample{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-top:14px;padding:11px 15px;
+  border-radius:13px;font-size:13px;line-height:1.45;color:#cfc7ff;
+  background:linear-gradient(90deg,rgba(171,159,242,.14),rgba(171,159,242,.05));
+  border:1px solid rgba(171,159,242,.3)}
+.sample b{color:var(--text);font-weight:600}

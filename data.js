@@ -41,7 +41,35 @@ function reachMessage(url, e) {
     : `Could not reach ${h} — network error, blocked request, or the API refused this origin.`;
 }
 
-async function get(url, { tries = 2, timeout = 25000 } = {}) {
+/* Where the page cannot reach the network at all — a hosted artifact runs under
+   a CSP that blocks external hosts — fall back to a bundled sample dataset if one
+   was injected. The UI labels it plainly; it is illustrative, not market data. */
+export const flags = { sample: false };
+
+function sampleFor(url) {
+  const S = typeof window !== 'undefined' && window.__ATLAS_SAMPLE__;
+  if (!S) return null;
+  const u = new URL(url, 'https://x');
+  if (u.pathname.endsWith('/coins/markets')) return S.markets(u.searchParams.get('category'));
+  if (u.pathname.endsWith('/market_chart'))
+    return { prices: S.priceSeries(u.pathname.split('/')[4], +u.searchParams.get('days') || 1) };
+  if (u.pathname.endsWith('/pools')) return { status: 'success', data: S.pools };
+  if (u.pathname.endsWith('/lendBorrow')) return [];
+  if (u.pathname.includes('/chart/')) return { data: S.apySeries(u.pathname.split('/').pop(), 180) };
+  return null;
+}
+
+async function get(url, opts) {
+  try { return await fetchJson(url, opts); }
+  catch (e) {
+    const s = sampleFor(url);
+    if (!s) throw e;
+    flags.sample = true;
+    return s;
+  }
+}
+
+async function fetchJson(url, { tries = 2, timeout = 25000 } = {}) {
   for (let i = 0; ; i++) {
     let r;
     try {

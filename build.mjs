@@ -10,12 +10,23 @@ const read = f => fs.readFileSync(f, 'utf8');
 const fuse = read('vendor/fuse.mjs').replace(/export\s*\{\s*re as default\s*\}\s*;?\s*$/, 'return re;');
 if (!fuse.includes('return re;')) throw new Error('fuse export shape changed — bundler needs updating');
 
-const NAMES = ['CHAINS', 'CH', 'ApiError', 'loadAssets', 'loadPools', 'loadAssetChart', 'loadPoolChart', 'links'];
-const data = read('data.js').replace(/^export\s+/gm, '');
+const dataSrc = read('data.js');
+// derived, not hand-listed: a hand-kept list silently drops a newly added export
+// and the bundle dies at runtime with "X is not defined"
+const NAMES = [...dataSrc.matchAll(/^export\s+(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)]
+  .map(m => m[1]);
+if (!NAMES.length) throw new Error('no exports found in data.js');
+const data = dataSrc.replace(/^export\s+/gm, '');
 
 const app = read('app.js').replace(/^import[^;]+;$/gm, '');
 
+// --artifact: bundle the sample dataset and emit body-level content only, since
+// the Artifact host supplies its own <!doctype>/<html>/<head>/<body> wrapper.
+const ARTIFACT = process.argv.includes('--artifact');
+const sample = ARTIFACT ? read('sample.js') : '';
+
 const js = `
+${sample ? '(() => {\n' + sample + '\n})();\n' : ''}
 const Fuse = (() => {\n${fuse}\n})();
 const { ${NAMES.join(', ')} } = (() => {\n${data}\nreturn { ${NAMES.join(', ')} };\n})();
 ${app}`;
@@ -36,5 +47,32 @@ if (!emitted) throw new Error('bundle: could not find the emitted script block')
 try { new vm.Script(emitted); }
 catch (e) { throw new Error(`bundle is not valid JavaScript: ${e.message}`); }
 
-fs.writeFileSync('demo.html', html);
-console.log(`demo.html  ${(Buffer.byteLength(html) / 1024).toFixed(0)}KB`);
+const out = ARTIFACT ? artifactPage(html) : html;
+const name = ARTIFACT ? 'artifact.html' : 'demo.html';
+fs.writeFileSync(name, out);
+console.log(`${name}  ${(Buffer.byteLength(out) / 1024).toFixed(0)}KB`);
+
+function artifactPage(doc) {
+  const head = doc.match(/<head>([\s\S]*?)<\/head>/)[1];
+  const body = doc.match(/<body>([\s\S]*?)<\/body>/)[1];
+  const style = head.match(/<style>[\s\S]*?<\/style>/)[0];
+  const title = head.match(/<title>[\s\S]*?<\/title>/)[0];
+  const meta = head.match(/<meta name="description"[^>]*>/)[0];
+  const fonts = head.match(/<link rel="preconnect"[\s\S]*?onload="this\.media='all';this\.onload=null">/)[0];
+
+  // The host supplies its own <head>, so this page cannot declare a charset.
+  // Fuse ships a Unicode diacritics table; decoded as anything but UTF-8 those
+  // bytes become mojibake and the script dies with a syntax error. Emit pure
+  // ASCII instead: \uXXXX in the script, numeric references in the markup.
+  const esc7 = s => s.replace(/[^\x00-\x7F]/g,
+    c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  const ent = s => s.replace(/[^\x00-\x7F]/g, c => '&#' + c.charCodeAt(0) + ';');
+
+  const page = [title, meta, fonts, style, body].join('\n');
+  const out = page.replace(/(<script type="module">)([\s\S]*?)(<\/script>)/,
+    (_, a, code, z) => a + esc7(code) + z);
+  const [before, script] = [out.slice(0, out.indexOf('<script type="module">')), out.slice(out.indexOf('<script type="module">'))];
+  const ascii = ent(before) + script;
+  if (/[^\x00-\x7F]/.test(ascii)) throw new Error('artifact page is not pure ASCII');
+  return ascii;
+}
