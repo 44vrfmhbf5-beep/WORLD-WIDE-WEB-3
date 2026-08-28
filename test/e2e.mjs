@@ -42,7 +42,10 @@ let logoReqs = 0;
 p.on('request', r => { if (r.url().includes('assets.coingecko.com')) logoReqs++; });
 await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
 ok(await p.locator('.row:not(.sk)').count() > 10, 'rows render from live shapes');
-ok((await p.locator('.gtitle').allTextContents()).join() === 'Assets,Lending markets', 'both groups present, once each');
+// phase two (protocols, networks) lands after first paint
+await p.waitForFunction(() => [...document.querySelectorAll('.gtitle')].length >= 4, null, { timeout: 20000 }).catch(() => {});
+const groups = (await p.locator('.gtitle').allTextContents());
+ok(groups.join() === 'Assets,Lending markets,Protocols,Networks', `all four groups, once each (${groups.join('/')})`);
 ok(/updated/.test(await p.locator('#meta').textContent()), 'freshness shown');
 ok(logoReqs > 0, 'logo URLs from the API are requested');
 

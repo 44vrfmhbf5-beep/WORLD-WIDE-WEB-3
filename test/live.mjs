@@ -48,6 +48,13 @@ const llamaPools = { status: 'success', data: [
     totalSupplyUsd: 9e8, totalBorrowUsd: 1e8, ltv: .5 },   // unsupported chain, must drop
 ] };
 
+const protocols = [
+  { id: '1', name: 'Aave V3', slug: 'aave-v3', category: 'Lending', chains: ['Ethereum', 'Base', 'Solana'],
+    tvl: 1.9e10, change_1d: 1.2, change_7d: -3.4, url: 'https://aave.com', logo: null },
+  { id: '2', name: 'Kamino Lend', slug: 'kamino-lend', category: 'Lending', chains: ['Solana'],
+    tvl: 2.4e9, change_1d: -0.7, change_7d: 5.1, url: 'https://app.kamino.finance', logo: null },
+  { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },  // below the floor
+];
 const seen = [];
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1200, height: 900 } });
@@ -70,6 +77,21 @@ await p.route('https://yields.llama.fi/**', r => {
     body: JSON.stringify({ data: walk('p', 120, 6).map((v, i) => ({ timestamp: i, apy: v, tvlUsd: 1e8 })) }) });
   r.fulfill({ status: 404, body: '{}' });
 });
+await p.route('https://api.llama.fi/**', r => {
+  const u = r.request().url(); seen.push(u);
+  const J = o => r.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
+  if (u.includes('/overview/dexs')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.2e9 }] });
+  if (u.includes('/overview/fees')) return J({ protocols: [{ name: 'Aave V3', total24h: 3.4e6, revenue24h: 9.1e5 }] });
+  if (u.includes('/v2/chains')) return J([{ name: 'Ethereum', tvl: 6.2e10 }, { name: 'Solana', tvl: 9.4e9 }]);
+  if (u.includes('/protocol/')) return J({ tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
+  if (u.endsWith('/protocols')) return J(protocols);
+  r.fulfill({ status: 404, body: '[]' });
+});
+await p.route('https://stablecoins.llama.fi/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ peggedAssets: [
+    { symbol: 'USDC', circulating: { peggedUSD: 4.1e10 }, price: 1.0001 }] }) });
+});
 await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
 console.log(`\n# production endpoints (${PAGE})`);
@@ -88,6 +110,39 @@ ok(!txt.includes('FTM'), 'pool on an unsupported chain is dropped');
 ok(await p.locator('.warn').count() === 0, '/lendBorrow failing alone is not an error');
 ok(txt.includes('6.72%'), 'borrow fields read off the pool when /lendBorrow is down');
 
+console.log('\n# the wider DeFi sources');
+// wait for real protocol rows (id prefix r:), not the tab label of the same name
+await p.waitForSelector('.row[data-id^="r:"]', { timeout: 20000 }).catch(() => {});
+ok(hit(/^https:\/\/api\.llama\.fi\/protocols$/), 'DeFiLlama /protocols');
+ok(hit(/\/overview\/dexs\?excludeTotalDataChart=true/), 'DeFiLlama /overview/dexs');
+ok(hit(/\/overview\/fees\?excludeTotalDataChart=true/), 'DeFiLlama /overview/fees');
+ok(hit(/^https:\/\/api\.llama\.fi\/v2\/chains$/), 'DeFiLlama /v2/chains');
+ok(hit(/^https:\/\/stablecoins\.llama\.fi\/stablecoins\?includePrices=true$/), 'DeFiLlama /stablecoins');
+{
+  const body = await p.locator('#results').textContent();
+  ok(body.includes('Aave V3'), 'protocols render as their own kind');
+  ok(!body.includes('Tiny'), 'protocol under the TVL floor is dropped');
+  ok(body.includes('Networks') || body.includes('Ethereum'), 'networks render with live TVL');
+}
+await p.fill('#q', 'aave v3'); await p.waitForTimeout(600);
+const order = await p.locator('.row').evaluateAll(ns => ns.slice(0, 4).map(n => n.dataset.id));
+ok(order[0]?.startsWith('r:'), `protocol outranks its own markets (${order.join(' ')})`);
+await p.locator('.row[data-id^="r:"]').first().click();
+await p.waitForSelector('.sheet-in[data-kind="protocol"]', { timeout: 10000 });
+ok(hit(/\/protocol\/aave-v3$/), 'protocol chart hits /protocol/{slug}');
+{
+  const sheet = await p.locator('.sheet').textContent();
+  ok(/24h DEX volume|24h fees/.test(sheet), 'DEX volume and fees join onto the protocol');
+  ok(/Runs on/.test(sheet), 'protocol lists the chains it runs on');
+}
+await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+await p.fill('#q', 'kamino'); await p.waitForTimeout(600);
+await p.locator('.row[data-id^="p:"]').first().click();
+await p.waitForSelector('.sheet-in[data-kind="pool"]', { timeout: 10000 });
+ok((await p.locator('.sheet').textContent()).includes('Protocol'), 'a lending market links to the protocol behind it');
+await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+await p.fill('#q', ''); await p.waitForTimeout(400);
+
 console.log('\n# per-chain and chart endpoints');
 await p.click('[data-chain=sol]'); await p.waitForTimeout(1200);
 ok(hit(/category=solana-ecosystem/), 'chain tab requests the CoinGecko ecosystem category');
@@ -100,7 +155,7 @@ await p.click('[data-days="365"]'); await p.waitForTimeout(1200);
 ok(hit(/\/market_chart\?vs_currency=usd&days=365$/), 'range switch changes the days param');
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', 'kamino'); await p.waitForTimeout(600);
-await p.locator('.row').first().click();
+await p.locator('.row[data-id^="p:"]').first().click();
 await p.waitForSelector('.chart svg path, .cload.err', { timeout: 15000 });
 ok(hit(/^https:\/\/yields\.llama\.fi\/chart\/bb22$/), 'market chart hits /chart/{poolId}');
 

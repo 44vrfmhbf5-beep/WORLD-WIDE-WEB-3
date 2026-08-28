@@ -65,7 +65,54 @@ const market = ([id, sym, name, price, chg, mcap, vol], i) => ({
   sparkline_in_7d: { price: walk(sym, 168, price) },
 });
 
+// protocol, chain, category, tvl, 24h change, 7d change, url
+const R = [
+  ['Aave','Lending',['Ethereum','Base','Arbitrum','Optimism','Polygon','Avalanche'],1.92e10,0.8,-2.1,'https://aave.com'],
+  ['Lido','Liquid Staking',['Ethereum'],2.41e10,-0.4,1.9,'https://lido.fi'],
+  ['EigenLayer','Restaking',['Ethereum'],1.12e10,1.4,4.2,'https://eigenlayer.xyz'],
+  ['Sky Lending','CDP',['Ethereum'],7.4e9,0.2,-0.8,'https://sky.money'],
+  ['ether.fi','Liquid Restaking',['Ethereum'],6.8e9,2.1,6.4,'https://ether.fi'],
+  ['Uniswap','Dexes',['Ethereum','Base','Arbitrum','Optimism','Polygon','BSC','Avalanche'],5.1e9,-1.2,0.6,'https://uniswap.org'],
+  ['Morpho','Lending',['Ethereum','Base'],3.9e9,3.4,8.1,'https://morpho.org'],
+  ['Spark','Lending',['Ethereum'],3.4e9,0.9,2.2,'https://spark.fi'],
+  ['Pendle','Yield',['Ethereum','Arbitrum','BSC'],3.1e9,-2.4,-5.1,'https://pendle.finance'],
+  ['Jito','Liquid Staking',['Solana'],2.9e9,4.1,9.2,'https://jito.network'],
+  ['Kamino','Lending',['Solana'],2.4e9,1.8,5.4,'https://app.kamino.finance'],
+  ['Jupiter','Dexes',['Solana'],1.8e9,5.2,11.4,'https://jup.ag'],
+  ['Aerodrome','Dexes',['Base'],1.4e9,2.6,7.8,'https://aerodrome.finance'],
+  ['Compound','Lending',['Ethereum','Base','Arbitrum','Polygon'],2.2e9,-0.6,1.1,'https://compound.finance'],
+  ['Venus','Lending',['BSC'],1.9e9,0.4,2.8,'https://venus.io'],
+  ['Curve DEX','Dexes',['Ethereum','Arbitrum','Polygon','Optimism','Avalanche'],1.7e9,-1.8,-3.2,'https://curve.finance'],
+  ['Hyperliquid','Perps',['Hyperliquid'],1.6e9,7.4,14.2,'https://hyperliquid.xyz'],
+  ['Marinade','Liquid Staking',['Solana'],1.3e9,3.2,6.1,'https://marinade.finance'],
+  ['Moonwell','Lending',['Base','Optimism'],9.1e8,1.1,3.4,'https://moonwell.fi'],
+  ['Suilend','Lending',['Sui'],6.2e8,2.8,8.9,'https://suilend.fi'],
+  ['NAVI Protocol','Lending',['Sui'],4.4e8,1.6,4.1,'https://naviprotocol.io'],
+  ['MarginFi','Lending',['Solana'],4.1e8,-1.1,0.4,'https://marginfi.com'],
+  ['Euler','Lending',['Ethereum'],3.8e8,2.2,6.8,'https://euler.finance'],
+  ['Fluid','Lending',['Ethereum','Arbitrum'],1.2e9,3.9,9.6,'https://fluid.io'],
+  ['Aries Markets','Lending',['Aptos'],1.4e8,0.7,2.1,'https://ariesmarkets.xyz'],
+  ['Benqi','Lending',['Avalanche'],2.4e8,1.2,3.6,'https://benqi.fi'],
+  ['HyperLend','Lending',['Hyperliquid'],2.9e8,6.1,12.4,'https://hyperlend.finance'],
+];
+const CHAIN_TVL = { Ethereum: 6.24e10, Solana: 9.41e9, Base: 4.12e9, Arbitrum: 2.86e9, BSC: 5.64e9,
+  Avalanche: 1.42e9, Polygon: 1.08e9, Optimism: 9.2e8, Sui: 1.94e9, Aptos: 6.4e8,
+  Bitcoin: 1.14e9, Hyperliquid: 2.41e9 };
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
 window.__ATLAS_SAMPLE__ = {
+  protocols: R.map(([name, category, chains, tvl, c1, c7, url]) => ({
+    id: slug(name), name, slug: slug(name), category, chains, tvl,
+    change_1d: c1, change_7d: c7, url, logo: null,
+  })),
+  dexs: R.filter(r => r[1] === 'Dexes').map(([name, , , tvl]) => ({ name, total24h: tvl * 0.42 })),
+  fees: R.map(([name, , , tvl]) => ({ name, total24h: tvl * 0.0012, revenue24h: tvl * 0.00035 })),
+  chains: Object.entries(CHAIN_TVL).map(([name, tvl]) => ({ name, tvl })),
+  stables: [
+    { symbol: 'USDT', circulating: { peggedUSD: 1.18e11 }, price: 0.9998 },
+    { symbol: 'USDC', circulating: { peggedUSD: 4.12e10 }, price: 1.0001 },
+  ],
+  tvlSeries: s => walk('tvl' + s, 300, 1e9),
   markets(cat) {
     const rows = cat ? A.filter(a => (ECO[cat] || []).includes(a[1])) : A;
     return rows.map((a, i) => market(a, A.indexOf(a)));

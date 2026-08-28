@@ -70,10 +70,29 @@ node serve.mjs               # http://localhost:8080
 
 Live, keyless, straight from the browser — no backend, no wallet.
 
-| Source | Used for | Endpoint |
+| Host | Used for | Endpoints |
 | --- | --- | --- |
-| [CoinGecko](https://www.coingecko.com/en/api) | prices, market caps, volume, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
-| [DeFiLlama](https://defillama.com/docs/api) | lending markets: supply/borrow APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
+| `api.coingecko.com` | prices, market caps, volume, logos, sparklines, price history | `/coins/markets`, `/coins/{id}/market_chart` |
+| `yields.llama.fi` | lending markets: supply/borrow APY, TVL, utilization, LTV, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
+| `api.llama.fi` | protocols, TVL history, DEX volume, fees and revenue, per-chain TVL | `/protocols`, `/protocol/{slug}`, `/overview/dexs`, `/overview/fees`, `/v2/chains` |
+| `stablecoins.llama.fi` | stablecoin circulating supply | `/stablecoins` |
+
+Eleven endpoints across four hosts, all keyless and CORS-open, called straight
+from the browser.
+
+### How they join up
+
+The sources are one index, not four lists. A lending market carries the
+protocol behind it (matched on DeFiLlama's project slug), a protocol carries the
+chains it runs on, and every network knows its own assets, markets and
+protocols. Searching a protocol name returns the protocol first and its markets
+underneath; opening a market walks you to the protocol, its collateral asset, or
+the rival markets for the same asset.
+
+Assets and lending load first and render. Protocols, chain TVL and stablecoin
+supply are larger and not needed for first paint, so they load behind that first
+render and merge in when they arrive — a failure there is silent, because the
+page is already useful.
 
 Lending markets come from joining DeFiLlama's `pools` and `lendBorrow` feeds on
 pool id, keeping only markets with a real borrow side and over $500k supplied.

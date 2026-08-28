@@ -1,8 +1,20 @@
-/* data.js — live data. CoinGecko for assets, DeFiLlama for lending markets.
-   No API keys, no backend: both allow direct browser calls. */
+/* data.js — live data, no API keys and no backend: every source below allows
+   direct browser calls.
+
+     api.coingecko.com      assets, prices, price history
+     yields.llama.fi        lending markets, borrow side, market APY history
+     api.llama.fi           protocols, TVL history, DEX volume, fees & revenue,
+                            per-chain TVL
+     stablecoins.llama.fi   stablecoin circulating supply
+
+   They are joined into one index: a lending market carries the protocol behind
+   it, a protocol carries the chains it runs on, and every chain knows its own
+   assets, markets and protocols. */
 
 const CG = 'https://api.coingecko.com/api/v3';
 const YIELDS = 'https://yields.llama.fi';
+const LLAMA = 'https://api.llama.fi';
+const STABLE = 'https://stablecoins.llama.fi';
 
 // id, label, colour, CoinGecko category slug, DeFiLlama chain name
 export const CHAINS = [
@@ -56,6 +68,13 @@ function sampleFor(url) {
   if (u.pathname.endsWith('/pools')) return { status: 'success', data: S.pools };
   if (u.pathname.endsWith('/lendBorrow')) return [];
   if (u.pathname.includes('/chart/')) return { data: S.apySeries(u.pathname.split('/').pop(), 180) };
+  if (u.pathname.endsWith('/protocols')) return S.protocols;
+  if (u.pathname.includes('/overview/dexs')) return { protocols: S.dexs };
+  if (u.pathname.includes('/overview/fees')) return { protocols: S.fees };
+  if (u.pathname.endsWith('/v2/chains')) return S.chains;
+  if (u.pathname.includes('/protocol/'))
+    return { tvl: S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, totalLiquidityUSD: v })) };
+  if (u.pathname.endsWith('/stablecoins')) return { peggedAssets: S.stables };
   return null;
 }
 
@@ -136,7 +155,7 @@ function pool(p, lb) {
   const borrowUsd = lb.totalBorrowUsd || 0;
   const proto = title(p.project || '');
   return {
-    kind: 'pool', id: `p:${p.pool}`, pool: p.pool, proto, sym, chain,
+    kind: 'pool', id: `p:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
     sup: p.apy ?? p.apyBase ?? 0,
     supBase: p.apyBase ?? 0, supReward: p.apyReward ?? 0,
     bor: (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
@@ -201,7 +220,78 @@ export function loadPoolChart(poolId, days) {
   }).then(all => days >= 365 ? all : all.slice(-days));
 }
 
+/* ---------- protocols, chains, stablecoins ---------- */
+const slugOf = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const num = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+
+function protocol(p, dex, fee) {
+  const chains = (p.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
+  const name = p.name || p.slug || '?';
+  return {
+    kind: 'protocol', id: `r:${p.slug || slugOf(name)}`, slug: p.slug || slugOf(name),
+    name, cat: p.category || 'DeFi', chains, chain: chains[0] || null,
+    tvl: num(p.tvl), chg1d: num(p.change_1d), chg7d: num(p.change_7d),
+    url: p.url || '', img: p.logo || null, color: colorOf(name),
+    vol24: num(dex?.total24h), fees24: num(fee?.total24h),
+    rev24: num(fee?.revenue24h ?? fee?.dailyRevenue),
+    key: `${name} ${p.category || ''} ${(p.chains || []).join(' ')} protocol dapp defi tvl`,
+  };
+}
+
+/** Protocols, with DEX volume and fee/revenue folded in where they exist. */
+export function loadProtocols() {
+  return cache('protocols', TTL, async () => {
+    const q = '?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true';
+    const [ps, dex, fees] = await Promise.all([
+      get(`${LLAMA}/protocols`, { timeout: 60000 }),
+      get(`${LLAMA}/overview/dexs${q}`).catch(() => null),    // enrichment, optional
+      get(`${LLAMA}/overview/fees${q}`).catch(() => null),
+    ]);
+    const index = l => Object.fromEntries((l?.protocols || []).map(x => [slugOf(x.name), x]));
+    const dv = index(dex), fv = index(fees);
+    return (Array.isArray(ps) ? ps : [])
+      .filter(p => num(p.tvl) > 1e6)
+      .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)]))
+      .sort((a, b) => b.tvl - a.tvl)
+      .slice(0, 500);
+  });
+}
+
+/** The supported chains, carrying their live TVL. */
+export function loadChains() {
+  return cache('chains', TTL, async () => {
+    const rows = await get(`${LLAMA}/v2/chains`).catch(() => []);
+    const tvl = Object.fromEntries((rows || []).map(c => [c.name, num(c.tvl)]));
+    return CHAINS.map(([id, name, color, , llama]) => ({
+      kind: 'chain', id: `c:${id}`, chain: id, name, color,
+      tvl: tvl[llama] || 0,
+      key: `${name} ${llama} chain network l1 l2 blockchain`,
+    })).sort((a, b) => b.tvl - a.tvl);
+  });
+}
+
+/** Circulating supply per stablecoin, keyed by ticker. */
+export function loadStables() {
+  return cache('stables', TTL, async () => {
+    const j = await get(`${STABLE}/stablecoins?includePrices=true`).catch(() => null);
+    return Object.fromEntries((j?.peggedAssets || []).map(s => [
+      String(s.symbol || '').toUpperCase(),
+      { circulating: num(s.circulating?.peggedUSD), price: num(s.price) },
+    ]));
+  });
+}
+
+/** Protocol TVL history. */
+export function loadProtocolChart(slug, days) {
+  return cache(`rchart:${slug}`, TTL, async () => {
+    const j = await get(`${LLAMA}/protocol/${encodeURIComponent(slug)}`, { timeout: 45000 });
+    return (j?.tvl || []).map(p => num(p.totalLiquidityUSD));
+  }).then(all => days >= 3650 ? all : all.slice(-days));
+}
+
 export const links = {
   asset: a => `https://www.coingecko.com/en/coins/${a.cg}`,
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
+  protocol: r => r.url || `https://defillama.com/protocol/${r.slug}`,
+  chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };

@@ -1,6 +1,7 @@
 /* Atlas — search across chains. Live data via data.js; this file is UI only. */
 import Fuse from './vendor/fuse.mjs';
-import { CHAINS, CH, loadAssets, loadPools, loadAssetChart, loadPoolChart, links, flags } from './data.js';
+import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
+  loadAssetChart, loadPoolChart, loadProtocolChart, links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -42,6 +43,7 @@ const readWatch = () => {
 const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
+  protocols: [], chainRows: [], stables: {}, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -58,6 +60,7 @@ async function load({ force } = {}) {
   const [a, p] = await Promise.allSettled([loadAssets(S.chain), loadPools()]);
   S.assets = a.status === 'fulfilled' ? a.value : [];
   S.pools = p.status === 'fulfilled' ? p.value : [];
+  enrich();                       // protocols, chains and stables land behind this
   if (a.status === 'rejected' && p.status === 'rejected') S.err = a.reason?.message || 'Could not reach the data sources.';
   else if (a.status === 'rejected') S.warn = 'Asset prices unavailable — ' + (a.reason?.message || 'CoinGecko is not responding.');
   else if (p.status === 'rejected') S.warn = 'Lending markets unavailable — ' + (p.reason?.message || 'DeFiLlama is not responding.');
@@ -66,22 +69,44 @@ async function load({ force } = {}) {
   nodes.clear(); reindex(); render();
 }
 
-const pooled = () => S.chain ? S.pools.filter(p => p.chain === S.chain) : S.pools;
+/* Phase two. Protocols, chain TVL and stablecoin supply are large and not
+   needed for first paint, so they load behind the first render and are merged
+   in when they arrive. Failures here are silent: the page is already useful. */
+let enriched = false;
+async function enrich() {
+  if (enriched) return; enriched = true;
+  const [r, c, s] = await Promise.allSettled([loadProtocols(), loadChains(), loadStables()]);
+  S.protocols = r.status === 'fulfilled' ? r.value : [];
+  S.chainRows = c.status === 'fulfilled' ? c.value : [];
+  S.stables = s.status === 'fulfilled' ? s.value : {};
+  S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
+  // a lending market now carries the protocol behind it
+  for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
+  nodes.clear(); reindex(); render();
+}
+
+const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
+const pooled = () => S.pools.filter(onChain);
+const everything = () => [...S.assets, ...S.pools, ...S.protocols, ...S.chainRows];
 function scope() {
-  if (S.tab === 'saved') return [...S.watch.values()].map(i => S.assets.find(x => x.id === i.id) || S.pools.find(x => x.id === i.id) || i)
-    .filter(i => !S.chain || i.chain === S.chain);
-  const a = S.tab === 'lending' ? [] : S.assets;
-  const p = S.tab === 'assets' ? [] : pooled();
-  return [...a, ...p];
+  if (S.tab === 'saved') {
+    const live = everything();
+    return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i).filter(onChain);
+  }
+  if (S.tab === 'assets') return S.assets.filter(onChain);
+  if (S.tab === 'lending') return pooled();
+  if (S.tab === 'protocols') return S.protocols.filter(onChain);
+  return [...S.assets.filter(onChain), ...pooled(), ...S.protocols.filter(onChain), ...S.chainRows.filter(onChain)];
 }
 function reindex() {
   S.fuse = new Fuse(scope(), {
-    keys: [{ name: 'sym', weight: 3 }, { name: 'name', weight: 2 }, { name: 'proto', weight: 2 }, { name: 'key', weight: 1 }],
+    keys: [{ name: 'sym', weight: 3 }, { name: 'name', weight: 3 }, { name: 'proto', weight: 2 }, { name: 'key', weight: 1 }],
     threshold: 0.34, ignoreLocation: true, minMatchCharLength: 2, includeScore: true,
   });
 }
 
-const size = i => i.kind === 'asset' ? i.mcap : i.supplyUsd;
+const KINDS = ['asset', 'pool', 'protocol', 'chain'];
+const size = i => i.kind === 'asset' ? i.mcap : i.kind === 'pool' ? i.supplyUsd : i.tvl;
 
 /* With no query the two kinds are ranked separately. Market cap and supplied-USD
    are not the same scale — real assets reach $2T where the largest lending market
@@ -89,8 +114,8 @@ const size = i => i.kind === 'asset' ? i.mcap : i.supplyUsd;
 function trending() {
   const all = scope();
   if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
-  const top = k => all.filter(i => i.kind === k).sort((x, y) => size(y) - size(x)).slice(0, 20);
-  return [...top('asset'), ...top('pool')];
+  const top = (k, n) => all.filter(i => i.kind === k).sort((x, y) => size(y) - size(x)).slice(0, n);
+  return [...top('asset', 15), ...top('pool', 15), ...top('protocol', 12), ...top('chain', 12)];
 }
 
 function compute() {
@@ -130,19 +155,24 @@ function compute() {
     else if (sym.startsWith(toks[0])) h[1] += 1.5;
     if (pr.startsWith(toks[0])) h[1] += 1;
     if (nm.startsWith(toks[0])) h[1] += 0.6;
+    // a protocol's own name should outrank its individual markets
+    if (i.kind === 'protocol' && (nm === t || nm.startsWith(toks[0]))) h[1] += 0.9;
   }
   hits.sort((x, y) => y[1] - x[1] || size(y[0]) - size(x[0]));
 
-  const g = k => hits.filter(x => x[0].kind === k);
-  const [A, P] = [g('asset'), g('pool')];
-  const top = x => x.length ? x[0][1] : -1;
-  return (top(A) >= top(P) ? [...A, ...P] : [...P, ...A]).map(x => x[0]).slice(0, 60);
+  // Keep every kind, grouped, with the group holding the strongest hit first.
+  // (Listing kinds explicitly here once dropped protocols and networks from
+  // every search, while browsing still showed them.)
+  const groups = KINDS.map(k => hits.filter(x => x[0].kind === k)).filter(g => g.length);
+  groups.sort((x, y) => y[0][1] - x[0][1]);
+  return groups.flat().map(x => x[0]).slice(0, 60);
 }
 
 /* ---------- rows ---------- */
 const tok = (it, sq) => {
-  const label = it.kind === 'pool' ? (it.proto || '?').slice(0, 2).toUpperCase()
-    : it.sym.length <= 4 ? it.sym : it.sym.slice(0, 3);
+  const label = it.kind === 'asset' ? (it.sym.length <= 4 ? it.sym : it.sym.slice(0, 3))
+    : it.kind === 'pool' ? (it.proto || '?').slice(0, 2).toUpperCase()
+    : (it.name || '?').slice(0, 2).toUpperCase();
   const c = CH[it.chain];
   return `<div class="tok${sq ? ' sq' : ''}${label.length > 3 ? ' t4' : ''}" style="--c:${it.color}${c ? ';--c2:' + c.color : ''}">${esc(label)}` +
     (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
@@ -153,7 +183,9 @@ const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-
 
 const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
-const sigOf = it => it.kind === 'asset' ? `${it.price}|${it.chg}|${it.mcap}` : `${it.sup}|${it.bor}|${it.supplyUsd}`;
+const sigOf = it => it.kind === 'asset' ? `${it.price}|${it.chg}|${it.mcap}`
+  : it.kind === 'pool' ? `${it.sup}|${it.bor}|${it.supplyUsd}|${!!it.protocol}`
+  : `${it.tvl}|${it.chg1d || 0}|${it.vol24 || 0}`;
 
 function rowHTML(it) {
   const c = CH[it.chain];
@@ -167,13 +199,34 @@ function rowHTML(it) {
     ${spark(it.spark, it.chg >= 0)}
     <div class="num"><div class="n1">${usd(it.price)}</div><div class="n2 ${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</div></div>
     ${star(it)}</div>`;
-  return `<div ${head}>
+  if (it.kind === 'pool') return `<div ${head}>
     ${tok(it, 1)}
     <div class="body">
       <div class="t1">${esc(it.proto)} <span class="sym">${esc(it.sym)}</span></div>
       <div class="t2"><span class="tag">Lending</span> ${esc(c?.name || '')} <span class="tail"><span class="sep">·</span> $${compact(it.supplyUsd)} supplied</span></div>
     </div>
     <div class="num"><div class="n1 up">${apy(it.sup)}</div><div class="n2 mute">${apy(it.bor)} borrow</div></div>
+    ${star(it)}</div>`;
+
+  if (it.kind === 'protocol') return `<div ${head}>
+    ${tok(it, 1)}
+    <div class="body">
+      <div class="t1">${esc(it.name)}</div>
+      <div class="t2"><span class="tag">${esc(it.cat)}</span> ${it.chains.length} chain${it.chains.length === 1 ? '' : 's'}
+        <span class="tail"><span class="sep">·</span> ${it.vol24 ? '$' + compact(it.vol24) + ' 24h volume' : '$' + compact(it.tvl) + ' TVL'}</span></div>
+    </div>
+    <div class="num"><div class="n1">$${compact(it.tvl)}</div>
+      <div class="n2 ${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</div></div>
+    ${star(it)}</div>`;
+
+  return `<div ${head}>
+    ${tok(it, 1)}
+    <div class="body">
+      <div class="t1">${esc(it.name)}</div>
+      <div class="t2"><span class="tag">Network</span> ${S.protocols.filter(r => r.chains.includes(it.chain)).length} protocols
+        <span class="tail"><span class="sep">·</span> ${S.pools.filter(p => p.chain === it.chain).length} lending markets</span></div>
+    </div>
+    <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 mute">TVL</div></div>
     ${star(it)}</div>`;
 }
 
@@ -262,11 +315,13 @@ function render() {
   const frag = document.createDocumentFragment();
   let last = null;
   list.forEach((it, i) => {
-    if (S.tab !== 'assets' && S.tab !== 'lending' && it.kind !== last) {
+    if (S.tab === 'all' || S.tab === 'saved') {
+      if (it.kind !== last) {
       const h = document.createElement('div');
       h.className = 'gtitle'; h.setAttribute('role', 'presentation');
-      h.textContent = it.kind === 'asset' ? 'Assets' : 'Lending markets';
+      h.textContent = { asset: 'Assets', pool: 'Lending markets', protocol: 'Protocols', chain: 'Networks' }[it.kind];
       frag.appendChild(h); last = it.kind;
+      }
     }
     frag.appendChild(nodeFor(it, i));
   });
@@ -276,7 +331,7 @@ function render() {
 
 /* ---------- detail sheet ---------- */
 let depth = 0;                       // sheet entries pushed since the sheet opened
-const find = id => S.assets.find(x => x.id === id) || S.pools.find(x => x.id === id) || S.watch.get(id);
+const find = id => everything().find(x => x.id === id) || S.watch.get(id);
 const stat = (k, v, extra = '') => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${extra}</div>`;
 
 function sheetHTML(it) {
@@ -311,6 +366,48 @@ function sheetHTML(it) {
     </div>`;
   }
 
+  if (it.kind === 'protocol') {
+    const markets = S.pools.filter(p => p.slug === it.slug).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 6);
+    const nets = S.chainRows.filter(c => it.chains.includes(c.chain)).slice(0, 6);
+    return `<div class="sheet-in" data-kind="protocol" data-slug="${esc(it.slug)}" data-up="${it.chg1d >= 0}">
+      ${head(it.name, [it.cat, it.chains.length + ' chain' + (it.chains.length === 1 ? '' : 's')].join(' · '))}
+      <div class="big">$${compact(it.tvl)}</div>
+      <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
+      ${chartBox(90, [[30, '1M'], [90, '3M'], [365, '1Y'], [3650, 'All']])}
+      <div class="stats">
+        ${stat('Category', esc(it.cat))}
+        ${stat('7d change', pct(it.chg7d))}
+        ${it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length))}
+        ${it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl))}
+        ${it.rev24 ? `<div class="stat wide"><div class="k">24h revenue</div><div class="v">$${compact(it.rev24)}</div></div>` : ''}
+      </div>
+      ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
+      ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
+      <div class="cta"><a class="p" href="${esc(links.protocol(it))}" target="_blank" rel="noopener noreferrer">Open ${esc(it.name)} ↗</a></div>
+      <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live TVL, volume and fees from DeFiLlama.'} Not financial advice.</div>
+    </div>`;
+  }
+
+  if (it.kind === 'chain') {
+    const prots = S.protocols.filter(r => r.chains.includes(it.chain)).slice(0, 6);
+    const markets = S.pools.filter(p => p.chain === it.chain).sort((x, y) => y.supplyUsd - x.supplyUsd).slice(0, 5);
+    return `<div class="sheet-in" data-kind="chain">
+      ${head(it.name, 'Network')}
+      <div class="big">$${compact(it.tvl)}</div>
+      <div class="chgline"><span class="mute">total value locked across ${prots.length ? S.protocols.filter(r => r.chains.includes(it.chain)).length : 0} indexed protocols</span></div>
+      <div class="stats">
+        ${stat('Protocols', String(S.protocols.filter(r => r.chains.includes(it.chain)).length))}
+        ${stat('Lending markets', String(S.pools.filter(p => p.chain === it.chain).length))}
+        <div class="stat wide"><div class="k">Explore</div><div class="v" style="font-size:13.5px;font-weight:500;color:var(--dim)">
+          Filter the whole index to ${esc(it.name)} with the chip above the results.</div></div>
+      </div>
+      ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
+      ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
+      <div class="cta"><a class="p" href="${esc(links.chain(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
+      <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live chain TVL from DeFiLlama.'} Not financial advice.</div>
+    </div>`;
+  }
+
   const a = S.assets.find(x => x.sym === it.sym);
   const others = S.pools.filter(p => p.sym === it.sym && p.id !== it.id).sort((x, y) => y.sup - x.sup).slice(0, 4);
   return `<div class="sheet-in" data-kind="pool" data-pool="${esc(it.pool)}" data-up="true">
@@ -327,6 +424,7 @@ function sheetHTML(it) {
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
+    ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
     <div class="cta"><a class="p" href="${esc(links.pool(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
     <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live yields from DeFiLlama.'} Not financial advice.</div>
@@ -335,6 +433,12 @@ function sheetHTML(it) {
 
 function miniHTML(it) {
   const c = CH[it.chain];
+  if (it.kind === 'protocol') return `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, 1)}
+      <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">${esc(it.cat)} · ${it.chains.length} chains</div></div>
+      <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 ${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</div></div></div>`;
+  if (it.kind === 'chain') return `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it, 1)}
+      <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">Network</div></div>
+      <div class="num"><div class="n1">$${compact(it.tvl)}</div><div class="n2 mute">TVL</div></div></div>`;
   return it.kind === 'asset'
     ? `<div class="mini" data-id="${esc(it.id)}" role="button" tabindex="0">${tok(it)}
         <div class="body"><div class="t1">${esc(it.name)}</div><div class="t2">${[esc(it.sym), esc(c?.name || '')].filter(Boolean).join(' · ')}</div></div>
@@ -351,8 +455,8 @@ async function drawChart(days) {
   host.innerHTML = '<div class="cload"></div>';
   let pts = [];
   try {
-    pts = box.dataset.kind === 'asset'
-      ? await loadAssetChart(box.dataset.cg, days)
+    pts = box.dataset.kind === 'asset' ? await loadAssetChart(box.dataset.cg, days)
+      : box.dataset.kind === 'protocol' ? await loadProtocolChart(box.dataset.slug, days)
       : await loadPoolChart(box.dataset.pool, days);
   } catch { /* fall through to the empty state */ }
   if (host.dataset.token !== token) return;              // a newer range won
@@ -374,7 +478,7 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  drawChart(it.kind === 'asset' ? 1 : 30);
+  if (it.kind !== 'chain') drawChart(it.kind === 'asset' ? 1 : it.kind === 'protocol' ? 90 : 30);
 }
 function hide() {
   depth = 0;
@@ -405,12 +509,12 @@ function fromUrl() {
   const p = new URLSearchParams(location.search);
   S.q = el.q.value = p.get('q') || '';
   S.chain = CH[p.get('chain')] ? p.get('chain') : null;
-  S.tab = ['assets', 'lending', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
+  S.tab = ['assets', 'lending', 'protocols', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
   paintFilters();
 }
 
 /* ---------- chrome ---------- */
-const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['saved', 'Saved']];
+const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['protocols', 'Protocols'], ['saved', 'Saved']];
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${l}</button>`).join('');
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${name}</button>`).join('');

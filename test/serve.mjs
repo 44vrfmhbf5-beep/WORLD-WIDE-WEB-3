@@ -56,16 +56,29 @@ http.createServer(async (req,res)=>{
   const u=new URL(req.url,'http://x'); const p=u.pathname;
   const json=(o,code=200)=>{res.writeHead(code,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(o));};
   if(MODE==='slow') await new Promise(r=>setTimeout(r,900));
-  if(p.startsWith('/api/')||p.startsWith('/llama/')){
+  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')){
     if(MODE==='down') return json({error:'nope'},503);
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
-    if(MODE==='partial'&&p.startsWith('/llama/')) return json({error:'nope'},503);
+    if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
   }
   if(p==='/api/v3/coins/markets') return json(markets(u.searchParams.get('category')));
   if(p.startsWith('/api/v3/coins/')&&p.endsWith('/market_chart')){
     const id=p.split('/')[4], days=+u.searchParams.get('days')||1;
     return json({prices:walk(id+days,Math.min(days*24,400),PRICES.SOL).map((v,i)=>[Date.now()-i*36e5,v])});
   }
+  if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
+    id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, slug:PROJECTS[i%PROJECTS.length]+(i?'-'+i:''),
+    category:['Lending','Dexes','Liquid Staking','CDP','Yield'][i%5],
+    chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
+    tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
+    url:'https://example.invalid/'+i, logo:null })));
+  if(p==='/dl/overview/dexs') return json({protocols:[{name:'Aave V3',total24h:1.2e9},{name:'aave-v3',total24h:1.2e9}]});
+  if(p==='/dl/overview/fees') return json({protocols:[{name:'Aave V3',total24h:3.4e6,revenue24h:9.1e5}]});
+  if(p==='/dl/v2/chains') return json(CHAINS.map((c,i)=>({name:c,tvl:(9e10)/(i+1),tokenSymbol:c.slice(0,3).toUpperCase()})));
+  if(p.startsWith('/dl/protocol/')) return json({tvl:walk(p,400,1e9).map((v,i)=>({date:i,totalLiquidityUSD:v}))});
+  if(p==='/stable/stablecoins') return json({peggedAssets:[
+    {symbol:'USDC',circulating:{peggedUSD:4.1e10},price:1.0001},
+    {symbol:'USDT',circulating:{peggedUSD:1.18e11},price:0.9998}]});
   if(p==='/llama/pools') return json({status:'success',data:pools});
   if(p==='/llama/lendBorrow') return json(lend);
   if(p.startsWith('/llama/chart/')) return json({data:walk(p,400,6).map((v,i)=>({timestamp:i,apy:v,tvlUsd:1e8}))});
@@ -76,7 +89,9 @@ http.createServer(async (req,res)=>{
   let body=fs.readFileSync(f);
   if(p==='/data.js' && process.env.REWRITE!=='0') body=Buffer.from(String(body)
     .replace("'https://api.coingecko.com/api/v3'","'/api/v3'")
-    .replace("'https://yields.llama.fi'","'/llama'"));
+    .replace("'https://yields.llama.fi'","'/llama'")
+    .replace("'https://api.llama.fi'","'/dl'")
+    .replace("'https://stablecoins.llama.fi'","'/stable'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));
