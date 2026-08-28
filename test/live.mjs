@@ -120,12 +120,18 @@ await p.route('https://api.dexscreener.com/**', r => {
     priceUsd: '1', liquidity: { usd: 100 } }] }) });
 });
 await p.route('https://api.geckoterminal.com/**', r => {
-  seen.push(r.request().url());
-  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [{
-    id: 'solana_TREND', type: 'pool',
-    attributes: { name: 'TRENDY / SOL', address: 'TRENDaddr', base_token_price_usd: '0.9',
+  const u = r.request().url(); seen.push(u);
+  const pool = (id, name, addr) => ({ id, type: 'pool',
+    attributes: { name, address: addr, base_token_price_usd: '0.9',
       price_change_percentage: { h24: '12.5' }, reserve_in_usd: '3200000',
-      volume_usd: { h24: '8100000' }, fdv_usd: '41000000' } }] }) });
+      volume_usd: { h24: '8100000' }, fdv_usd: '41000000' } });
+  if (u.includes('/search/pools')) {
+    const q = new URL(u).searchParams.get('query') || '';
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / SOL', 'GTCASHaddr')] : [] }) });
+  }
+  r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')] }) });
 });
 await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
@@ -164,8 +170,15 @@ ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?p
   ok(hit(/^https:\/\/api\.dexscreener\.com\/latest\/dex\/search\?q=cashcat$/), 'DexScreener /latest/dex/search');
   const body = await p.locator('#results').textContent();
   ok(body.includes('CashCat'), 'a long-tail DEX token no local source carries is found');
-  ok(!body.includes('Unsupported'), 'pair on an unsupported chain is dropped');
-  ok(!body.includes('Dust'), 'pair under the liquidity floor is dropped');
+  // a chain outside the twelve we filter by is kept, labelled with its own name —
+  // restricting the long tail to known chains was throwing most of it away
+  ok(body.includes('Unsupported'), 'pair on a chain outside the filter set is still indexed');
+  ok(!body.includes('Dust'), 'pair with no liquidity and no volume is dropped');
+  ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/search\/pools\?query=cashcat&page=1$/),
+    'GeckoTerminal /search/pools queried alongside DexScreener');
+  ok(await p.locator('.row[data-id^="d:GTCASH"]').count() > 0, 'both DEX indexes contribute results');
+  await p.fill('#q', '$cashcat'); await p.waitForTimeout(1200);
+  ok(await p.locator('.row[data-id^="d:"]').count() > 0, 'a $-prefixed ticker still resolves');
   ok((await p.locator('.gtitle').allTextContents()).filter(x => x === 'DEX pairs').length <= 1,
     'live DEX results merge into one group');
   await p.locator('.row[data-id^="d:"]').first().click();

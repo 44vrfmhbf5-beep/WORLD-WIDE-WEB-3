@@ -133,6 +133,14 @@ window.__ATLAS_SAMPLE__ = {
         priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
         volume: { h24: vol }, fdv: liq * 14 }));
   },
+  gtSearch(q) {
+    const s = q.toLowerCase();
+    return this.pairs(s).slice(0, 3).map((p, i) => ({ id: p.chainId + '_gt' + i, type: 'pool',
+      attributes: { name: p.baseToken.symbol + ' / SOL', address: 'gt' + p.baseToken.symbol,
+        base_token_price_usd: p.priceUsd, price_change_percentage: { h24: String(p.priceChange.h24) },
+        reserve_in_usd: String(p.liquidity.usd * 0.9), volume_usd: { h24: String(p.volume.h24) },
+        fdv_usd: String(p.fdv) } }));
+  },
   trending: [['BONK','solana',0.0000241,12.8,4.1e7],['WIF','solana',1.72,-5.3,2.4e7],
     ['BRETT','base',0.084,-3.1,1.1e7],['PEPE','ethereum',0.0000091,6.4,3.2e7],
     ['POPCAT','solana',0.62,-8.4,1.4e7],['MOG','ethereum',0.0000014,4.2,9.8e6]]

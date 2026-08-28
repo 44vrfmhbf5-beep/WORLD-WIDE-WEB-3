@@ -91,14 +91,24 @@ http.createServer(async (req,res)=>{
     source:'https://example.invalid/raise'+i }))});
   if(p==='/dex/latest/dex/search'){
     const q=(u.searchParams.get('q')||'').toLowerCase();
-    const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad'];
+    const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad','TinyCoin','BlastCat'];
     return json({pairs: names.filter(n=>n.toLowerCase().includes(q)||q.length<3).map((n,i)=>({
-      chainId:['solana','base','ethereum'][i%3], dexId:['raydium','aerodrome','uniswap'][i%3],
+      chainId: n==='BlastCat' ? 'blast' : ['solana','base','ethereum'][i%3],
+      dexId:['raydium','aerodrome','uniswap'][i%3],
       pairAddress:'pair'+n, url:'https://dexscreener.com/x/'+n,
       baseToken:{address:'0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
       quoteToken:{symbol:'SOL'}, priceUsd:String(0.0004*(i+1)),
-      priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd:(9e5)/(i+1)},
+      priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd: n==='TinyCoin' ? 1800 : (9e5)/(i+1)},
       volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
+  }
+  if(p==='/gt/search/pools'){
+    const q=(u.searchParams.get('query')||'').toLowerCase();
+    const rows=[];
+    if('cashcat'.includes(q)||q.includes('cashcat')) rows.push({ id:'solana_gtcash', type:'pool',
+      attributes:{ name:'CASHCAT / SOL', address:'gtcash', base_token_price_usd:'0.00041',
+        price_change_percentage:{h24:'29.0'}, reserve_in_usd:'880000',
+        volume_usd:{h24:'3900000'}, fdv_usd:'19000000' }});
+    return json({data:rows});
   }
   if(p==='/gt/networks/trending_pools'){
     const rows=[];

@@ -82,6 +82,7 @@ function sampleFor(url) {
   if (u.pathname.endsWith('/raises')) return { raises: S.raises };
   if (u.pathname.endsWith('/hacks')) return S.hacks;
   if (u.pathname.includes('/dex/search')) return { pairs: S.pairs(u.searchParams.get('q') || '') };
+  if (u.pathname.includes('/search/pools')) return { data: S.gtSearch(u.searchParams.get('query') || '') };
   if (u.pathname.includes('trending_pools')) return { data: S.trending };
   return null;
 }
@@ -408,31 +409,73 @@ const DEX_CHAIN = { solana: 'sol', ethereum: 'eth', base: 'base', arbitrum: 'arb
   optimism: 'op', polygon: 'poly', bsc: 'bnb', avalanche: 'avax', sui: 'sui',
   aptos: 'apt', hyperliquid: 'hl' };
 
+/* A pair keeps its network even when it is not one of the twelve we filter by —
+   restricting the long tail to known chains was throwing away most of it. */
+const netName = id => CH[DEX_CHAIN[id]]?.name || title(String(id || '').replace(/[-_]/g, ' '));
+
 function pairOf(p) {
-  const chain = DEX_CHAIN[p.chainId];
   const base = p.baseToken || {};
   const sym = String(base.symbol || '?').toUpperCase();
   const dex = title(p.dexId || 'DEX');
   return {
     kind: 'pair', id: `d:${p.pairAddress || base.address}`, sym,
-    name: base.name || sym, addr: base.address || '', dex, chain,
+    name: base.name || sym, addr: base.address || '', dex,
+    chain: DEX_CHAIN[p.chainId] || null, net: netName(p.chainId),
     price: Number(p.priceUsd) || 0, chg: num(p.priceChange?.h24),
     liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), fdv: num(p.fdv),
     quote: String(p.quoteToken?.symbol || '').toUpperCase(),
     url: p.url || '', color: colorOf(sym),
-    key: `${sym} ${base.name || ''} ${dex} ${CH[chain]?.name || ''} dex pair token memecoin swap trade`,
+    key: `${sym} ${base.name || ''} ${dex} ${netName(p.chainId)} dex pair token memecoin swap trade`,
   };
 }
 
-const okPair = p => p.chain && p.liq > 5000;
+/** GeckoTerminal returns JSON:API pools; /search and /trending share this shape. */
+function gtPool(row) {
+  const a = row.attributes || {};
+  const net = String(row.id || '').split('_')[0];
+  const [baseSym, quoteSym] = String(a.name || '').split('/').map(s => s.trim().toUpperCase());
+  const sym = baseSym || '?';
+  return {
+    kind: 'pair', id: `d:${a.address || row.id}`, sym, name: a.name || sym,
+    addr: a.address || '', dex: 'DEX',
+    chain: DEX_CHAIN[net] || null, net: netName(net),
+    price: Number(a.base_token_price_usd) || 0,
+    chg: Number(a.price_change_percentage?.h24) || 0,
+    liq: Number(a.reserve_in_usd) || 0, vol24: Number(a.volume_usd?.h24) || 0,
+    fdv: Number(a.fdv_usd) || 0, quote: quoteSym || '', url: '', color: colorOf(sym),
+    key: `${sym} ${a.name || ''} ${netName(net)} dex pair token memecoin swap trade`,
+  };
+}
 
-/** Live DEX search. One request per query, cached briefly. */
+// A brand-new memecoin can have a few thousand dollars of liquidity. Only drop
+// pairs with no measurable activity at all.
+const okPair = p => p.liq >= 500 || p.vol24 >= 500;
+
+function mergePairs(lists) {
+  const seen = new Set(), out = [];
+  for (const p of lists.flat()) {
+    if (!p || !okPair(p) || seen.has(p.id)) continue;
+    seen.add(p.id); out.push(p);
+  }
+  return out.sort((a, b) => (b.liq || b.vol24) - (a.liq || a.vol24)).slice(0, 30);
+}
+
+/** Live DEX search across two independent indexes, so one being unreachable
+    does not take the long tail with it. Errors are reported, never swallowed. */
 export function searchPairs(q) {
-  return cache(`pairs:${q.toLowerCase()}`, 60000, async () => {
-    const j = await get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(q)}`, { tries: 1, timeout: 12000 });
-    const seen = new Set();
-    return (j?.pairs || []).map(pairOf).filter(p => okPair(p) && !seen.has(p.id) && seen.add(p.id))
-      .sort((a, b) => b.liq - a.liq).slice(0, 24);
+  const term = q.replace(/^\$+/, '').trim();          // people type $CASHCAT
+  return cache(`pairs:${term.toLowerCase()}`, 60000, async () => {
+    const [dx, gt] = await Promise.allSettled([
+      get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
+      get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1`, { tries: 1, timeout: 12000 }),
+    ]);
+    const errors = [];
+    let rows = [];
+    if (dx.status === 'fulfilled') rows.push((dx.value?.pairs || []).map(pairOf));
+    else errors.push(`DexScreener: ${dx.reason?.message || 'unreachable'}`);
+    if (gt.status === 'fulfilled') rows.push((gt.value?.data || []).map(gtPool));
+    else errors.push(`GeckoTerminal: ${gt.reason?.message || 'unreachable'}`);
+    return { rows: mergePairs(rows), errors };
   });
 }
 
@@ -440,21 +483,7 @@ export function searchPairs(q) {
 export function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
     const j = await get(`${GT}/networks/trending_pools?page=1`, { tries: 1 }).catch(() => null);
-    return (j?.data || []).map(row => {
-      const a = row.attributes || {};
-      const [net] = String(row.id || '').split('_');
-      const chain = DEX_CHAIN[net] || DEX_CHAIN[{ eth: 'ethereum', 'bsc': 'bsc' }[net]] || DEX_CHAIN[net];
-      const sym = String(a.name || '?').split('/')[0].trim().toUpperCase();
-      return {
-        kind: 'pair', id: `d:${a.address || row.id}`, sym, name: a.name || sym,
-        addr: a.address || '', dex: 'Trending', chain,
-        price: Number(a.base_token_price_usd) || 0, chg: num(Number(a.price_change_percentage?.h24)),
-        liq: num(Number(a.reserve_in_usd)), vol24: num(Number(a.volume_usd?.h24)), fdv: num(Number(a.fdv_usd)),
-        quote: String(a.name || '').split('/')[1]?.trim().toUpperCase() || '',
-        url: '', color: colorOf(sym),
-        key: `${sym} ${a.name || ''} trending dex pair token ${CH[chain]?.name || ''}`,
-      };
-    }).filter(okPair).slice(0, 40);
+    return mergePairs([(j?.data || []).map(gtPool)]).slice(0, 40);
   });
 }
 

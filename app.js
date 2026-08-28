@@ -47,7 +47,7 @@ const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
-  pairs: [], remote: { q: '', rows: [], busy: false }, byProto: {},
+  pairs: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -133,7 +133,7 @@ function compute() {
   const q = S.q.trim();
   if (!q) return trending();
   if (!S.fuse) return [];
-  const t = q.toLowerCase();
+  const t = q.toLowerCase().replace(/^\$+/, '');       // people type $CASHCAT
   const toks = t.split(/\s+/).filter(Boolean);
 
   // Fuse matches a query as one contiguous pattern, so "usdc lending" scores
@@ -253,8 +253,8 @@ const KIND = {
   pair: { group: 'DEX pairs', size: i => i.liq,
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.dex,
-    meta: i => CH[i.chain]?.name || '',
-    tail: i => `$${compact(i.liq)} liquidity`,
+    meta: i => i.net || CH[i.chain]?.name || '',
+    tail: i => i.liq ? `$${compact(i.liq)} liquidity` : `$${compact(i.vol24)} 24h volume`,
     n1: i => i.price ? usd(i.price) : '—',
     n2: i => i.chg ? pct(i.chg) : `$${compact(i.vol24)} 24h`,
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
@@ -333,11 +333,14 @@ function render() {
   document.body.classList.toggle('searching', !!S.q);
   el.clear.hidden = !S.q;
 
+  const dexErr = S.remote.q === S.q.trim() && S.remote.errors?.length ? S.remote.errors : null;
   el.banner.innerHTML = flags.sample
     ? `<div class="sample"><b>Sample data.</b> This page can't reach CoinGecko or DeFiLlama, so every
         figure below is illustrative — explore the interface, don't trade on it.</div>`
     : S.warn && !S.err
-    ? `<div class="warn">${esc(S.warn)} <button data-retry>Retry</button></div>` : '';
+    ? `<div class="warn">${esc(S.warn)} <button data-retry>Retry</button></div>`
+    : dexErr
+    ? `<div class="warn">DEX search unavailable — ${esc(dexErr.join(' · '))}</div>` : '';
 
   if (S.loading && !S.assets.length && !S.pools.length) {
     el.meta.textContent = 'Loading live markets…';
@@ -558,9 +561,9 @@ const SHEET = {
   pair: it => ({ big: it.price ? usd(it.price) : '—',
     cls: it.chg >= 0 ? 'up' : 'down',
     caption: it.chg ? `${pct(it.chg)} in 24 hours` : 'traded on a DEX',
-    sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, CH[it.chain]?.name].filter(Boolean).join(' · '),
+    sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, it.net].filter(Boolean).join(' · '),
     stats: [['Liquidity', '$' + compact(it.liq)], ['24h volume', '$' + compact(it.vol24)],
-      ['FDV', it.fdv ? '$' + compact(it.fdv) : '—'], ['Network', CH[it.chain]?.name || '—'],
+      ['FDV', it.fdv ? '$' + compact(it.fdv) : '—'], ['Network', it.net || '—'],
       it.addr ? ['Token address', it.addr.slice(0, 10) + '…' + it.addr.slice(-6)] : null],
     link: ['Open on DexScreener', links.pair(it)] }),
 
@@ -637,17 +640,18 @@ let dexT, dexSeq = 0;
 function askDex() {
   clearTimeout(dexT);
   const q = S.q.trim();
-  if (q.length < 2) { S.remote = { q: '', rows: [], busy: false }; return; }
+  if (q.length < 2) { S.remote = { q: '', rows: [], busy: false, errors: [] }; return; }
   if (S.remote.q === q) return;
   dexT = setTimeout(async () => {
     const seq = ++dexSeq;
-    S.remote = { q, rows: S.remote.q === q ? S.remote.rows : [], busy: true };
+    S.remote = { q, rows: S.remote.q === q ? S.remote.rows : [], busy: true, errors: [] };
     render();
-    let rows = [];
-    try { rows = await searchPairs(q); } catch { /* the local index still stands */ }
+    let res = { rows: [], errors: [] };
+    try { res = await searchPairs(q); }
+    catch (e) { res = { rows: [], errors: [e.message || 'DEX search failed'] }; }
     if (seq !== dexSeq || S.q.trim() !== q) return;      // a newer query won
     const known = new Set(S.list.map(i => i.id));
-    S.remote = { q, rows: rows.filter(r => !known.has(r.id)), busy: false };
+    S.remote = { q, rows: res.rows.filter(r => !known.has(r.id)), busy: false, errors: res.errors };
     render();
   }, 300);
 }
@@ -773,6 +777,7 @@ addEventListener('error', e => {
 });
 
 fromUrl();
+if (S.q.trim().length >= 2) askDex();
 load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');
   if (id && find(id)) { history.replaceState({ id, depth: 0 }, '', location.href); open(id, { push: false }); }
