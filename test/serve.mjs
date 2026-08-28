@@ -56,7 +56,7 @@ http.createServer(async (req,res)=>{
   const u=new URL(req.url,'http://x'); const p=u.pathname;
   const json=(o,code=200)=>{res.writeHead(code,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(o));};
   if(MODE==='slow') await new Promise(r=>setTimeout(r,900));
-  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')){
+  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')||p.startsWith('/dex/')||p.startsWith('/gt/')){
     if(MODE==='down') return json({error:'nope'},503);
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
     if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
@@ -89,6 +89,28 @@ http.createServer(async (req,res)=>{
     amount:(120)/(i+1), chains:[CHAINS[i%CHAINS.length]], sector:'Infrastructure',
     leadInvestors:['Paradigm'], otherInvestors:['a16z','Polychain'], valuation:(900)/(i+1),
     source:'https://example.invalid/raise'+i }))});
+  if(p==='/dex/latest/dex/search'){
+    const q=(u.searchParams.get('q')||'').toLowerCase();
+    const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad'];
+    return json({pairs: names.filter(n=>n.toLowerCase().includes(q)||q.length<3).map((n,i)=>({
+      chainId:['solana','base','ethereum'][i%3], dexId:['raydium','aerodrome','uniswap'][i%3],
+      pairAddress:'pair'+n, url:'https://dexscreener.com/x/'+n,
+      baseToken:{address:'0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
+      quoteToken:{symbol:'SOL'}, priceUsd:String(0.0004*(i+1)),
+      priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd:(9e5)/(i+1)},
+      volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
+  }
+  if(p==='/gt/networks/trending_pools'){
+    const rows=[];
+    for(let i=0;i<12;i++) rows.push({
+      id:['solana','base','eth'][i%3]+'_pool'+i, type:'pool',
+      attributes:{ name:'TREND'+i+' / SOL', address:'addr'+i,
+        base_token_price_usd:String(0.02*(i+1)),
+        price_change_percentage:{h24:String(((i%6)-3)*5.1)},
+        reserve_in_usd:String((3e6)/(i+1)),
+        volume_usd:{h24:String((8e6)/(i+1))}, fdv_usd:String((4e7)/(i+1)) }});
+    return json({data:rows});
+  }
   if(p==='/dl/hacks') return json(Array.from({length:24},(_,i)=>({
     date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit', amount:(6e7)/(i+1),
     technique:['Flash loan','Price oracle','Private key','Reentrancy'][i%4],
@@ -106,7 +128,9 @@ http.createServer(async (req,res)=>{
     .replace("'https://yields.llama.fi'","'/llama'")
     .replace("'https://api.llama.fi'","'/dl'")
     .replace("'https://stablecoins.llama.fi'","'/stable'")
-    .replace("'https://bridges.llama.fi'","'/bridge'"));
+    .replace("'https://bridges.llama.fi'","'/bridge'")
+    .replace("'https://api.dexscreener.com'","'/dex'")
+    .replace("'https://api.geckoterminal.com/api/v2'","'/gt'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

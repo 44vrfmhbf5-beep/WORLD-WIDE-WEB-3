@@ -16,6 +16,8 @@ const YIELDS = 'https://yields.llama.fi';
 const LLAMA = 'https://api.llama.fi';
 const STABLE = 'https://stablecoins.llama.fi';
 const BRIDGES = 'https://bridges.llama.fi';
+const DEXS = 'https://api.dexscreener.com';
+const GT = 'https://api.geckoterminal.com/api/v2';
 
 // id, label, colour, CoinGecko category slug, DeFiLlama chain name
 export const CHAINS = [
@@ -79,6 +81,8 @@ function sampleFor(url) {
   if (u.pathname.endsWith('/bridges')) return { bridges: S.bridges };
   if (u.pathname.endsWith('/raises')) return { raises: S.raises };
   if (u.pathname.endsWith('/hacks')) return S.hacks;
+  if (u.pathname.includes('/dex/search')) return { pairs: S.pairs(u.searchParams.get('q') || '') };
+  if (u.pathname.includes('trending_pools')) return { data: S.trending };
   return null;
 }
 
@@ -395,6 +399,65 @@ export function loadProtocolChart(slug, days) {
   }).then(all => days >= 3650 ? all : all.slice(-days));
 }
 
+/* ---------- DEX pairs ----------
+   Long-tail tokens cannot be pre-indexed — there are millions of pairs and new
+   ones every minute — so DexScreener is queried live per search and merged in.
+   GeckoTerminal's trending pools give the same kind something to show before
+   anyone types. */
+const DEX_CHAIN = { solana: 'sol', ethereum: 'eth', base: 'base', arbitrum: 'arb',
+  optimism: 'op', polygon: 'poly', bsc: 'bnb', avalanche: 'avax', sui: 'sui',
+  aptos: 'apt', hyperliquid: 'hl' };
+
+function pairOf(p) {
+  const chain = DEX_CHAIN[p.chainId];
+  const base = p.baseToken || {};
+  const sym = String(base.symbol || '?').toUpperCase();
+  const dex = title(p.dexId || 'DEX');
+  return {
+    kind: 'pair', id: `d:${p.pairAddress || base.address}`, sym,
+    name: base.name || sym, addr: base.address || '', dex, chain,
+    price: Number(p.priceUsd) || 0, chg: num(p.priceChange?.h24),
+    liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), fdv: num(p.fdv),
+    quote: String(p.quoteToken?.symbol || '').toUpperCase(),
+    url: p.url || '', color: colorOf(sym),
+    key: `${sym} ${base.name || ''} ${dex} ${CH[chain]?.name || ''} dex pair token memecoin swap trade`,
+  };
+}
+
+const okPair = p => p.chain && p.liq > 5000;
+
+/** Live DEX search. One request per query, cached briefly. */
+export function searchPairs(q) {
+  return cache(`pairs:${q.toLowerCase()}`, 60000, async () => {
+    const j = await get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(q)}`, { tries: 1, timeout: 12000 });
+    const seen = new Set();
+    return (j?.pairs || []).map(pairOf).filter(p => okPair(p) && !seen.has(p.id) && seen.add(p.id))
+      .sort((a, b) => b.liq - a.liq).slice(0, 24);
+  });
+}
+
+/** Trending DEX pools, so the kind is populated before anyone searches. */
+export function loadTrendingPairs() {
+  return cache('trending', TTL, async () => {
+    const j = await get(`${GT}/networks/trending_pools?page=1`, { tries: 1 }).catch(() => null);
+    return (j?.data || []).map(row => {
+      const a = row.attributes || {};
+      const [net] = String(row.id || '').split('_');
+      const chain = DEX_CHAIN[net] || DEX_CHAIN[{ eth: 'ethereum', 'bsc': 'bsc' }[net]] || DEX_CHAIN[net];
+      const sym = String(a.name || '?').split('/')[0].trim().toUpperCase();
+      return {
+        kind: 'pair', id: `d:${a.address || row.id}`, sym, name: a.name || sym,
+        addr: a.address || '', dex: 'Trending', chain,
+        price: Number(a.base_token_price_usd) || 0, chg: num(Number(a.price_change_percentage?.h24)),
+        liq: num(Number(a.reserve_in_usd)), vol24: num(Number(a.volume_usd?.h24)), fdv: num(Number(a.fdv_usd)),
+        quote: String(a.name || '').split('/')[1]?.trim().toUpperCase() || '',
+        url: '', color: colorOf(sym),
+        key: `${sym} ${a.name || ''} trending dex pair token ${CH[chain]?.name || ''}`,
+      };
+    }).filter(okPair).slice(0, 40);
+  });
+}
+
 export const links = {
   asset: a => `https://www.coingecko.com/en/coins/${a.cg}`,
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
@@ -404,5 +467,6 @@ export const links = {
   raise: r => r.source || 'https://defillama.com/raises',
   hack: h => h.source || 'https://defillama.com/hacks',
   yield: y => `https://defillama.com/yields/pool/${y.pool}`,
+  pair: p => p.url || `https://dexscreener.com/${Object.keys(DEX_CHAIN).find(k => DEX_CHAIN[k] === p.chain) || 'solana'}/${p.addr}`,
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };

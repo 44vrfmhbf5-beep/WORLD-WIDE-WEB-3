@@ -277,3 +277,5 @@ body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6
   background:linear-gradient(90deg,rgba(171,159,242,.14),rgba(171,159,242,.05));
   border:1px solid rgba(171,159,242,.3)}
 .sample b{color:var(--text);font-weight:600}
+.pulse{color:var(--accent);animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{50%{opacity:.4}}

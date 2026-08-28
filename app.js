@@ -1,7 +1,7 @@
 /* Atlas — search across chains. Live data via data.js; this file is UI only. */
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
-  loadBridges, loadRaises, loadHacks,
+  loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
   loadAssetChart, loadPoolChart, loadProtocolChart, links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -46,7 +46,8 @@ const readWatch = () => {
 const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
-  protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [], byProto: {},
+  protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
+  pairs: [], remote: { q: '', rows: [], busy: false }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -80,13 +81,13 @@ let enriched = false;
 async function enrich() {
   if (enriched) return; enriched = true;
   const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
-    loadBridges(), loadRaises(), loadHacks()]);
+    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs()]);
   const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
   S.protocols = val(0, []);
   S.chainRows = val(1, []);
   const st = val(2, { rows: [], bySym: {} });
   S.stables = st.rows; S.bySym = st.bySym;
-  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
+  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []); S.pairs = val(6, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
   // a lending market now carries the protocol behind it
   for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
@@ -96,7 +97,7 @@ async function enrich() {
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 const pooled = () => S.pools.filter(onChain);
 const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
-  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.chainRows];
+  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainRows];
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
@@ -249,6 +250,15 @@ const KIND = {
     meta: i => i.technique, tail: i => when(i.date),
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
 
+  pair: { group: 'DEX pairs', size: i => i.liq,
+    label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
+    title: i => i.name, sub: i => i.sym, tag: i => i.dex,
+    meta: i => CH[i.chain]?.name || '',
+    tail: i => `$${compact(i.liq)} liquidity`,
+    n1: i => i.price ? usd(i.price) : '—',
+    n2: i => i.chg ? pct(i.chg) : `$${compact(i.vol24)} 24h`,
+    cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
+
   chain: { group: 'Networks', size: i => i.tvl, sq: true,
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: () => 'Network',
@@ -340,13 +350,18 @@ function render() {
     return;
   }
 
-  const list = S.list = compute();
+  const list = S.list = withRemote(compute());
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   el.meta.innerHTML = !list.length ? '' : S.q
     ? `${list.length} result${list.length > 1 ? 's' : ''} for “${esc(S.q.trim())}” · ${esc(where)}`
     : S.tab === 'saved' ? `${list.length} saved` : `Top of ${esc(where)} · updated ${ago(S.at)} · ↑↓ to browse, ↵ to open`;
+  if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
 
+  if (!list.length && S.remote.busy) {
+    el.res.innerHTML = skeleton(3);
+    return;
+  }
   if (!list.length) {
     el.res.innerHTML =
       S.tab === 'saved' && !S.q
@@ -373,9 +388,23 @@ function render() {
   paintSel();
 }
 
+/** Fold live DEX results into the local list, next to any pairs already there
+    so the group heading is never emitted twice. */
+function withRemote(list) {
+  if (!S.remote.q || S.remote.q !== S.q.trim()) return list;
+  const have = new Set(list.map(i => i.id));
+  const extra = S.remote.rows.filter(r => !have.has(r.id));
+  if (!extra.length) return list;
+  const at = list.map(i => i.kind).lastIndexOf('pair');
+  return at === -1 ? [...list, ...extra]
+    : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
+}
+
 /* ---------- detail sheet ---------- */
 let depth = 0;                       // sheet entries pushed since the sheet opened
-const find = id => everything().find(x => x.id === id) || S.watch.get(id);
+// remote DEX results are transient — they live in S.list, not the prefetched index
+const find = id => everything().find(x => x.id === id)
+  || S.list.find(x => x.id === id) || S.remote.rows.find(x => x.id === id) || S.watch.get(id);
 const stat = (k, v, extra = '') => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${extra}</div>`;
 
 function sheetHTML(it) {
@@ -526,6 +555,15 @@ const SHEET = {
     body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
     link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
 
+  pair: it => ({ big: it.price ? usd(it.price) : '—',
+    cls: it.chg >= 0 ? 'up' : 'down',
+    caption: it.chg ? `${pct(it.chg)} in 24 hours` : 'traded on a DEX',
+    sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, CH[it.chain]?.name].filter(Boolean).join(' · '),
+    stats: [['Liquidity', '$' + compact(it.liq)], ['24h volume', '$' + compact(it.vol24)],
+      ['FDV', it.fdv ? '$' + compact(it.fdv) : '—'], ['Network', CH[it.chain]?.name || '—'],
+      it.addr ? ['Token address', it.addr.slice(0, 10) + '…' + it.addr.slice(-6)] : null],
+    link: ['Open on DexScreener', links.pair(it)] }),
+
   hack: it => ({ big: '$' + compact(it.amount), cls: 'down', caption: `lost · ${when(it.date)}`,
     sub: it.technique,
     stats: [['Amount lost', '$' + compact(it.amount)], ['Technique', it.technique],
@@ -591,6 +629,29 @@ function close() {
   hide();
 }
 
+/* ---------- federated DEX search ----------
+   The long tail lives on DexScreener, not in the local index. Ask it as the
+   user types, and append whatever it returns under its own heading — local
+   results never wait on the network. */
+let dexT, dexSeq = 0;
+function askDex() {
+  clearTimeout(dexT);
+  const q = S.q.trim();
+  if (q.length < 2) { S.remote = { q: '', rows: [], busy: false }; return; }
+  if (S.remote.q === q) return;
+  dexT = setTimeout(async () => {
+    const seq = ++dexSeq;
+    S.remote = { q, rows: S.remote.q === q ? S.remote.rows : [], busy: true };
+    render();
+    let rows = [];
+    try { rows = await searchPairs(q); } catch { /* the local index still stands */ }
+    if (seq !== dexSeq || S.q.trim() !== q) return;      // a newer query won
+    const known = new Set(S.list.map(i => i.id));
+    S.remote = { q, rows: rows.filter(r => !known.has(r.id)), busy: false };
+    render();
+  }, 300);
+}
+
 /* ---------- url state ---------- */
 let urlT;
 function syncUrl(now) {
@@ -625,7 +686,7 @@ function paintFilters() {
 }
 
 /* ---------- events ---------- */
-el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render(); scrollToResults(); syncUrl(); });
+el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render(); askDex(); scrollToResults(); syncUrl(); });
 el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));

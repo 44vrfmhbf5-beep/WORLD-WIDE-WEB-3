@@ -77,14 +77,28 @@ Live, keyless, straight from the browser — no backend, no wallet.
 | `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/dexs`, `/overview/fees`, `/overview/derivatives`, `/overview/options`, `/v2/chains`, `/raises`, `/hacks` |
 | `stablecoins.llama.fi` | stablecoin supply, peg and mechanism | `/stablecoins` |
 | `bridges.llama.fi` | cross-chain bridge volume | `/bridges` |
+| `api.dexscreener.com` | live DEX pair search — the long tail | `/latest/dex/search` |
+| `api.geckoterminal.com` | trending DEX pools | `/networks/trending_pools` |
 
-Seventeen endpoints across five hosts, all keyless and CORS-open, called
+Nineteen endpoints across seven hosts, all keyless and CORS-open, called
 straight from the browser.
 
-### Nine kinds, one index
+### Ten kinds, one index
 
 Assets · lending markets · yield farms · protocols · stablecoins · bridges ·
-funding rounds · exploits · networks.
+funding rounds · exploits · DEX pairs · networks.
+
+### The long tail is federated, not indexed
+
+There are millions of DEX pairs and more every minute, so they are not
+prefetched. Typing a query asks DexScreener directly and the answers are
+appended under their own heading — the local index responds immediately and
+never waits on that request. Searching `cashcat` finds a token no other source
+here carries. GeckoTerminal's trending pools seed the same kind so it has
+something to show before anyone types.
+
+Results are filtered on the way in: pairs on unsupported chains and anything
+under $5k liquidity are dropped, so the long tail does not drown the index.
 
 Each is a row in one `KIND` table in `app.js` that drives its token, its
 labels, its numbers, its group heading and its search scope. Adding a kind is a

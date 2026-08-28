@@ -117,6 +117,29 @@ window.__ATLAS_SAMPLE__ = {
     circulating:{ peggedUSD: circ }, price, pegMechanism: mech,
     chains: ['Ethereum','Solana','Base','Arbitrum'].slice(0, 2 + (i % 3)) })),
   tvlSeries: s => walk('tvl' + s, 300, 1e9),
+  pairs(q) {
+    const rows = [['CashCat','CASHCAT','solana','raydium',0.00042,31.4,9.1e5,4.2e6],
+      ['dogwifhat','WIF','solana','raydium',1.72,-5.3,2.4e7,1.9e8],
+      ['Peanut the Squirrel','PNUT','solana','raydium',0.41,18.2,8.4e6,6.1e7],
+      ['Brett','BRETT','base','aerodrome',0.084,-3.1,1.1e7,2.4e7],
+      ['Toshi','TOSHI','base','aerodrome',0.0009,7.7,6.2e6,1.4e7],
+      ['Mog Coin','MOG','ethereum','uniswap',0.0000014,4.2,9.8e6,1.1e7],
+      ['Popcat','POPCAT','solana','raydium',0.62,-8.4,1.4e7,4.1e7]];
+    const s = q.toLowerCase();
+    return rows.filter(([n, sym]) => !s || n.toLowerCase().includes(s) || sym.toLowerCase().includes(s))
+      .map(([name, sym, chainId, dexId, price, chg, liq, vol], i) => ({
+        chainId, dexId, pairAddress: 'pair' + sym, url: '',
+        baseToken: { address: 'addr' + sym, name, symbol: sym }, quoteToken: { symbol: 'SOL' },
+        priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
+        volume: { h24: vol }, fdv: liq * 14 }));
+  },
+  trending: [['BONK','solana',0.0000241,12.8,4.1e7],['WIF','solana',1.72,-5.3,2.4e7],
+    ['BRETT','base',0.084,-3.1,1.1e7],['PEPE','ethereum',0.0000091,6.4,3.2e7],
+    ['POPCAT','solana',0.62,-8.4,1.4e7],['MOG','ethereum',0.0000014,4.2,9.8e6]]
+    .map(([sym, net, price, chg, liq], i) => ({ id: net + '_pool' + i, type: 'pool',
+      attributes: { name: sym + ' / SOL', address: 'taddr' + sym, base_token_price_usd: String(price),
+        price_change_percentage: { h24: String(chg) }, reserve_in_usd: String(liq),
+        volume_usd: { h24: String(liq * 3) }, fdv_usd: String(liq * 12) } })),
   bridges: [['Across',4.2e8],['Stargate',3.1e8],['Wormhole',2.4e8],['deBridge',1.6e8],['Synapse',9.1e7],
     ['Hop Protocol',4.4e7],['Circle CCTP',6.8e8]].map(([n,v],i)=>({ id:i, displayName:n,
       chains:['Ethereum','Base','Arbitrum','Solana'].slice(0,2+(i%3)), lastDailyVolume:v, volumePrev2Day:v*(0.86+(i%5)/20) })),

@@ -105,6 +105,28 @@ await p.route('https://bridges.llama.fi/**', r => {
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ bridges: [
     { id: 1, displayName: 'Across', chains: ['Ethereum', 'Base'], lastDailyVolume: 4.2e8, volumePrev2Day: 3.9e8 }] }) });
 });
+await p.route('https://api.dexscreener.com/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ pairs: [{
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR1', url: 'https://dexscreener.com/solana/PAIR1',
+    baseToken: { address: 'CATaddr', name: 'CashCat', symbol: 'CASHCAT' }, quoteToken: { symbol: 'SOL' },
+    priceUsd: '0.00042', priceChange: { h24: 31.4 }, liquidity: { usd: 9.1e5 },
+    volume: { h24: 4.2e6 }, fdv: 2.1e7 }, {
+    chainId: 'fantom', dexId: 'spooky', pairAddress: 'PAIR2',
+    baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' },
+    priceUsd: '1', liquidity: { usd: 9e5 } }, {
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR3',
+    baseToken: { address: 'y', name: 'Dust', symbol: 'DUST' },
+    priceUsd: '1', liquidity: { usd: 100 } }] }) });
+});
+await p.route('https://api.geckoterminal.com/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [{
+    id: 'solana_TREND', type: 'pool',
+    attributes: { name: 'TRENDY / SOL', address: 'TRENDaddr', base_token_price_usd: '0.9',
+      price_change_percentage: { h24: '12.5' }, reserve_in_usd: '3200000',
+      volume_usd: { h24: '8100000' }, fdv_usd: '41000000' } }] }) });
+});
 await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
 console.log(`\n# production endpoints (${PAGE})`);
@@ -136,6 +158,22 @@ ok(hit(/^https:\/\/api\.llama\.fi\/raises$/), 'DeFiLlama /raises');
 ok(hit(/^https:\/\/api\.llama\.fi\/hacks$/), 'DeFiLlama /hacks');
 ok(hit(/\/overview\/derivatives\?/), 'DeFiLlama /overview/derivatives');
 ok(hit(/\/overview\/options\?/), 'DeFiLlama /overview/options');
+ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?page=1$/), 'GeckoTerminal /trending_pools');
+{
+  await p.fill('#q', 'cashcat'); await p.waitForTimeout(1400);
+  ok(hit(/^https:\/\/api\.dexscreener\.com\/latest\/dex\/search\?q=cashcat$/), 'DexScreener /latest/dex/search');
+  const body = await p.locator('#results').textContent();
+  ok(body.includes('CashCat'), 'a long-tail DEX token no local source carries is found');
+  ok(!body.includes('Unsupported'), 'pair on an unsupported chain is dropped');
+  ok(!body.includes('Dust'), 'pair under the liquidity floor is dropped');
+  ok((await p.locator('.gtitle').allTextContents()).filter(x => x === 'DEX pairs').length <= 1,
+    'live DEX results merge into one group');
+  await p.locator('.row[data-id^="d:"]').first().click();
+  await p.waitForSelector('.sheet-in[data-kind="pair"]', { timeout: 8000 });
+  ok((await p.locator('.sheet').textContent()).includes('Liquidity'), 'DEX pair opens a real sheet');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
 {
   await p.fill('#q', 'pantera'); await p.waitForTimeout(500);
   ok(await p.locator('.row[data-id^="f:"]').count() > 0, 'funding rounds are searchable by investor');
