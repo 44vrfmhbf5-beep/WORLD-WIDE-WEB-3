@@ -62,7 +62,11 @@ const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 1200, height: 900 } });
 p.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
 
-await p.route('https://api.coingecko.com/**', r => {
+// one route table, registered on every context that needs the real endpoints
+const routes = [];
+const R = (glob, fn) => routes.push([glob, fn]);
+
+R('https://api.coingecko.com/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.includes('/market_chart')) {
     return r.fulfill({ contentType: 'application/json',
@@ -71,7 +75,7 @@ await p.route('https://api.coingecko.com/**', r => {
   const cat = new URL(u).searchParams.get('category');
   r.fulfill({ contentType: 'application/json', body: JSON.stringify(cat ? markets.slice(0, 2) : markets) });
 });
-await p.route('https://yields.llama.fi/**', r => {
+R('https://yields.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.endsWith('/pools')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify(llamaPools) });
   if (u.endsWith('/lendBorrow')) return r.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
@@ -79,7 +83,7 @@ await p.route('https://yields.llama.fi/**', r => {
     body: JSON.stringify({ data: walk('p', 120, 6).map((v, i) => ({ timestamp: i, apy: v, tvlUsd: 1e8 })) }) });
   r.fulfill({ status: 404, body: '{}' });
 });
-await p.route('https://api.llama.fi/**', r => {
+R('https://api.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
   const J = o => r.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
   if (u.includes('/overview/dexs')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.2e9 }] });
@@ -99,7 +103,7 @@ await p.route('https://api.llama.fi/**', r => {
     name: 'Curve Finance exploit', amount: 6.1e7, technique: 'Reentrancy', chains: ['Ethereum'] }]);
   r.fulfill({ status: 404, body: '[]' });
 });
-await p.route('https://stablecoins.llama.fi/**', r => {
+R('https://stablecoins.llama.fi/**', r => {
   seen.push(r.request().url());
   if (r.request().url().includes('/stablecoincharts/'))
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify(
@@ -108,12 +112,12 @@ await p.route('https://stablecoins.llama.fi/**', r => {
     { id: '1', symbol: 'USDC', name: 'USD Coin', circulating: { peggedUSD: 4.1e10 },
       price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] }] }) });
 });
-await p.route('https://bridges.llama.fi/**', r => {
+R('https://bridges.llama.fi/**', r => {
   seen.push(r.request().url());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ bridges: [
     { id: 1, displayName: 'Across', chains: ['Ethereum', 'Base'], lastDailyVolume: 4.2e8, volumePrev2Day: 3.9e8 }] }) });
 });
-await p.route('https://api.dexscreener.com/**', r => {
+R('https://api.dexscreener.com/**', r => {
   seen.push(r.request().url());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ pairs: [{
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR1', url: 'https://dexscreener.com/solana/PAIR1',
@@ -127,7 +131,7 @@ await p.route('https://api.dexscreener.com/**', r => {
     baseToken: { address: 'y', name: 'Dust', symbol: 'DUST' },
     priceUsd: '1', liquidity: { usd: 100 } }] }) });
 });
-await p.route('https://api.geckoterminal.com/**', r => {
+R('https://api.geckoterminal.com/**', r => {
   const u = r.request().url(); seen.push(u);
   const pool = (id, name, addr) => ({ id, type: 'pool',
     attributes: { name, address: addr, base_token_price_usd: '0.9',
@@ -138,10 +142,15 @@ await p.route('https://api.geckoterminal.com/**', r => {
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
       data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / SOL', 'GTCASHaddr')] : [] }) });
   }
+  if (/\/networks\/[^/]+\/pools/.test(u)) {          // that chain's own tokens
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      data: Array.from({ length: 8 }, (_, i) =>
+        pool(`solana_C${i}`, `CHAINTOK${i} / SOL`, `chainaddr${i}`)) }) });
+  }
   r.fulfill({ contentType: 'application/json',
     body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')] }) });
 });
-await p.route('https://nft.llama.fi/**', r => {
+R('https://nft.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.includes('/chart/')) return r.fulfill({ contentType: 'application/json',
     body: JSON.stringify(Array.from({ length: 120 }, (_, i) => ({ timestamp: i, floorPriceUSD: 90000 + i * 40 }))) });
@@ -153,12 +162,14 @@ await p.route('https://nft.llama.fi/**', r => {
       floorPrice: 240, floorPricePctChange1Day: 1.1, totalSupply: 5000 },
     { collectionId: '0xnofloor', name: 'No Floor Collection', symbol: 'NOPE', chain: 'Ethereum' }]) });
 });
-await p.route('https://api-mainnet.magiceden.dev/**', r => {
+R('https://api-mainnet.magiceden.dev/**', r => {
   seen.push(r.request().url());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify([
     { symbol: 'mad_lads', name: 'Mad Lads', image: null, floorPrice: 118e9, volumeAll: 9.2e11 }]) });
 });
-await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
+R('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
+
+for (const [glob, fn] of routes) await p.route(glob, fn);
 
 console.log(`\n# production endpoints (${PAGE})`);
 await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 20000 });
@@ -367,6 +378,43 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
 
+console.log('\n# a row belongs to exactly one category');
+{
+  await p.click('[data-chain=sol]'); await p.waitForTimeout(2200);
+  const ids = await p.locator('#results .row[data-id^="d:"]').evaluateAll(ns => ns.map(n => n.dataset.id));
+  // listing a chain's tokens under Assets as well as DEX pairs counted them
+  // twice, and the duplicates ate half the per-kind slice
+  ok(new Set(ids).size === ids.length, 'no row is rendered twice');
+  ok(ids.length >= 5, `the DEX group fills with distinct pairs, not duplicates (${ids.length})`);
+  ok(hit(/\/networks\/solana\/pools/), 'those pairs are that chain\'s own tokens');
+  await p.click('[data-chain=""]'); await p.waitForTimeout(900);
+}
+
+console.log('\n# an empty category says which one');
+{
+  await p.click('[data-tab=bridges]'); await p.waitForTimeout(600);
+  await p.click('[data-chain=apt]'); await p.waitForTimeout(900);
+  const t = await p.locator('.empty').textContent().catch(() => '');
+  ok(/No bridges on Aptos/.test(t), `an empty category names itself and the chain (${t.slice(0, 46)})`);
+  ok(await p.locator('[data-allchains]').count() === 1, 'and offers the way out of the filter');
+  await p.click('[data-allchains]'); await p.waitForTimeout(700);
+  ok(await p.locator('.row').count() > 0, 'which clears the chain filter');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a sorted view survives a reload and a shared link');
+{
+  await p.click('[data-tab=protocols]'); await p.waitForTimeout(700);
+  await p.locator('.thead button[data-sort=tvl]').click(); await p.waitForTimeout(500);
+  const url = p.url();
+  ok(/sort=-tvl/.test(url), `the sort is in the url (${url.split('?')[1]})`);
+  await p.goto(url); await p.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+  await p.waitForTimeout(1200);
+  ok(await p.locator('.thead button[data-sort=tvl]').getAttribute('aria-sort') === 'descending',
+    'and comes back on a reload');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
 console.log('\n# per-chain and chart endpoints');
 await p.click('[data-chain=sol]'); await p.waitForTimeout(1500);
 ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1$/),
@@ -455,6 +503,61 @@ console.log('\n# a chart always draws, even with no history anywhere');
   await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
   ok(await q.locator('.chart svg .line').count() === 1, 'the chart still draws with every source down');
   ok(await q.locator('.nohist').count() === 1, 'and says plainly that there is no history');
+  await ctx.close();
+}
+
+console.log('\n# mobile');
+{
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const q = await ctx.newPage();
+  q.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
+  for (const [h, fn] of routes) await ctx.route(h, fn);
+  await q.goto(U); await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(2500);
+  await q.click('[data-tab=lending]'); await q.waitForTimeout(900);
+
+  ok(!(await q.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)),
+    'the page never scrolls sideways');
+  ok(await q.locator('#results.table').count() === 0, 'a phone gets cards, not five numeric columns');
+  ok(!await q.locator('#view').isVisible(), 'and is not offered a table toggle that cannot work');
+
+  // the column headers are the desktop sort control; a phone needs its own
+  ok(await q.locator('#sortbar button').count() >= 4, 'sort is reachable as chips');
+  await q.locator('#sortbar button', { hasText: 'Supplied' }).click(); await q.waitForTimeout(500);
+  ok(await q.locator('#sortbar button.on').count() === 1, 'a chip sorts and shows it is active');
+  ok(/sort=-supplyUsd/.test(q.url()), 'and the sort reaches the url from a phone too');
+
+  // The headline figure had been dropped at this width entirely. Restoring it
+  // then made the line 7px too long at 390 and 16px too long at 360, so the
+  // second line now sheds the tag, then the network, and keeps the figure.
+  for (const w of [320, 360, 390]) {
+    await q.setViewportSize({ width: w, height: 844 }); await q.waitForTimeout(400);
+    const t2 = q.locator('.row .t2').first();
+    ok(/supplied/.test(await t2.innerText()), `${w}px keeps the headline figure`);
+    ok(!(await t2.evaluate(e => e.scrollWidth > e.clientWidth + 1)), `${w}px does not clip it`);
+    ok(!(await q.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)),
+      `${w}px never scrolls sideways`);
+  }
+  await q.setViewportSize({ width: 390, height: 844 }); await q.waitForTimeout(400);
+
+  // chain chips must be reachable, not parked off-screen behind the categories
+  const chip = await q.locator('.railchains .chip').first().boundingBox();
+  ok(chip && chip.y < 220, `the chain filter is on screen (y=${Math.round(chip?.y ?? -1)})`);
+
+  // a bottom sheet you cannot throw away feels stuck
+  await q.locator('.row').first().click();
+  await q.waitForSelector('.sheet.open', { timeout: 8000 }); await q.waitForTimeout(600);
+  ok(await q.locator('.grab').isVisible(), 'the sheet has something to grab');
+  const g = await q.locator('.grab').boundingBox();
+  await q.mouse.move(g.x + g.width / 2, g.y + 8);
+  await q.mouse.down();
+  await q.mouse.move(g.x + g.width / 2, g.y + 140, { steps: 8 });
+  await q.mouse.up(); await q.waitForTimeout(700);
+  ok(await q.locator('.sheet.open').count() === 0, 'and swiping it down closes it');
+
+  // thumb-sized targets
+  const star = await q.locator('.row .star').first().boundingBox();
+  ok(star && star.height >= 40, `star is a thumb target (${Math.round(star?.height ?? 0)}px)`);
   await ctx.close();
 }
 

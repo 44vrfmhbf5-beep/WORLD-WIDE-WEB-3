@@ -64,7 +64,7 @@ const S = {
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
-  clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), thead: null,
+  clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), sortbar: $('#sortbar'),
 };
 const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
 
@@ -111,24 +111,29 @@ const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chai
 /* Where each kind's rows live. everything(), the category rail and the tab
    scopes all read this, so a new kind reaches all three at once. */
 const SRC = {
-  asset: () => S.chain ? [...S.chainTokens, ...S.assets] : S.assets,   // global assets carry no chain
-  pool: () => S.pools, yield: () => S.yields, protocol: () => S.protocols,
-  nft: () => S.nfts, pair: () => [...S.pairs, ...S.chainTokens],
+  asset: () => S.assets, pool: () => S.pools, yield: () => S.yields,
+  protocol: () => S.protocols, nft: () => S.nfts,
+  pair: () => [...S.pairs, ...S.chainTokens],   // a chain's own tokens are pairs
   stablecoin: () => S.stables, bridge: () => S.bridges, raise: () => S.raises,
   hack: () => S.hacks, chain: () => S.chainRows,
 };
+// exactly one home per row: listing chain tokens under `asset` too counted them
+// twice, inflating the totals and letting duplicates eat the per-kind slice
 const everything = () => KINDS.flatMap(k => SRC[k]());
-const countOf = tab => (tab === 'saved' ? [...S.watch.values()]
-  : TAB_KIND[tab] ? SRC[TAB_KIND[tab]]() : everything()).filter(onChain).length;
 
-function scope() {
-  if (S.tab === 'saved') {
+/** Rows behind a category. Assets borrows the chain's own traded tokens,
+    because a global asset carries no chain and the filter would empty the tab. */
+function rowsFor(tab) {
+  if (tab === 'saved') {
     const live = everything();
-    return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i).filter(onChain);
+    return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i);
   }
-  const k = TAB_KIND[S.tab];
-  return (k ? SRC[k]() : everything()).filter(onChain);
+  const k = TAB_KIND[tab];
+  if (!k) return everything();
+  return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
+const countOf = tab => rowsFor(tab).filter(onChain).length;
+const scope = () => rowsFor(S.tab).filter(onChain);
 function reindex() {
   S.fuse = new Fuse(scope(), {
     keys: [{ name: 'sym', weight: 3 }, { name: 'name', weight: 3 }, { name: 'proto', weight: 2 }, { name: 'key', weight: 1 }],
@@ -336,6 +341,8 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: () => 'TVL', cls: () => 'mute' },
 };
 const KINDS = Object.keys(KIND);
+// only keys a column actually declares can be sorted from the URL
+const SORTABLE = new Set(KINDS.flatMap(k => (KIND[k].cols || []).map(c => c[2]).filter(Boolean)));
 /* Category rail: every kind that has rows of its own gets a destination, which
    is how DefiLlama makes a large index navigable without a search term. */
 const TAB_KIND = { assets: 'asset', lending: 'pool', yield: 'yield', protocols: 'protocol',
@@ -396,7 +403,7 @@ function rowHTML(it) {
     ${tok(it, k.sq)}
     <div class="body">
       <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}</div>
-      <div class="t2">${tag ? `<span class="tag">${esc(tag)}</span> ` : ''}${esc(meta || '')}
+      <div class="t2">${tag ? `<span class="tag">${esc(tag)}</span> ` : ''}${meta ? `<span class="mi">${esc(meta)}</span>` : ''}
         ${tail ? `<span class="tail">${meta ? '<span class="sep">·</span> ' : ''}${esc(tail)}</span>` : ''}</div>
     </div>
     ${k.spark ? spark(it.spark, it.chg >= 0) : ''}
@@ -460,6 +467,18 @@ function paintStats() {
     `<div class="s"><div class="sk">${k}</div><div class="sv">${esc(v)}</div></div>`).join('');
 }
 
+/* The column headers are the sort control, and a phone has no room for them.
+   Same descriptor, rendered as chips, so sorting is not desktop-only. */
+function paintSort() {
+  const k = TAB_KIND[S.tab];
+  const cols = k && KIND[k].cols?.filter(c => c[2]);
+  if (!cols?.length) return el.sortbar.replaceChildren();
+  const chip = ([label, , key]) => `<button data-sort="${esc(key)}"${S.sort?.key === key
+    ? ` class="on" aria-pressed="true"` : ' aria-pressed="false"'}>${esc(label)}${
+    S.sort?.key === key ? (S.sort.dir > 0 ? ' \u2191' : ' \u2193') : ''}</button>`;
+  el.sortbar.innerHTML = `<span class="sk">Sort</span>${cols.map(chip).join('')}`;
+}
+
 /** Bring the results back into view when the query or a filter changes. */
 function scrollToResults() {
   const y = el.res.getBoundingClientRect().top + scrollY - 150;
@@ -508,14 +527,19 @@ function render() {
     return;
   }
   if (!list.length) {
+    const cat = TAB_KIND[S.tab] && KIND[TAB_KIND[S.tab]].group.toLowerCase();
     el.res.innerHTML =
       S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
       : !S.q && S.chain
-        ? `<div class="empty"><b>Nothing indexed for ${esc(CH[S.chain].name)} yet</b>No source returned data for this network. Newer chains often appear here before the aggregators cover them.</div>`
+        ? `<div class="empty"><b>No ${esc(cat || 'results')} on ${esc(CH[S.chain].name)}</b>Nothing is indexed for this network yet. Newer chains often appear here before the aggregators cover them.<div class="cta one"><button class="p" data-allchains>Show all chains</button></div></div>`
+      : !S.q
+        // an empty category with no filter means the source did not answer
+        ? `<div class="empty"><b>No ${esc(cat || 'results')} right now</b>That source did not return anything. It loads behind the first paint, so it may still be on its way.<div class="cta one"><button class="p" data-retry>Reload</button></div></div>`
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
   }
+  paintSort();
   el.res.classList.toggle('table', !!mode);
   el.res.classList.toggle('compact', S.dense);
   const frag = document.createDocumentFragment();
@@ -572,7 +596,7 @@ const stat = (k, v, extra = '') => `<div class="stat"><div class="k">${k}</div><
 function sheetHTML(it) {
   const c = CH[it.chain];
   const back = depth > 1 ? `<button class="x" data-back aria-label="Back"><svg viewBox="0 0 24 24" class="i"><path d="M15 5l-7 7 7 7"/></svg></button>` : '';
-  const head = (t, sub) => `<div class="sheet-top">
+  const head = (t, sub) => `<div class="grab" aria-hidden="true"></div><div class="sheet-top">
     <div class="ident">${tok(it, it.kind === 'pool')}<div><h2>${esc(t)}</h2><div class="hsub">${esc(sub)}</div></div></div>
     <div class="acts">${star(it)}${back}<button class="x" data-close aria-label="Close"><svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>`;
 
@@ -840,6 +864,7 @@ function open(id, { push = true } = {}) {
   const hash = '#' + id.replace(':', '/');
   if (push) history.pushState({ id, depth: ++depth }, '', hash);
   else depth = history.state?.depth ?? 0;
+  el.sheet.style.transform = '';
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
@@ -891,6 +916,9 @@ function syncUrl(now) {
     if (S.q.trim()) p.set('q', S.q.trim());
     if (S.chain) p.set('chain', S.chain);
     if (S.tab !== 'all') p.set('tab', S.tab);
+    if (S.sort) p.set('sort', (S.sort.dir > 0 ? '' : '-') + S.sort.key);
+    if (S.view === 'cards') p.set('view', 'cards');
+    if (S.dense) p.set('dense', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -900,6 +928,11 @@ function fromUrl() {
   S.q = el.q.value = p.get('q') || '';
   S.chain = CH[p.get('chain')] ? p.get('chain') : null;
   S.tab = TABS.some(([t]) => t === p.get('tab')) ? p.get('tab') : 'all';
+  const sort = p.get('sort') || '';
+  const key = sort.replace(/^-/, '');
+  S.sort = key && SORTABLE.has(key) ? { key, dir: sort[0] === '-' ? -1 : 1 } : null;
+  if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
+  if (p.get('dense')) S.dense = p.get('dense') === '1';
   paintFilters(); paintTools();
 }
 
@@ -939,20 +972,44 @@ $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));
 narrow.addEventListener('change', () => { nodes.clear(); render(); });
 $('#density').addEventListener('click', () => {
-  S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0'); paintTools(); render();
+  S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0');
+  paintTools(); render(); syncUrl(true);
 });
 $('#view').addEventListener('click', () => {
   S.view = S.view === 'cards' ? 'auto' : 'cards';
-  store.set('atlas:view', S.view); paintTools(); nodes.clear(); render();
+  store.set('atlas:view', S.view); paintTools(); nodes.clear(); render(); syncUrl(true);
 });
-// column sort lives on the header, which is rebuilt each render
-el.res.addEventListener('click', e => {
+// sort: column headers on desktop, chips on a phone, same cycle either way
+const onSort = e => {
   const b = e.target.closest('[data-sort]'); if (!b) return;
   const key = b.dataset.sort;
   S.sort = S.sort?.key === key && S.sort.dir < 0 ? { key, dir: 1 }
     : S.sort?.key === key ? null : { key, dir: -1 };
-  S.sel = 0; render();
-}, true);
+  S.sel = 0; render(); syncUrl(true);
+};
+el.res.addEventListener('click', onSort, true);
+el.sortbar.addEventListener('click', onSort);
+
+/* A bottom sheet you cannot swipe away feels stuck. Drag only from the grabber,
+   so it never competes with scrolling the sheet's own content. */
+let dragFrom = null;
+el.sheet.addEventListener('pointerdown', e => {
+  if (!e.target.closest('.grab')) return;
+  dragFrom = e.clientY; el.sheet.style.transition = 'none';
+  el.sheet.setPointerCapture(e.pointerId);
+});
+el.sheet.addEventListener('pointermove', e => {
+  if (dragFrom === null) return;
+  el.sheet.style.transform = `translateY(${Math.max(0, e.clientY - dragFrom)}px)`;
+});
+const endDrag = e => {
+  if (dragFrom === null) return;
+  const dy = Math.max(0, e.clientY - dragFrom);
+  dragFrom = null; el.sheet.style.transition = ''; el.sheet.style.transform = '';
+  if (dy > 110) close();
+};
+el.sheet.addEventListener('pointerup', endDrag);
+el.sheet.addEventListener('pointercancel', endDrag);
 
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
@@ -986,6 +1043,7 @@ function toggleStar(id) {
 }
 el.res.addEventListener('click', e => {
   if (e.target.closest('[data-retry]')) return load({ force: true });
+  if (e.target.closest('[data-allchains]')) return $('#chains .chip.all').click();
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
   const r = e.target.closest('.row:not(.sk)'); if (r) open(r.dataset.id);
 });

@@ -139,7 +139,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .up{color:var(--up)}.down{color:var(--down)}
 .n2.mute{color:var(--faint);font-weight:500}
 .spark{width:62px;height:26px;flex:none;opacity:.85}
-@media (max-width:560px){.spark{display:none}.t2 .tail{display:none}}
+/* The second line sheds what it can afford to, worst first. The tag repeats the
+   category you are already in; the network is still on the token as a coloured
+   badge; the figure is the reason the row exists, so it is the last to go. */
+@media (max-width:560px){.spark{display:none}.t2 .tag{display:none}}
+@media (max-width:380px){.t2 .mi,.t2 .sep{display:none}}
 
 .empty{text-align:center;padding:60px 20px;color:var(--faint)}
 .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px;font-weight:600}
@@ -406,4 +410,53 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .statbar::-webkit-scrollbar{display:none}
   .statbar .s{flex:none;min-width:132px}
   .thead{display:none}
+}
+
+
+/* ---- mobile ----
+   Everything the desktop puts in a column header or a hover has to be reachable
+   by thumb, and nothing inert should be on screen. */
+
+/* sort chips: the column headers are hidden on a phone, so the same descriptor
+   renders as a scrolling strip instead */
+.sortbar{display:none}
+.sortbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);flex:none;align-self:center;padding-right:2px}
+.sortbar button{flex:none;padding:7px 12px;border-radius:9px;background:var(--surface);
+  border:1px solid var(--line);color:var(--dim);font-size:12.5px;font-weight:600;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.sortbar button.on{background:var(--surface2);color:var(--text);border-color:var(--accent-dim)}
+
+/* grabber: present always, but only a bottom sheet is draggable */
+.grab{display:none}
+
+@media (max-width:900px){
+  .sortbar:not(:empty){display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+    padding:0 0 10px;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .sortbar::-webkit-scrollbar{display:none}
+  /* the table toggle cannot do anything at this width — do not offer it */
+  #view{display:none}
+  .bar{gap:8px}
+  .bar .meta{padding:12px 2px 8px}
+
+  /* a bottom sheet needs somewhere to grab and a way to throw it away */
+  .grab{display:block;height:22px;margin:-8px 0 4px;position:relative;
+    touch-action:none;cursor:grab}
+  .grab::after{content:"";position:absolute;left:50%;top:7px;width:38px;height:4px;
+    margin-left:-19px;border-radius:99px;background:var(--line2)}
+  .sheet-in{padding:16px 18px 40px}
+
+  /* At 390px the second line was 7px short of its content and truncated the
+     figure. A 38px avatar is generous at that width; the text needs it more. */
+  .row{gap:10px;padding:12px 11px}
+  .tok{width:32px;height:32px;font-size:11px}
+  .tok.t4{font-size:9px}
+  .t2{font-size:12px;gap:5px}
+
+  /* thumb-sized targets */
+  .star{width:40px;height:40px}
+  .star .i{width:18px;height:18px}
+  .vt{padding:9px 13px}
+  .railnav .tab{padding:9px 14px}
+  .railchains .chip{padding:8px 12px 8px 9px}
 }
