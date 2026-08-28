@@ -56,7 +56,7 @@ http.createServer(async (req,res)=>{
   const u=new URL(req.url,'http://x'); const p=u.pathname;
   const json=(o,code=200)=>{res.writeHead(code,{'content-type':'application/json','access-control-allow-origin':'*'});res.end(JSON.stringify(o));};
   if(MODE==='slow') await new Promise(r=>setTimeout(r,900));
-  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')||p.startsWith('/dex/')||p.startsWith('/gt/')||p.startsWith('/pk/')||p.startsWith('/bn/')){
+  if(p.startsWith('/api/')||p.startsWith('/llama/')||p.startsWith('/dl/')||p.startsWith('/stable/')||p.startsWith('/bridge/')||p.startsWith('/dex/')||p.startsWith('/gt/')||p.startsWith('/pk/')||p.startsWith('/bn/')||p.startsWith('/nft/')||p.startsWith('/me/')){
     if(MODE==='down') return json({error:'nope'},503);
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
     if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
@@ -101,6 +101,16 @@ http.createServer(async (req,res)=>{
       priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd: n==='TinyCoin' ? 1800 : (9e5)/(i+1)},
       volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
   }
+  if(p==='/nft/collections') return json(Array.from({length:40},(_,i)=>({
+    collectionId:'0xcol'+i, name:['Bored Ape Yacht Club','CryptoPunks','Pudgy Penguins','Azuki','Milady',
+      'Doodles','Moonbirds','Art Blocks','Clone X','Chromie Squiggle'][i%10]+(i>9?' '+i:''),
+    symbol:'COL'+i, image:'https://img.invalid/'+i+'.png', chain:['Ethereum','Base','Polygon'][i%3],
+    floorPrice:(30)/(i+1), floorPriceUSD:(9e4)/(i+1), floorPricePctChange1Day:((i%7)-3)*2.4,
+    floorPricePctChange7Day:((i%5)-2)*5.1, dailyVolumeUSD:(4e6)/(i+1), totalSupply:10000-i*100 })));
+  if(p==='/me/marketplace/popular_collections') return json(Array.from({length:12},(_,i)=>({
+    symbol:'mad_lads'+i, name:['Mad Lads','Claynosaurz','Famous Fox Federation','SMB Gen2','Okay Bears'][i%5]+(i>4?' '+i:''),
+    image:'https://img.invalid/me'+i+'.png', floorPrice:(120e9)/(i+1), volumeAll:(9e11)/(i+1) })));
+  if(p.startsWith('/nft/chart/')) return json(walk(p,200,80000).map((v,i)=>({timestamp:i,floorPriceUSD:v})));
   if(p==='/pk/tickers') return json(Array.from({length:60},(_,i)=>({
     id:'pk-'+i, name:'Paprika '+i, symbol:'PK'+i, rank:i+1,
     quotes:{USD:{price:1000/(i+1), market_cap:2e12/(i+1), volume_24h:1e10/(i+1),
@@ -158,7 +168,9 @@ http.createServer(async (req,res)=>{
     .replace("'https://api.dexscreener.com'","'/dex'")
     .replace("'https://api.geckoterminal.com/api/v2'","'/gt'")
     .replace("'https://api.coinpaprika.com/v1'","'/pk'")
-    .replace("'https://api.binance.com/api/v3'","'/bn'"));
+    .replace("'https://api.binance.com/api/v3'","'/bn'")
+    .replace("'https://nft.llama.fi'","'/nft'")
+    .replace("'https://api-mainnet.magiceden.dev/v2'","'/me'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

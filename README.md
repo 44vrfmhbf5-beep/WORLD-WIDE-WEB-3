@@ -80,9 +80,11 @@ Live, keyless, straight from the browser — no backend, no wallet.
 | `stablecoins.llama.fi` | stablecoin supply, peg and mechanism | `/stablecoins` |
 | `bridges.llama.fi` | cross-chain bridge volume | `/bridges` |
 | `api.dexscreener.com` | live DEX pair search — the long tail | `/latest/dex/search` |
+| `nft.llama.fi` | NFT collections, floor price and floor history | `/collections`, `/chart/{collectionId}` |
+| `api-mainnet.magiceden.dev` | Solana and Ordinals collections | `/v2/marketplace/popular_collections` |
 | `api.geckoterminal.com` | trending pools, per-chain tokens, pair OHLCV, second DEX search | `/networks/trending_pools`, `/networks/{net}/pools`, `/networks/{net}/pools/{addr}/ohlcv/{tf}`, `/search/pools` |
 
-Twenty-five endpoints across nine hosts, all keyless and CORS-open.
+Twenty-eight endpoints across eleven hosts, all keyless and CORS-open.
 
 ### No single source can empty the app
 
@@ -106,10 +108,15 @@ Celo. Selecting a chain pulls that network's own traded tokens from
 GeckoTerminal, so a chain is useful the day it launches rather than when an
 aggregator gets round to it.
 
-### Ten kinds, one index
+### Eleven kinds, one index
 
-Assets · lending markets · yield farms · protocols · stablecoins · bridges ·
-funding rounds · exploits · DEX pairs · networks.
+Assets · lending markets · yield farms · protocols · NFT collections · DEX
+pairs · stablecoins · bridges · funding rounds · exploits · networks.
+
+NFT floors arrive in different units from different marketplaces — dollars from
+the EVM marketplaces, SOL from Magic Eden — so each collection carries its own
+unit and the two sources are ranked separately rather than compared against
+each other. A floor is never relabelled as something it is not.
 
 ### The long tail is federated, not indexed
 

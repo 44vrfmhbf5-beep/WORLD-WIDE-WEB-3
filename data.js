@@ -19,6 +19,8 @@ const BRIDGES = 'https://bridges.llama.fi';
 const DEXS = 'https://api.dexscreener.com';
 const PAPRIKA = 'https://api.coinpaprika.com/v1';
 const BINANCE = 'https://api.binance.com/api/v3';
+const NFT = 'https://nft.llama.fi';
+const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
 
 // id, label, colour, DeFiLlama chain name
@@ -94,6 +96,7 @@ function sampleFor(url) {
     return { prices: S.priceSeries(u.pathname.split('/')[4], +u.searchParams.get('days') || 1) };
   if (u.pathname.endsWith('/pools')) return { status: 'success', data: S.pools };
   if (u.pathname.endsWith('/lendBorrow')) return [];
+  if (u.pathname.includes('/chart/') && u.host.startsWith('nft')) return S.nftChart();
   if (u.pathname.includes('/chart/')) return { data: S.apySeries(u.pathname.split('/').pop(), 180) };
   if (u.pathname.endsWith('/protocols')) return S.protocols;
   if (u.pathname.includes('/overview/dexs')) return { protocols: S.dexs };
@@ -111,6 +114,8 @@ function sampleFor(url) {
   if (u.pathname.includes('/ohlcv/')) return { data: { attributes: { ohlcv_list: S.ohlcv(u.pathname, 60) } } };
   if (u.pathname.endsWith('/klines')) return S.klines(u.searchParams.get('symbol') || '', 100);
   if (u.pathname.endsWith('/tickers')) return [];
+  if (u.pathname.endsWith('/collections')) return S.nfts;
+  if (u.pathname.includes('popular_collections')) return S.meNfts;
   if (u.pathname.includes('trending_pools')) return { data: S.trending };
   return null;
 }
@@ -609,6 +614,77 @@ export function loadTrendingPairs() {
   });
 }
 
+/* ---------- NFTs ----------
+   Keyless, CORS-open NFT data is thin on the ground. DeFiLlama covers the EVM
+   marketplaces broadly; Magic Eden adds Solana and Bitcoin Ordinals. Floors
+   arrive in different units, so each collection carries a formatted label and
+   the two sources are ranked separately rather than compared across units. */
+const SOL_LAMPORTS = 1e9;
+
+function llamaNft(c) {
+  const name = c.name || c.collectionId || '?';
+  const floorUsd = num(c.floorPriceUSD ?? c.floorPrice1dUSD);
+  const floor = num(c.floorPrice);
+  return {
+    kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
+    name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
+    img: c.image || c.logo || null, chain: BY_LLAMA[c.chain] || null,
+    net: c.chain || 'Ethereum', market: 'OpenSea',
+    floorUsd, floor, unit: 'ETH',
+    chg1d: num(c.floorPricePctChange1Day), chg7d: num(c.floorPricePctChange7Day),
+    volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
+    key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
+  };
+}
+
+function meNft(c) {
+  const name = c.name || c.symbol || '?';
+  const sol = num(c.floorPrice) / SOL_LAMPORTS;
+  return {
+    kind: 'nft', id: `n:me-${c.symbol || slugOf(name)}`, cid: c.symbol || '',
+    name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
+    img: c.image || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
+    floorUsd: 0, floor: sol, unit: 'SOL',
+    chg1d: 0, chg7d: 0, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
+    supply: 0,
+    key: `${name} ${c.symbol || ''} nft collection solana magic eden pfp art collectible`,
+  };
+}
+
+/** NFT collections. Two marketplaces, ranked within their own units. */
+export function loadNFTs() {
+  return cache('nfts', TTL, async () => {
+    const [dl, me] = await Promise.allSettled([
+      get(`${NFT}/collections`, { timeout: 45000 }),
+      get(`${ME}/marketplace/popular_collections`, { tries: 1, timeout: 15000 }),
+    ]);
+    const a = dl.status === 'fulfilled' && Array.isArray(dl.value)
+      ? dl.value.map(llamaNft).filter(n => n.floorUsd || n.floor)
+        .sort((x, y) => (y.volUsd || y.floorUsd) - (x.volUsd || x.floorUsd)).slice(0, 300)
+      : [];
+    const b = me.status === 'fulfilled' && Array.isArray(me.value)
+      ? me.value.map(meNft).filter(n => n.floor)
+        .sort((x, y) => (y.volSol || 0) - (x.volSol || 0)).slice(0, 60)
+      : [];
+    if (!a.length && !b.length) throw dl.reason || me.reason || new ApiError('No NFT source answered.');
+    return [...a, ...b];
+  });
+}
+
+/** Floor price history for a collection. */
+export function loadNftChart(n, days) {
+  return cache(`nchart:${n.id}`, TTL, async () => {
+    if (!n.cid || n.market !== 'OpenSea') return [];
+    const j = await get(`${NFT}/chart/${encodeURIComponent(n.cid)}`, { tries: 1, timeout: 20000 })
+      .catch(() => null);
+    const rows = Array.isArray(j) ? j : (j?.data || []);
+    return rows.map(r => num(r.floorPriceUSD ?? r.floorPrice ?? r[1])).filter(v => v > 0);
+  }).then(all => {
+    const pts = days >= 365 ? all : all.slice(-days);
+    return pts.length > 1 ? { pts, live: true } : { pts: flat(n.floorUsd || n.floor), live: false };
+  });
+}
+
 export const links = {
   asset: a => `https://www.coingecko.com/en/coins/${a.cg}`,
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
@@ -618,6 +694,9 @@ export const links = {
   raise: r => r.source || 'https://defillama.com/raises',
   hack: h => h.source || 'https://defillama.com/hacks',
   yield: y => `https://defillama.com/yields/pool/${y.pool}`,
+  nft: n => n.market === 'Magic Eden'
+    ? `https://magiceden.io/marketplace/${encodeURIComponent(n.cid)}`
+    : `https://defillama.com/nfts/collection/${encodeURIComponent(n.cid)}`,
   pair: p => p.url || `https://dexscreener.com/${Object.keys(DEX_CHAIN).find(k => DEX_CHAIN[k] === p.chain) || 'solana'}/${p.addr}`,
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };

@@ -133,6 +133,21 @@ await p.route('https://api.geckoterminal.com/**', r => {
   r.fulfill({ contentType: 'application/json',
     body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')] }) });
 });
+await p.route('https://nft.llama.fi/**', r => {
+  const u = r.request().url(); seen.push(u);
+  if (u.includes('/chart/')) return r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify(Array.from({ length: 120 }, (_, i) => ({ timestamp: i, floorPriceUSD: 90000 + i * 40 }))) });
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { collectionId: '0xbayc', name: 'Bored Ape Yacht Club', symbol: 'BAYC', chain: 'Ethereum',
+      image: null, floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
+      floorPricePctChange7Day: 5.4, dailyVolumeUSD: 3.1e6, totalSupply: 10000 },
+    { collectionId: '0xnofloor', name: 'No Floor Collection', symbol: 'NOPE', chain: 'Ethereum' }]) });
+});
+await p.route('https://api-mainnet.magiceden.dev/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { symbol: 'mad_lads', name: 'Mad Lads', image: null, floorPrice: 118e9, volumeAll: 9.2e11 }]) });
+});
 await p.route('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
 console.log(`\n# production endpoints (${PAGE})`);
@@ -165,6 +180,26 @@ ok(hit(/^https:\/\/api\.llama\.fi\/hacks$/), 'DeFiLlama /hacks');
 ok(hit(/\/overview\/derivatives\?/), 'DeFiLlama /overview/derivatives');
 ok(hit(/\/overview\/options\?/), 'DeFiLlama /overview/options');
 ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?page=1$/), 'GeckoTerminal /trending_pools');
+ok(hit(/^https:\/\/nft\.llama\.fi\/collections$/), 'DeFiLlama NFT /collections');
+ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collections$/), 'Magic Eden /popular_collections');
+{
+  await p.waitForSelector('.row[data-id^="n:"]', { timeout: 20000 }).catch(() => {});
+  const body = await p.locator('#results').textContent();
+  ok(body.includes('Bored Ape'), 'EVM collections are indexed');
+  ok(body.includes('Mad Lads'), 'Solana collections are indexed from a second marketplace');
+  ok(!body.includes('No Floor Collection'), 'a collection with no floor at all is dropped');
+  await p.fill('#q', 'mad lads'); await p.waitForTimeout(600);
+  ok(/SOL/.test(await p.locator('.row[data-id^="n:me-"]').first().textContent()),
+    'a Solana floor keeps its own unit rather than being mislabelled as dollars');
+  await p.fill('#q', 'bored ape'); await p.waitForTimeout(600);
+  await p.locator('.row[data-id^="n:"]').first().click();
+  await p.waitForSelector('.sheet-in[data-kind="nft"]', { timeout: 8000 });
+  await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
+  ok(hit(/^https:\/\/nft\.llama\.fi\/chart\/0xbayc$/), 'floor history hits /chart/{collectionId}');
+  ok(await p.locator('.chart svg .line').count() === 1, 'an NFT collection charts its floor');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
 {
   await p.fill('#q', 'cashcat'); await p.waitForTimeout(1400);
   ok(hit(/^https:\/\/api\.dexscreener\.com\/latest\/dex\/search\?q=cashcat$/), 'DexScreener /latest/dex/search');

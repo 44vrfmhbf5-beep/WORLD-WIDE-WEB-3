@@ -2,7 +2,8 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
+  loadChainTokens, loadNFTs, loadNftChart,
+  loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
   links, flags } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -18,6 +19,8 @@ const usd = n => !isFinite(n) ? '—' : n >= 1e4 ? '$' + n.toLocaleString('en-US
 const pct = n => (n > 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
 const apy = n => (n >= 1000 ? compact(n) : (n ?? 0).toFixed(2)) + '%';
 const ago = t => { const m = (Date.now() - t) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0}m ago` : `${m / 60 | 0}h ago`; };
+const floorOf = i => i.floorUsd ? usd(i.floorUsd)
+  : i.floor ? `${i.floor.toFixed(i.unit === 'SOL' ? 2 : 3)} ${i.unit}` : '—';
 const when = t => { const d = (Date.now() - t) / 864e5;
   return !t ? '' : d < 1 ? 'today' : d < 30 ? `${d | 0}d ago` : d < 365 ? `${d / 30 | 0}mo ago` : `${(d / 365).toFixed(0)}y ago`; };
 
@@ -48,7 +51,7 @@ const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
-  pairs: [], chainTokens: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
+  pairs: [], chainTokens: [], nfts: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -82,13 +85,14 @@ let enriched = false;
 async function enrich() {
   if (enriched) return; enriched = true;
   const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
-    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs()]);
+    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs(), loadNFTs()]);
   const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
   S.protocols = val(0, []);
   S.chainRows = val(1, []);
   const st = val(2, { rows: [], bySym: {} });
   S.stables = st.rows; S.bySym = st.bySym;
-  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []); S.pairs = val(6, []);
+  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
+  S.pairs = val(6, []); S.nfts = val(7, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
   // a lending market now carries the protocol behind it
   for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
@@ -98,7 +102,8 @@ async function enrich() {
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 const pooled = () => S.pools.filter(onChain);
 const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
-  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.pairs, ...S.chainTokens, ...S.chainRows];
+  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.nfts, ...S.pairs,
+  ...S.chainTokens, ...S.chainRows];
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
@@ -108,6 +113,7 @@ function scope() {
   if (S.tab === 'lending') return pooled();
   if (S.tab === 'yield') return S.yields.filter(onChain);
   if (S.tab === 'protocols') return S.protocols.filter(onChain);
+  if (S.tab === 'nfts') return S.nfts.filter(onChain);
   return everything().filter(onChain);
 }
 function reindex() {
@@ -125,7 +131,7 @@ const size = i => KIND[i.kind].size(i);
 function trending() {
   const all = scope();
   if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
-  const per = { asset: 12, pool: 10, yield: 10, protocol: 10, stablecoin: 8, bridge: 6, raise: 8, hack: 6, chain: 12 };
+  const per = { asset: 12, pool: 10, yield: 10, protocol: 10, nft: 10, stablecoin: 8, bridge: 6, raise: 8, hack: 6, chain: 12 };
   return KINDS.flatMap(k => all.filter(i => i.kind === k)
     .sort((x, y) => size(y) - size(x)).slice(0, per[k] || 6));
 }
@@ -224,6 +230,23 @@ const KIND = {
     tail: i => i.vol24 ? `$${compact(i.vol24)} 24h volume` : `$${compact(i.tvl)} TVL`,
     n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
 
+  nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
+    label: i => (i.name || '?').slice(0, 2).toUpperCase(), sq: true,
+    title: i => i.name, tag: i => i.market,
+    meta: i => i.net || '',
+    tail: i => i.supply ? `${compact(i.supply)} items` : 'collection',
+    n1: i => floorOf(i), n2: i => i.chg1d ? pct(i.chg1d) : 'floor',
+    cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
+
+  pair: { group: 'DEX pairs', size: i => i.liq,
+    label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
+    title: i => i.name, sub: i => i.sym, tag: i => i.dex,
+    meta: i => i.net || CH[i.chain]?.name || '',
+    tail: i => i.liq ? `$${compact(i.liq)} liquidity` : `$${compact(i.vol24)} 24h volume`,
+    n1: i => i.price ? usd(i.price) : '—',
+    n2: i => i.chg ? pct(i.chg) : `$${compact(i.vol24)} 24h`,
+    cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
+
   stablecoin: { group: 'Stablecoins', size: i => i.circulating,
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
@@ -250,15 +273,6 @@ const KIND = {
     label: () => '!!', title: i => i.name, tag: () => 'Exploit',
     meta: i => i.technique, tail: i => when(i.date),
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
-
-  pair: { group: 'DEX pairs', size: i => i.liq,
-    label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
-    title: i => i.name, sub: i => i.sym, tag: i => i.dex,
-    meta: i => i.net || CH[i.chain]?.name || '',
-    tail: i => i.liq ? `$${compact(i.liq)} liquidity` : `$${compact(i.vol24)} 24h volume`,
-    n1: i => i.price ? usd(i.price) : '—',
-    n2: i => i.chg ? pct(i.chg) : `$${compact(i.vol24)} 24h`,
-    cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
   chain: { group: 'Networks', size: i => i.tvl, sq: true,
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
@@ -560,6 +574,17 @@ const SHEET = {
     body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
     link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
 
+  nft: it => ({ chart: [30, [[7, '1W'], [30, '1M'], [90, '3M'], [365, '1Y']]],
+    big: floorOf(it), cls: it.chg1d >= 0 ? 'up' : 'down',
+    caption: it.chg1d ? `${pct(it.chg1d)} floor, past 24 hours` : 'floor price',
+    sub: [it.market, it.net, it.supply ? `${compact(it.supply)} items` : ''].filter(Boolean).join(' · '),
+    stats: [['Floor', floorOf(it)], ['24h change', it.chg1d ? pct(it.chg1d) : '—'],
+      ['7d change', it.chg7d ? pct(it.chg7d) : '—'],
+      ['Volume', it.volUsd ? '$' + compact(it.volUsd) : it.volSol ? `${compact(it.volSol)} SOL` : '—'],
+      it.supply ? ['Items', compact(it.supply)] : null,
+      ['Marketplace', it.market]],
+    link: [`Open on ${it.market}`, links.nft(it)] }),
+
   pair: it => ({ chart: [7, [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']]],
     big: it.price ? usd(it.price) : '—',
     cls: it.chg >= 0 ? 'up' : 'down',
@@ -598,6 +623,7 @@ let chartSeq = 0;
 
 const chartValue = (it, v) => it.kind === 'pool' ? apy(v)
   : it.kind === 'protocol' ? '$' + compact(v)
+  : it.kind === 'nft' && it.unit === 'SOL' ? `${v.toFixed(2)} SOL`
   : usd(v);
 const RANGE_LABEL = { 1: 'past 24 hours', 7: 'past 7 days', 30: 'past 30 days',
   90: 'past 3 months', 365: 'past year', 3650: 'all time' };
@@ -612,6 +638,7 @@ async function drawChart(days) {
   try {
     res = it.kind === 'asset' ? await loadAssetChart(it, days)
       : it.kind === 'pair' ? await loadPairChart(it, days)
+      : it.kind === 'nft' ? await loadNftChart(it, days)
       : it.kind === 'protocol' ? await loadProtocolChart(it, days)
       : await loadPoolChart(it, days);
   } catch { res = { pts: [], live: false }; }
@@ -684,7 +711,7 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  const first = { asset: 1, pair: 7, protocol: 90, pool: 30 }[it.kind];
+  const first = { asset: 1, pair: 7, protocol: 90, pool: 30, nft: 30 }[it.kind];
   if (first) drawChart(first);
 }
 function hide() {
@@ -740,12 +767,13 @@ function fromUrl() {
   const p = new URLSearchParams(location.search);
   S.q = el.q.value = p.get('q') || '';
   S.chain = CH[p.get('chain')] ? p.get('chain') : null;
-  S.tab = ['assets', 'lending', 'yield', 'protocols', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
+  S.tab = ['assets', 'lending', 'yield', 'protocols', 'nfts', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
   paintFilters();
 }
 
 /* ---------- chrome ---------- */
-const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['yield', 'Yield'], ['protocols', 'Protocols'], ['saved', 'Saved']];
+const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['yield', 'Yield'],
+  ['protocols', 'Protocols'], ['nfts', 'NFTs'], ['saved', 'Saved']];
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${l}</button>`).join('');
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${name}</button>`).join('');

@@ -133,6 +133,26 @@ window.__ATLAS_SAMPLE__ = {
         priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
         volume: { h24: vol }, fdv: liq * 14 }));
   },
+  nfts: [['Bored Ape Yacht Club','BAYC','Ethereum',11.9,41200,-2.4,10000,3.1e6],
+    ['CryptoPunks','PUNK','Ethereum',42.5,147000,1.1,10000,8.4e6],
+    ['Pudgy Penguins','PUDGY','Ethereum',9.8,33900,4.6,8888,5.2e6],
+    ['Azuki','AZUKI','Ethereum',3.4,11800,-1.8,10000,1.4e6],
+    ['Milady Maker','MIL','Ethereum',2.9,10000,6.2,10000,1.1e6],
+    ['Doodles','DOODLE','Ethereum',1.2,4100,-3.1,10000,4.2e5],
+    ['Moonbirds','BIRD','Ethereum',0.9,3100,0.4,10000,2.9e5],
+    ['Chromie Squiggle','SQIG','Ethereum',9.1,31500,2.2,10000,9.1e5],
+    ['Base Punks','BPUNK','Base',0.4,1400,8.9,5000,1.8e5],
+    ['Lil Pudgys','LILP','Ethereum',1.1,3800,-0.6,22222,3.4e5]]
+    .map(([name,symbol,chain,fl,usd,c1,supply,vol],i)=>({ collectionId:'0x'+symbol.toLowerCase(),
+      name, symbol, chain, image:null, floorPrice:fl, floorPriceUSD:usd,
+      floorPricePctChange1Day:c1, floorPricePctChange7Day:c1*2.1,
+      dailyVolumeUSD:vol, totalSupply:supply })),
+  meNfts: [['Mad Lads','mad_lads',118],['Claynosaurz','claynosaurz',34],
+    ['Famous Fox Federation','famous_fox_federation',21],['SMB Gen2','smb_gen2',44],
+    ['Okay Bears','okay_bears',12],['Tensorians','tensorians',9]]
+    .map(([name,symbol,sol],i)=>({ symbol, name, image:null,
+      floorPrice:sol*1e9, volumeAll:(9e11)/(i+1) })),
+  nftChart() { return walk('nftfloor', 200, 40000).map((v,i)=>({ timestamp:i, floorPriceUSD:v })); },
   klines(sym, n) { return walk('k' + sym, n, 100).map(v => [0, 0, 0, 0, String(v), 0]); },
   ohlcv(addr, n) { return walk('o' + addr, n, 1).map((v, i) => [i, 0, 0, 0, v, 0]); },
   chainPools(net) {
