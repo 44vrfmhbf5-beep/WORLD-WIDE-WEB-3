@@ -57,11 +57,14 @@ const S = {
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
   pairs: [], chainTokens: [], nfts: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
+  // table vs cards, DefiLlama density vs Aave's, and the active column sort
+  view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
+  sort: null,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
-  clear: $('#clear'), banner: $('#banner'),
+  clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), thead: null,
 };
 const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
 
@@ -104,23 +107,27 @@ async function enrich() {
 }
 
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
-const pooled = () => S.pools.filter(onChain);
-const everything = () => [...S.assets, ...S.pools, ...S.yields, ...S.protocols,
-  ...S.stables, ...S.bridges, ...S.raises, ...S.hacks, ...S.nfts, ...S.pairs,
-  ...S.chainTokens, ...S.chainRows];
+
+/* Where each kind's rows live. everything(), the category rail and the tab
+   scopes all read this, so a new kind reaches all three at once. */
+const SRC = {
+  asset: () => S.chain ? [...S.chainTokens, ...S.assets] : S.assets,   // global assets carry no chain
+  pool: () => S.pools, yield: () => S.yields, protocol: () => S.protocols,
+  nft: () => S.nfts, pair: () => [...S.pairs, ...S.chainTokens],
+  stablecoin: () => S.stables, bridge: () => S.bridges, raise: () => S.raises,
+  hack: () => S.hacks, chain: () => S.chainRows,
+};
+const everything = () => KINDS.flatMap(k => SRC[k]());
+const countOf = tab => (tab === 'saved' ? [...S.watch.values()]
+  : TAB_KIND[tab] ? SRC[TAB_KIND[tab]]() : everything()).filter(onChain).length;
+
 function scope() {
   if (S.tab === 'saved') {
     const live = everything();
     return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i).filter(onChain);
   }
-  // global assets carry no chain, so a chain filter empties them — the tokens
-  // actually trading on that network are what the tab should show instead
-  if (S.tab === 'assets') return (S.chain ? [...S.chainTokens, ...S.assets] : S.assets).filter(onChain);
-  if (S.tab === 'lending') return pooled();
-  if (S.tab === 'yield') return S.yields.filter(onChain);
-  if (S.tab === 'protocols') return S.protocols.filter(onChain);
-  if (S.tab === 'nfts') return S.nfts.filter(onChain);
-  return everything().filter(onChain);
+  const k = TAB_KIND[S.tab];
+  return (k ? SRC[k]() : everything()).filter(onChain);
 }
 function reindex() {
   S.fuse = new Fuse(scope(), {
@@ -205,7 +212,8 @@ const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-
 
 const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
-const sigOf = it => `${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
+let mode = '';   // '' = cards, else the kind whose columns are on screen
+const sigOf = it => `${mode}|${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
 
 /* Ranges a sheet offers, and how its chart reads a value back. */
 const R = { price: [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']],
@@ -219,18 +227,25 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
+    cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
+      ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
+    cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
+      ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
+      ['Util', i => i.util.toFixed(0) + '%', 'util']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
     n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
+    cols: [['APY', i => apy(i.apy), 'apy', 'up'], ['Base', i => apy(i.apyBase), 'apyBase'],
+      ['Rewards', i => i.apyReward ? apy(i.apyReward) : '—', 'apyReward'], ['TVL', i => money(i.tvl), 'tvl']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: i => i.stable ? 'Stable yield' : 'Yield',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.tvl)} TVL`,
@@ -238,6 +253,9 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
+    cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sgn'],
+      ['7d', i => pct(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
+      ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24']],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.cat,
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
@@ -245,6 +263,10 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
+    cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => i.chg1d ? pct(i.chg1d) : '—', 'chg1d', 'sgn'],
+      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+      ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
+      ['Items', i => i.supply ? compact(i.supply) : '—', 'supply']],
     chart: [loadNftChart, 30, R.mid, nftValue],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(), sq: true,
     title: i => i.name, tag: i => i.market,
@@ -254,6 +276,9 @@ const KIND = {
     cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
+    cols: [['Price', i => i.price ? usd(i.price) : '—', 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
+      ['Liquidity', i => money(i.liq), 'liq'], ['Volume 24h', i => money(i.vol24), 'vol24'],
+      ['FDV', i => i.fdv ? money(i.fdv) : '—', 'fdv']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.dex,
     meta: i => i.net || CH[i.chain]?.name || '',
@@ -263,12 +288,18 @@ const KIND = {
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
+    cols: [['Price', i => usd(i.price), 'price'], ['Circulating', i => money(i.circulating), 'circulating'],
+      ['Mechanism', i => i.mech || '—', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
     meta: i => i.mech || 'Pegged', tail: i => `$${compact(i.circulating)} circulating`,
     n1: i => usd(i.price), n2: i => 'peg', cls: () => 'mute' },
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
+    cols: [['Volume 24h', i => money(i.vol24), 'vol24'],
+      ['Previous day', i => i.volPrev ? money(i.volPrev) : '—', 'volPrev'],
+      ['Change', i => i.volPrev ? pct((i.vol24 - i.volPrev) / i.volPrev * 100) : '—', null, 'sgn'],
+      ['Chains', i => String(i.chains.length), null]],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: () => 'Bridge',
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
@@ -278,6 +309,9 @@ const KIND = {
     cls: i => i.volPrev && i.vol24 >= i.volPrev ? 'up' : i.volPrev ? 'down' : 'mute' },
 
   raise: { group: 'Funding rounds', size: i => i.amount, sq: true,
+    cols: [['Raised', i => money(i.amount), 'amount'], ['Round', i => i.round || '—', null, 'txt'],
+      ['Valuation', i => i.valuation ? money(i.valuation) : '—', 'valuation'],
+      ['Date', i => when(i.date), 'date', 'txt']],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.round || 'Raise',
     meta: i => i.sector || 'Funding',
@@ -285,11 +319,16 @@ const KIND = {
     n1: i => '$' + compact(i.amount), n2: i => when(i.date), cls: () => 'mute' },
 
   hack: { group: 'Exploits', size: i => i.amount, sq: true,
+    cols: [['Lost', i => money(i.amount), 'amount', 'down'], ['Technique', i => i.technique, null, 'txt'],
+      ['Date', i => when(i.date), 'date', 'txt']],
     label: () => '!!', title: i => i.name, tag: () => 'Exploit',
     meta: i => i.technique, tail: i => when(i.date),
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
 
   chain: { group: 'Networks', size: i => i.tvl, sq: true, chart: [loadChainChart, 90, R.long, money],
+    cols: [['TVL', i => money(i.tvl), 'tvl'],
+      ['Protocols', i => String(S.protocols.filter(r => r.chains.includes(i.chain)).length), null],
+      ['Lending markets', i => String(S.pools.filter(p => p.chain === i.chain).length), null]],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: () => 'Network',
     meta: i => `${S.protocols.filter(r => r.chains.includes(i.chain)).length} protocols`,
@@ -297,9 +336,61 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: () => 'TVL', cls: () => 'mute' },
 };
 const KINDS = Object.keys(KIND);
+/* Category rail: every kind that has rows of its own gets a destination, which
+   is how DefiLlama makes a large index navigable without a search term. */
+const TAB_KIND = { assets: 'asset', lending: 'pool', yield: 'yield', protocols: 'protocol',
+  nfts: 'nft', dex: 'pair', stables: 'stablecoin', bridges: 'bridge', raises: 'raise',
+  hacks: 'hack', networks: 'chain' };
+
+/* A homogeneous list can be a table; a mixed one cannot, so search results and
+   the All tab stay cards. That rule needs no special cases — it reads the list. */
+const narrow = matchMedia('(max-width:900px)');
+function tableKind(list) {
+  // A phone has no room for five numeric columns.
+  if (narrow.matches || S.view === 'cards' || !list.length) return null;
+  // The tab has to pin the kind. On All and Saved the list is a ranked mix
+  // where the group heading is what separates an asset from a DEX pair of the
+  // same ticker — columns cannot say that, so those stay cards. Within one
+  // category the heading says nothing the tab does not, and the columns earn
+  // their place. `every` still guards it: live DEX results merge into any tab.
+  const k = TAB_KIND[S.tab];
+  return k && KIND[k].cols && list.every(i => i.kind === k) ? k : null;
+}
+const gridFor = cols => `minmax(180px,2.2fr) repeat(${cols.length},minmax(76px,1fr)) 40px`;
+const cellCls = (cls, v) => cls !== 'sgn' ? (cls || '')
+  : v.startsWith('-') ? 'down' : v.startsWith('+') ? 'up' : 'mute';
+
+function theadHTML(kind) {
+  const cols = KIND[kind].cols;
+  const head = ([label, , key]) => key
+    ? `<button data-sort="${esc(key)}"${S.sort?.key === key
+        ? ` aria-sort="${S.sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}>${esc(label)}</button>`
+    : `<span>${esc(label)}</span>`;
+  return `<div class="thead" style="--cols:${gridFor(cols)}" role="presentation">
+    <span class="name">${esc(KIND[kind].group)}</span>${cols.map(head).join('')}<span></span></div>`;
+}
+
+/** Column sort. Text columns have no key, so only comparable fields sort. */
+function applySort(list) {
+  if (!S.sort) return list;
+  const { key, dir } = S.sort;
+  return [...list].sort((a, b) => dir * ((+a[key] || 0) - (+b[key] || 0)));
+}
 
 function rowHTML(it) {
   const k = KIND[it.kind];
+  if (mode) {
+    const cells = k.cols.map(([, fn, , cls]) => {
+      const v = String(fn(it) ?? '');
+      return `<div class="cell ${cellCls(cls, v)}">${esc(v)}</div>`;
+    }).join('');
+    return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"
+      style="--cols:${gridFor(k.cols)}">
+      <div class="name">${tok(it, k.sq)}<div class="body">
+        <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}</div>
+        <div class="t2">${esc(k.meta?.(it) || '')}</div></div></div>
+      ${cells}${star(it)}</div>`;
+  }
   const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
   return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
     ${tok(it, k.sq)}
@@ -351,6 +442,24 @@ function paintSel(scroll) {
   });
 }
 
+/* The totals DefiLlama leads with, summed from data already in memory — no
+   extra request, and they move with the chain filter like everything else. */
+function paintStats() {
+  if (S.loading || S.err) return el.stats.replaceChildren();
+  const sum = (a, f) => a.filter(onChain).reduce((t, i) => t + (f(i) || 0), 0);
+  // a source that has not answered totals zero; say so rather than claiming $0
+  const cash = n => n ? money(n) : '—';
+  const rows = [
+    ['Total TVL', cash(sum(S.chainRows, i => i.tvl))],
+    ['Supplied', cash(sum(S.pools, i => i.supplyUsd))],
+    ['DEX volume 24h', cash(sum(S.protocols, i => i.vol24))],
+    ['Stablecoins', cash(sum(S.stables, i => i.circulating))],
+    ['Indexed', compact(everything().filter(onChain).length)],
+  ];
+  el.stats.innerHTML = rows.map(([k, v]) =>
+    `<div class="s"><div class="sk">${k}</div><div class="sv">${esc(v)}</div></div>`).join('');
+}
+
 /** Bring the results back into view when the query or a filter changes. */
 function scrollToResults() {
   const y = el.res.getBoundingClientRect().top + scrollY - 150;
@@ -361,6 +470,7 @@ const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" s
 
 function render() {
   document.body.classList.toggle('searching', !!S.q);
+  document.body.classList.toggle('browsing', S.tab !== 'all');
   el.clear.hidden = !S.q;
 
   const dexErr = S.remote.q === S.q.trim() && S.remote.errors?.length ? S.remote.errors : null;
@@ -383,7 +493,9 @@ function render() {
     return;
   }
 
-  const list = S.list = withRemote(compute());
+  const list = S.list = applySort(withRemote(compute()));
+  mode = tableKind(list) || '';
+  paintStats(); paintCounts();
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   el.meta.innerHTML = !list.length ? '' : S.q
@@ -404,10 +516,17 @@ function render() {
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
   }
+  el.res.classList.toggle('table', !!mode);
+  el.res.classList.toggle('compact', S.dense);
   const frag = document.createDocumentFragment();
+  if (mode) {
+    const h = document.createElement('template');
+    h.innerHTML = theadHTML(mode).trim();
+    frag.appendChild(h.content.firstElementChild);
+  }
   let last = null;
   list.forEach((it, i) => {
-    if (S.tab === 'all' || S.tab === 'saved') {
+    if (!mode && (S.tab === 'all' || S.tab === 'saved')) {
       if (it.kind !== last) {
       const h = document.createElement('div');
       h.className = 'gtitle'; h.setAttribute('role', 'presentation');
@@ -422,9 +541,12 @@ function render() {
 }
 
 /** Fold live DEX results into the local list, next to any pairs already there
-    so the group heading is never emitted twice. */
+    so the group heading is never emitted twice. A category that pins a different
+    kind does not take them: searching on Exploits should not return memecoins. */
 function withRemote(list) {
   if (!S.remote.q || S.remote.q !== S.q.trim()) return list;
+  const k = TAB_KIND[S.tab];
+  if (k && k !== 'pair') return list;
   const have = new Set(list.map(i => i.id));
   const extra = S.remote.rows.filter(r => !have.has(r.id));
   if (!extra.length) return list;
@@ -777,21 +899,37 @@ function fromUrl() {
   const p = new URLSearchParams(location.search);
   S.q = el.q.value = p.get('q') || '';
   S.chain = CH[p.get('chain')] ? p.get('chain') : null;
-  S.tab = ['assets', 'lending', 'yield', 'protocols', 'nfts', 'saved'].includes(p.get('tab')) ? p.get('tab') : 'all';
-  paintFilters();
+  S.tab = TABS.some(([t]) => t === p.get('tab')) ? p.get('tab') : 'all';
+  paintFilters(); paintTools();
 }
 
 /* ---------- chrome ---------- */
-const TABS = [['all', 'All'], ['assets', 'Assets'], ['lending', 'Lending'], ['yield', 'Yield'],
-  ['protocols', 'Protocols'], ['nfts', 'NFTs'], ['saved', 'Saved']];
-$('#tabs').innerHTML = TABS.map(([k, l]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${l}</button>`).join('');
+// every kind is a destination in the rail, plus All and Saved at the ends
+const TABS = [['all', 'All'], ...KINDS.map(k => {
+  const tab = Object.keys(TAB_KIND).find(t => TAB_KIND[t] === k);
+  return [tab, KIND[k].group];
+}), ['saved', 'Saved']];
+$('#tabs').innerHTML = TABS.map(([k, l]) =>
+  `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${esc(l)}<span class="ct"></span></button>`).join('');
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
-  CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${name}</button>`).join('');
+  CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${esc(name)}</button>`).join('');
 $('#netCount').textContent = `${CHAINS.length} networks`;
 $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
   document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
+}
+/** How much sits behind each category, so the rail says what it holds. */
+function paintCounts() {
+  document.querySelectorAll('[data-tab] .ct').forEach(el => {
+    const n = countOf(el.parentElement.dataset.tab);
+    el.textContent = n ? compact(n) : '';
+  });
+}
+function paintTools() {
+  $('#density span').textContent = S.dense ? 'Compact' : 'Comfortable';
+  $('#density').setAttribute('aria-pressed', S.dense);
+  $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
 }
 
 /* ---------- events ---------- */
@@ -799,10 +937,27 @@ el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render();
 el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));
+narrow.addEventListener('change', () => { nodes.clear(); render(); });
+$('#density').addEventListener('click', () => {
+  S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0'); paintTools(); render();
+});
+$('#view').addEventListener('click', () => {
+  S.view = S.view === 'cards' ? 'auto' : 'cards';
+  store.set('atlas:view', S.view); paintTools(); nodes.clear(); render();
+});
+// column sort lives on the header, which is rebuilt each render
+el.res.addEventListener('click', e => {
+  const b = e.target.closest('[data-sort]'); if (!b) return;
+  const key = b.dataset.sort;
+  S.sort = S.sort?.key === key && S.sort.dir < 0 ? { key, dir: 1 }
+    : S.sort?.key === key ? null : { key, dir: -1 };
+  S.sel = 0; render();
+}, true);
 
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
-  S.tab = b.dataset.tab; S.sel = 0; paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
+  S.tab = b.dataset.tab; S.sel = 0; S.sort = null;
+  paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 let chainSeq = 0;
 $('#chains').addEventListener('click', async e => {

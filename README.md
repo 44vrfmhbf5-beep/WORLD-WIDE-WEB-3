@@ -94,6 +94,41 @@ first to answer wins. Charts try CoinGecko, then Binance klines, then the 7-day
 sparkline, and finally draw a flat line at the current value labelled as having
 no history — a chart never renders as an empty box.
 
+### Layout
+
+Two references, and they want opposite things. DefiLlama makes a large index
+navigable: a persistent category rail, aggregate totals across the top, and
+dense sortable tables. Aave makes one decision easy: generous rows, a primary
+number you can read across the room, and very little else competing with it.
+
+Both are on screen at once, and one control slides between them:
+
+| | DefiLlama | Aave | Here |
+| --- | --- | --- | --- |
+| Navigation | category rail | a few big tabs | rail, every kind a destination with its row count |
+| Totals | aggregate header | per-market cards | aggregate bar, summed from data already loaded |
+| Rows | dense sortable table | tall calm cards | table when browsing a category, cards when ranking a mix |
+| Density | compact | comfortable | a toggle, remembered per browser |
+
+The rule for which shape you get needs no special cases: **a tab that pins one
+kind gets columns, a ranked mix of kinds gets cards.** On All and Saved the
+group heading is what separates an asset from a DEX pair of the same ticker,
+and columns cannot say that. Inside a category the heading says nothing the tab
+does not, so the columns earn the space — including under a search. Narrow
+viewports get cards regardless; five numeric columns do not fit on a phone.
+
+Columns are four fields on the same `KIND` descriptor that already drives the
+rows, headings and search scope, so a kind gets its table by describing it:
+
+```js
+cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sgn'], …]
+//      heading  cell              sort key                                  colour by sign
+```
+
+The table is CSS grid over the same `.row` nodes the cards use, not `<table>`
+markup — so the keyed reconciler, selection, starring and keyboard nav all work
+in both views with no second code path.
+
 ### Charts
 
 One component for every kind. The line animates in, the pointer reads out any
@@ -113,6 +148,14 @@ zkSync Era, Sei, Unichain, Ink, Abstract, Plume, Story, Mantle, TON, Tron and
 Celo. Selecting a chain pulls that network's own traded tokens from
 GeckoTerminal, so a chain is useful the day it launches rather than when an
 aggregator gets round to it.
+
+### Every kind is a destination
+
+Stablecoins, bridges, funding rounds, exploits and networks used to be
+reachable only by searching or by scrolling the All tab. Each is now a category
+in the rail with its own columns and its own sort. One table maps a tab to a
+kind and one maps a kind to its rows, so `everything()`, the rail, the counts
+and the tab scopes cannot drift apart.
 
 ### Eleven kinds, one index
 

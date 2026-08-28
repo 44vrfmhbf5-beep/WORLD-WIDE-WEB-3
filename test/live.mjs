@@ -312,6 +312,61 @@ for (const [q, sel, kind] of [['usd coin', 's:', 'stablecoin'], ['kamino', 'p:',
 ok(hit(/\/stablecoincharts\/all\?stablecoin=1$/), 'stablecoin supply history is fetched');
 await p.fill('#q', ''); await p.waitForTimeout(400);
 
+console.log('\n# the combined layout: DefiLlama density, Aave calm');
+{
+  // every kind is a destination in the rail, and says how much sits behind it
+  const rail = await p.locator('#rail [data-tab]').allTextContents();
+  ok(rail.length === 13, `rail lists all eleven kinds plus All and Saved (${rail.length})`);
+  ok(/Networks/.test(rail.join(' ')) && /Exploits/.test(rail.join(' ')),
+    'kinds that were search-only now have their own category');
+  ok(await p.locator('#rail [data-tab=protocols] .ct').textContent() !== '',
+    'a category carries its row count');
+
+  // aggregate bar, summed from data already loaded
+  const stats = await p.locator('#statbar').textContent();
+  ok(/Total TVL/.test(stats) && /\$/.test(stats), `the aggregate bar totals the index (${stats.slice(0, 40)})`);
+
+  // browsing a category is a sortable table
+  await p.click('[data-tab=protocols]'); await p.waitForTimeout(700);
+  ok(await p.locator('#results.table').count() === 1, 'browsing one kind renders a table');
+  const heads = await p.locator('.thead button, .thead span').allTextContents();
+  ok(/TVL/.test(heads.join(' ')) && /Fees 24h/.test(heads.join(' ')),
+    `columns come from the kind descriptor (${heads.join('|')})`);
+  ok(await p.locator('.row .cell').count() > 0, 'rows render as cells, not cards');
+
+  // sorting — assert the column is actually ordered, not merely that it moved
+  const colVals = async () => (await p.locator('.row .cell:nth-child(3)').allTextContents())
+    .map(t => parseFloat(t.replace(/[^0-9.-]/g, '')) || 0);
+  await p.locator('.thead button[data-sort=chg1d]').click(); await p.waitForTimeout(400);
+  ok(await p.locator('.thead button[data-sort=chg1d]').getAttribute('aria-sort') === 'descending',
+    'a column header sorts by that column');
+  const desc = await colVals();
+  ok(desc.every((v, i) => !i || desc[i - 1] >= v), `descending really descends (${desc.join(' ')})`);
+  await p.locator('.thead button[data-sort=chg1d]').click(); await p.waitForTimeout(400);
+  const asc = await colVals();
+  ok(asc.every((v, i) => !i || asc[i - 1] <= v), `clicking again reverses it (${asc.join(' ')})`);
+  await p.locator('.thead button[data-sort=chg1d]').click(); await p.waitForTimeout(400);
+  ok(await p.locator('.thead button[data-sort=chg1d]').getAttribute('aria-sort') === null,
+    'a third click clears the sort');
+
+  // density: the one control between DefiLlama's rows and Aave's
+  await p.click('#density'); await p.waitForTimeout(300);
+  ok(await p.locator('#results.compact').count() === 1, 'the density toggle compacts the rows');
+  await p.click('#density'); await p.waitForTimeout(300);
+
+  // inside a category the columns survive a query
+  await p.fill('#q', 'aave'); await p.waitForTimeout(700);
+  ok(await p.locator('#results.table').count() === 1, 'searching within a category keeps the table');
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+
+  // on All the list is a ranked mix, where the heading carries the meaning
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+  ok(await p.locator('#results.table').count() === 0, 'a ranked mix of kinds is never a table');
+  await p.fill('#q', 'aave'); await p.waitForTimeout(700);
+  ok(await p.locator('.gtitle').count() > 0, 'and keeps the group heading that names each kind');
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
+
 console.log('\n# per-chain and chart endpoints');
 await p.click('[data-chain=sol]'); await p.waitForTimeout(1500);
 ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1$/),

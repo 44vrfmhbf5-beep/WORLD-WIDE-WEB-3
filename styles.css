@@ -48,7 +48,10 @@ button{background:none;border:0;cursor:pointer}
 kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;background:rgba(255,255,255,.07);
   border:1px solid var(--line);color:var(--faint)}
 
-.wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:0 20px}
+/* width:100% is load-bearing — auto inline margins suppress a grid item's
+   stretch, so without it .wrap is shrink-to-fit and its width drifts with
+   whatever content happens to be tallest. */
+.wrap{position:relative;z-index:1;width:100%;max-width:1120px;margin:0 auto;padding:0 22px;min-width:0}
 
 /* hero */
 .hero{text-align:center;padding:56px 0 26px;transition:.35s var(--ease)}
@@ -59,9 +62,9 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;background:rgb
 .hero .sub span{color:var(--accent)}
 .hero h1,.hero .sub{transition:font-size .3s var(--ease),opacity .22s var(--ease),
   transform .3s var(--ease),margin .3s var(--ease)}
-body.searching .hero{padding:20px 0 6px}
-body.searching .hero h1{font-size:0;opacity:0;margin:0;transform:translateY(-10px)}
-body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6px)}
+body.searching .hero,body.browsing .hero{padding:20px 0 6px}
+body.searching .hero h1,body.browsing .hero h1{font-size:0;opacity:0;margin:0;transform:translateY(-10px)}
+body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6px)}
 
 /* search */
 .searchbar{position:sticky;top:64px;z-index:15;display:flex;align-items:center;gap:12px;
@@ -297,3 +300,110 @@ body.searching .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6
 .nohist{position:absolute;inset:auto 0 8px;text-align:center;color:var(--faint);font-size:11.5px}
 @media (prefers-reduced-motion:reduce){.chart-svg .line{animation:none;stroke-dashoffset:0}
   .chart-svg .area{animation:none;opacity:1}}
+
+
+/* ---- layout: DefiLlama's rail and density, Aave's calm ----
+   A persistent category rail down the left and an aggregate bar across the top
+   are what make DefiLlama scannable. The row rhythm, the size of the primary
+   number and the amount of air around it are Aave's. Both are on screen at
+   once, and the density toggle slides between them. */
+.app{display:grid;grid-template-columns:212px minmax(0,1fr);align-items:start;gap:0}
+.app>*{min-width:0}
+
+.rail{position:sticky;top:56px;z-index:10;align-self:start;height:calc(100vh - 56px);
+  display:flex;flex-direction:column;gap:18px;padding:22px 12px 20px 20px;
+  border-right:1px solid var(--line);overflow-y:auto;scrollbar-width:thin}
+.railnav{display:flex;flex-direction:column;gap:2px}
+.railnav .tab{display:flex;align-items:center;gap:10px;width:100%;padding:8px 11px;border-radius:10px;
+  font-size:13.5px;font-weight:600;color:var(--dim);text-align:left;white-space:nowrap;
+  transition:.14s var(--ease)}
+.railnav .tab:hover{color:var(--text);background:var(--surface)}
+.railnav .tab[aria-selected=true]{background:var(--surface2);color:var(--text)}
+/* the accent bead carries the selection, so the label never has to shout */
+.railnav .tab::before{content:"";width:3px;height:15px;border-radius:2px;background:transparent;flex:none}
+.railnav .tab[aria-selected=true]::before{background:var(--accent)}
+.railnav .tab .ct{margin-left:auto;font-size:11px;font-weight:600;color:var(--faint);
+  font-variant-numeric:tabular-nums}
+.railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+.railk{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  padding-left:11px}
+.railchains{display:flex;flex-direction:column;gap:2px;overflow-y:auto;padding-right:2px;
+  max-height:min(42vh,340px);scrollbar-width:thin}
+.railchains .chip{border:0;background:none;border-radius:9px;padding:6px 10px;justify-content:flex-start}
+.railchains .chip:hover{background:var(--surface)}
+.railchains .chip[aria-pressed=true]{background:color-mix(in srgb,var(--c) 15%,var(--surface2));color:var(--text)}
+
+/* aggregate bar — the numbers DefiLlama leads with, from data already loaded */
+.statbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin:6px 0 2px}
+.statbar .s{padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--line)}
+.statbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.statbar .sv{margin-top:4px;font-size:17px;font-weight:700;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums}
+.statbar:empty{display:none}
+
+/* results header: count on the left, the two view controls on the right */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.bar .meta{padding:14px 2px 10px}
+.viewtools{display:flex;gap:6px;flex:none}
+.vt{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--line);color:var(--dim);
+  font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
+.vt:hover{color:var(--text);border-color:var(--line2)}
+.vt .i{width:15px;height:15px}
+
+/* ---- table view ----
+   Grid rows, not <table>: the same .row nodes the card view uses, so the keyed
+   reconciler, selection, starring and keyboard nav all work unchanged. */
+.results.table{gap:0}
+.results.table .row{border-radius:0;border-left:0;border-right:0;border-top:0;
+  border-bottom:1px solid var(--line);background:none;
+  display:grid;grid-template-columns:var(--cols);align-items:center;gap:14px;padding:14px 12px}
+.results.table .row:hover{background:var(--surface)}
+.results.table .row.sel{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);border-radius:0}
+.thead{border-bottom:1px solid var(--line2)}
+.results.table .name{display:flex;align-items:center;gap:12px;min-width:0}
+.results.table .cell{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;
+  letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.results.table .cell.txt{font-weight:500;color:var(--dim);font-size:13px}
+.results.table .num,.results.table .spark{display:none}
+.results.table .star{margin-left:4px}
+
+.thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:0 12px 8px;
+  position:sticky;top:118px;z-index:9;background:var(--bg)}
+.thead span,.thead button{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);text-align:right;white-space:nowrap}
+.thead .name{text-align:left;justify-content:flex-start}
+.thead button{display:block;width:100%;transition:color .14s}
+.thead button:hover{color:var(--dim)}
+.thead button[aria-sort]{color:var(--accent)}
+.thead button[aria-sort=ascending]::after{content:" \2191"}
+.thead button[aria-sort=descending]::after{content:" \2193"}
+
+/* compact = DefiLlama; comfortable = Aave. One class between them. */
+.results.compact .row{padding:8px 12px}
+.results.compact .tok{width:26px;height:26px;font-size:10px}
+.results.compact .t1{font-size:13px}
+.results.compact .t2{display:none}
+.results.compact .cell{font-size:13px}
+
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  /* two scrollers stacked: categories, then chains. Side by side, the chain
+     chips end up off the right edge behind thirteen categories. */
+  .rail{position:static;height:auto;gap:8px;border-right:0;
+    border-bottom:1px solid var(--line);padding:10px 0;overflow:visible}
+  .railnav,.railchains{flex-direction:row;gap:4px;overflow-x:auto;scrollbar-width:none;
+    padding:0 14px;max-height:none;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .railnav::-webkit-scrollbar,.railchains::-webkit-scrollbar{display:none}
+  .railnav .tab{width:auto;flex:none;padding:6px 12px}
+  .railnav .tab::before,.railnav .tab .ct{display:none}
+  .railfoot{margin:0;gap:0;min-width:0}
+  .railk{display:none}
+  .railchains .chip{white-space:nowrap;flex:none}
+  /* one scrolling strip, not three stacked rows eating the first screen */
+  .statbar{display:flex;overflow-x:auto;scrollbar-width:none;margin:10px 0 2px;
+    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .statbar::-webkit-scrollbar{display:none}
+  .statbar .s{flex:none;min-width:132px}
+  .thead{display:none}
+}
