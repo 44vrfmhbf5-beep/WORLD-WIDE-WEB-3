@@ -76,15 +76,15 @@ Live, keyless, straight from the browser — no backend, no wallet.
 | `api.coinpaprika.com` | assets and 24h/7d/30d/1y moves when CoinGecko refuses the origin | `/tickers` |
 | `api.binance.com` | price history when neither of the above answers | `/klines` |
 | `yields.llama.fi` | lending markets and yield farms, APY history | `/pools`, `/lendBorrow`, `/chart/{pool}` |
-| `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/{dexs,fees,derivatives,options}`, `/v2/chains`, `/raises`, `/hacks` |
-| `stablecoins.llama.fi` | stablecoin supply, peg and mechanism | `/stablecoins` |
+| `api.llama.fi` | protocols, TVL history, DEX / perps / options volume, fees and revenue, per-chain TVL and its history, funding rounds, exploits | `/protocols`, `/protocol/{slug}`, `/overview/{dexs,fees,derivatives,options}`, `/v2/chains`, `/v2/historicalChainTvl/{chain}`, `/raises`, `/hacks` |
+| `stablecoins.llama.fi` | stablecoin supply, peg and mechanism, supply history | `/stablecoins`, `/stablecoincharts/all` |
 | `bridges.llama.fi` | cross-chain bridge volume | `/bridges` |
 | `api.dexscreener.com` | live DEX pair search — the long tail | `/latest/dex/search` |
 | `nft.llama.fi` | NFT collections, floor price and floor history | `/collections`, `/chart/{collectionId}` |
 | `api-mainnet.magiceden.dev` | Solana and Ordinals collections | `/v2/marketplace/popular_collections` |
 | `api.geckoterminal.com` | trending pools, per-chain tokens, pair OHLCV, second DEX search | `/networks/trending_pools`, `/networks/{net}/pools`, `/networks/{net}/pools/{addr}/ohlcv/{tf}`, `/search/pools` |
 
-Twenty-eight endpoints across eleven hosts, all keyless and CORS-open.
+Thirty endpoints across eleven hosts, all keyless and CORS-open.
 
 ### No single source can empty the app
 
@@ -99,6 +99,12 @@ no history — a chart never renders as an empty box.
 One component for every kind. The line animates in, the pointer reads out any
 point, and the headline percentage is computed from the range on screen rather
 than a fixed 24 hours — switch to 1Y and it reports the year.
+
+Which loader, which ranges and how a value reads back are four fields in the
+`KIND` table, so every kind with a series over time has a chart: assets, DEX
+pairs, lending markets, yield farms, protocols, NFT floors, stablecoin supply
+and chain TVL. Funding rounds, exploits and bridges don't — they're events and
+a daily total, not a series, and drawing one would be inventing it.
 
 ### 30 networks
 
@@ -157,8 +163,10 @@ Lending markets come from joining DeFiLlama's `pools` and `lendBorrow` feeds on
 pool id, keeping only markets with a real borrow side and over $500k supplied.
 Assets and markets are matched by ticker to produce the cross-links.
 
-Responses are cached in `sessionStorage` for 5 minutes, and a stale entry is
-served if a refetch fails, so a rate limit degrades instead of blanking the page.
+Responses are cached for 5 minutes in memory and, where they fit, in
+`sessionStorage` — the pool payload alone is ~10MB and blows the storage quota,
+so the memory tier is what actually holds it. A stale entry is served if a
+refetch fails, so a rate limit degrades instead of blanking the page.
 
 ### Rate limits, and the one thing to watch
 
@@ -167,10 +175,18 @@ well inside that; hammering the chain chips will trip it, which surfaces as a
 "rate limited" notice rather than an error. Adding a demo key (`x-cg-demo-api-key`)
 in `data.js` raises it substantially.
 
-Per-chain asset lists use CoinGecko *category* slugs, mapped in the `CHAINS`
-table at the top of `data.js`. If a chain tab comes up empty, that slug is the
-thing to check — CoinGecko renames them occasionally, and the whole mapping is
-one table.
+Per-chain token lists come from GeckoTerminal, whose network slugs are mapped
+in `GT_NET` in `data.js`. If a chain chip comes up thin, that slug is the thing
+to check — the whole mapping is one table, and a chain missing from it still
+filters everything else correctly.
+
+### URLs from upstream
+
+A protocol's `url`, a raise's `source` and a hack's `source` are strings someone
+else controls that end up in an `href`. Escaping stops attribute breakout but
+not the scheme — `javascript:` still runs on click — so `safeUrl()` admits only
+`http(s)` and otherwise falls back to the canonical DeFiLlama page. It's applied
+both where the record is read and where the link is built.
 
 ## Files
 

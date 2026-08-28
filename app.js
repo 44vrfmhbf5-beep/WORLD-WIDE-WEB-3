@@ -2,9 +2,9 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadNFTs, loadNftChart,
+  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
-  links, flags } from './data.js';
+  links, flags, clearCache } from './data.js';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -13,9 +13,13 @@ const coarse = matchMedia('(hover:none)').matches;   // don't pop a mobile keybo
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const compact = n => !isFinite(n) || !n ? '0' : n >= 1e12 ? (n / 1e12).toFixed(2) + 'T' : n >= 1e9 ? (n / 1e9).toFixed(2) + 'B'
   : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K' : n.toFixed(0);
-const usd = n => !isFinite(n) ? '—' : n >= 1e4 ? '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+// toPrecision goes exponential below 1e-6, which is exactly where the DEX long
+// tail lives — show the zeros instead, trimmed to the significant digits.
+const tiny = n => n.toFixed(Math.min(20, 3 - Math.floor(Math.log10(n)))).replace(/0+$/, '').replace(/\.$/, '');
+const usd = n => !isFinite(n) ? '—' : n < 0 ? '-' + usd(-n)
+  : n >= 1e4 ? '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
   : n >= 1 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  : '$' + n.toPrecision(3);
+  : n === 0 ? '$0.00' : '$' + tiny(n);
 const pct = n => (n > 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
 const apy = n => (n >= 1000 ? compact(n) : (n ?? 0).toFixed(2)) + '%';
 const ago = t => { const m = (Date.now() - t) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0}m ago` : `${m / 60 | 0}h ago`; };
@@ -63,7 +67,7 @@ const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.valu
 
 /* ---------- data ---------- */
 async function load({ force } = {}) {
-  if (force) { try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {} }
+  if (force) clearCache();
   S.loading = true; S.err = S.warn = null; render();
   const [a, p] = await Promise.allSettled([loadAssets(), loadPools()]);
   S.assets = a.status === 'fulfilled' ? a.value : [];
@@ -109,7 +113,9 @@ function scope() {
     const live = everything();
     return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i).filter(onChain);
   }
-  if (S.tab === 'assets') return S.assets.filter(onChain);
+  // global assets carry no chain, so a chain filter empties them — the tokens
+  // actually trading on that network are what the tab should show instead
+  if (S.tab === 'assets') return (S.chain ? [...S.chainTokens, ...S.assets] : S.assets).filter(onChain);
   if (S.tab === 'lending') return pooled();
   if (S.tab === 'yield') return S.yields.filter(onChain);
   if (S.tab === 'protocols') return S.protocols.filter(onChain);
@@ -191,7 +197,7 @@ const tok = (it, sq) => {
   const label = KIND[it.kind].label(it);
   const c = CH[it.chain];
   return `<div class="tok${sq ? ' sq' : ''}${label.length > 3 ? ' t4' : ''}" style="--c:${it.color}${c ? ';--c2:' + c.color : ''}">${esc(label)}` +
-    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
+    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
     (c ? '<span class="badge"></span>' : '') + `</div>`;
 };
 const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-star="${esc(it.id)}" aria-label="Save to watchlist" aria-pressed="${S.watch.has(it.id)}">
@@ -201,29 +207,37 @@ const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
 const sigOf = it => `${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
 
-/* One descriptor per kind drives the rows, the group headings and the search
-   scope. Adding a kind is a table entry, not another branch through render. */
+/* Ranges a sheet offers, and how its chart reads a value back. */
+const R = { price: [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']],
+  mid: [[7, '1W'], [30, '1M'], [90, '3M'], [365, '1Y']],
+  long: [[30, '1M'], [90, '3M'], [365, '1Y'], [3650, 'All']] };
+const money = v => '$' + compact(v);
+const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ? 2 : 3)} ${i.unit}`;
+
+/* One descriptor per kind drives the rows, the group headings, the search
+   scope and the sheet's chart — [loader, default range, ranges, readout].
+   Adding a kind is a table entry, not another branch through render. */
 const KIND = {
-  asset: { group: 'Assets', size: i => i.mcap, spark: true,
+  asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
-  pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true,
+  pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
     n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
-  yield: { group: 'Yield', size: i => i.tvl, sq: true,
+  yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: i => i.stable ? 'Stable yield' : 'Yield',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.tvl)} TVL`,
     n1: i => apy(i.apy), n1cls: 'up',
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
-  protocol: { group: 'Protocols', size: i => i.tvl, sq: true,
+  protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.cat,
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
@@ -231,6 +245,7 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
+    chart: [loadNftChart, 30, R.mid, nftValue],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(), sq: true,
     title: i => i.name, tag: i => i.market,
     meta: i => i.net || '',
@@ -238,7 +253,7 @@ const KIND = {
     n1: i => floorOf(i), n2: i => i.chg1d ? pct(i.chg1d) : 'floor',
     cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
 
-  pair: { group: 'DEX pairs', size: i => i.liq,
+  pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.dex,
     meta: i => i.net || CH[i.chain]?.name || '',
@@ -247,7 +262,7 @@ const KIND = {
     n2: i => i.chg ? pct(i.chg) : `$${compact(i.vol24)} 24h`,
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
-  stablecoin: { group: 'Stablecoins', size: i => i.circulating,
+  stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
     meta: i => i.mech || 'Pegged', tail: i => `$${compact(i.circulating)} circulating`,
@@ -274,7 +289,7 @@ const KIND = {
     meta: i => i.technique, tail: i => when(i.date),
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
 
-  chain: { group: 'Networks', size: i => i.tvl, sq: true,
+  chain: { group: 'Networks', size: i => i.tvl, sq: true, chart: [loadChainChart, 90, R.long, money],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: () => 'Network',
     meta: i => `${S.protocols.filter(r => r.chains.includes(i.chain)).length} protocols`,
@@ -384,7 +399,7 @@ function render() {
     el.res.innerHTML =
       S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
-      : !S.q && S.chain && !S.assets.length
+      : !S.q && S.chain
         ? `<div class="empty"><b>Nothing indexed for ${esc(CH[S.chain].name)} yet</b>No source returned data for this network. Newer chains often appear here before the aggregators cover them.</div>`
       : `<div class="empty"><b>Nothing matched “${esc(S.q.trim())}”</b>Try a ticker like SOL, a protocol like Aave, or “usdc lending”.</div>`;
     return;
@@ -419,6 +434,13 @@ function withRemote(list) {
 }
 
 /* ---------- detail sheet ---------- */
+function chartBox(it) {
+  const c = KIND[it.kind].chart;
+  if (!c) return '';
+  const tabs = c[2].map(([d, l]) =>
+    `<span class="${d === c[1] ? 'on' : ''}" data-days="${d}" role="button" tabindex="0">${l}</span>`).join('');
+  return `<div class="chart"><div class="chart-svg"><div class="cload"></div></div><div class="rangebar">${tabs}</div></div>`;
+}
 let depth = 0;                       // sheet entries pushed since the sheet opened
 // remote DEX results are transient — they live in S.list, not the prefetched index
 const find = id => everything().find(x => x.id === id)
@@ -431,9 +453,6 @@ function sheetHTML(it) {
   const head = (t, sub) => `<div class="sheet-top">
     <div class="ident">${tok(it, it.kind === 'pool')}<div><h2>${esc(t)}</h2><div class="hsub">${esc(sub)}</div></div></div>
     <div class="acts">${star(it)}${back}<button class="x" data-close aria-label="Close"><svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>`;
-  const ranges = (days, opts) => `<div class="rangebar">${opts.map(([d, l]) =>
-    `<span class="${d === days ? 'on' : ''}" data-days="${d}" role="button" tabindex="0">${l}</span>`).join('')}</div>`;
-  const chartBox = (days, opts) => `<div class="chart"><div class="chart-svg"><div class="cload"></div></div>${ranges(days, opts)}</div>`;
 
   if (it.kind === 'asset') {
     const markets = S.pools.filter(p => p.sym === it.sym).sort((a, b) => b.supplyUsd - a.supplyUsd).slice(0, 6);
@@ -441,7 +460,7 @@ function sheetHTML(it) {
       ${head(it.name, [it.sym, c?.name, it.rank ? '#' + it.rank : ''].filter(Boolean).join(' · '))}
       <div class="big">${usd(it.price)}</div>
       <div class="chgline"><span class="${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</span><span class="mute">past 24 hours</span></div>
-      ${chartBox(1, [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']])}
+      ${chartBox(it)}
       <div class="stats">
         ${stat('Market cap', '$' + compact(it.mcap))}
         ${stat('24h volume', '$' + compact(it.vol))}
@@ -465,7 +484,7 @@ function sheetHTML(it) {
       ${head(s.head || KIND[it.kind].title(it), s.sub)}
       <div class="big ${s.cls || ''}">${esc(s.big)}</div>
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
-      ${s.chart ? chartBox(s.chart[0], s.chart[1]) : ''}
+      ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
@@ -482,7 +501,7 @@ function sheetHTML(it) {
       ${head(it.name, [it.cat, it.chains.length + ' chain' + (it.chains.length === 1 ? '' : 's')].join(' · '))}
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
-      ${chartBox(90, [[30, '1M'], [90, '3M'], [365, '1Y'], [3650, 'All']])}
+      ${chartBox(it)}
       <div class="stats">
         ${stat('Category', esc(it.cat))}
         ${stat('7d change', pct(it.chg7d))}
@@ -503,7 +522,8 @@ function sheetHTML(it) {
     return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="chain">
       ${head(it.name, 'Network')}
       <div class="big">$${compact(it.tvl)}</div>
-      <div class="chgline"><span class="mute">total value locked across ${prots.length ? S.protocols.filter(r => r.chains.includes(it.chain)).length : 0} indexed protocols</span></div>
+      <div class="chgline"><span class="mute">total value locked</span></div>
+      ${chartBox(it)}
       <div class="stats">
         ${stat('Protocols', String(S.protocols.filter(r => r.chains.includes(it.chain)).length))}
         ${stat('Lending markets', String(S.pools.filter(p => p.chain === it.chain).length))}
@@ -523,7 +543,7 @@ function sheetHTML(it) {
     ${head(it.proto, `${it.sym}${it.meta ? ' · ' + it.meta : ''} · ${c?.name || ''}`)}
     <div class="big up">${apy(it.sup)}</div>
     <div class="chgline"><span class="mute">supply APY${it.supReward ? ` · ${apy(it.supBase)} base + ${apy(it.supReward)} rewards` : ''}</span></div>
-    ${chartBox(30, [[7, '1W'], [30, '1M'], [90, '3M'], [365, 'All']])}
+    ${chartBox(it)}
     <div class="stats">
       ${stat('Total supplied', '$' + compact(it.supplyUsd))}
       ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
@@ -570,23 +590,21 @@ const SHEET = {
     sub: [it.round, it.sector].filter(Boolean).join(' · '),
     stats: [['Round', it.round || '—'], ['Raised', '$' + compact(it.amount)],
       ['Sector', it.sector || '—'],
-      ['Valuation', it.valuation ? '$' + compact(it.valuation * 1e6) : '—']],
+      ['Valuation', it.valuation ? '$' + compact(it.valuation) : '—']],
     body: it.investors.length ? ['Investors', it.investors.join(', ')] : null,
     link: [it.source ? 'Read the announcement' : 'Raises on DeFiLlama', links.raise(it)] }),
 
-  nft: it => ({ chart: [30, [[7, '1W'], [30, '1M'], [90, '3M'], [365, '1Y']]],
-    big: floorOf(it), cls: it.chg1d >= 0 ? 'up' : 'down',
+  nft: it => ({ big: floorOf(it), cls: it.chg1d >= 0 ? 'up' : 'down',
     caption: it.chg1d ? `${pct(it.chg1d)} floor, past 24 hours` : 'floor price',
     sub: [it.market, it.net, it.supply ? `${compact(it.supply)} items` : ''].filter(Boolean).join(' · '),
     stats: [['Floor', floorOf(it)], ['24h change', it.chg1d ? pct(it.chg1d) : '—'],
       ['7d change', it.chg7d ? pct(it.chg7d) : '—'],
       ['Volume', it.volUsd ? '$' + compact(it.volUsd) : it.volSol ? `${compact(it.volSol)} SOL` : '—'],
       it.supply ? ['Items', compact(it.supply)] : null,
-      ['Marketplace', it.market]],
+      ['Source', it.market]],
     link: [`Open on ${it.market}`, links.nft(it)] }),
 
-  pair: it => ({ chart: [7, [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']]],
-    big: it.price ? usd(it.price) : '—',
+  pair: it => ({ big: it.price ? usd(it.price) : '—',
     cls: it.chg >= 0 ? 'up' : 'down',
     caption: it.chg ? `${pct(it.chg)} in 24 hours` : 'traded on a DEX',
     sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, it.net].filter(Boolean).join(' · '),
@@ -598,7 +616,7 @@ const SHEET = {
   hack: it => ({ big: '$' + compact(it.amount), cls: 'down', caption: `lost · ${when(it.date)}`,
     sub: it.technique,
     stats: [['Amount lost', '$' + compact(it.amount)], ['Technique', it.technique],
-      ['When', new Date(it.date).toISOString().slice(0, 10)],
+      ['When', it.date ? new Date(it.date).toISOString().slice(0, 10) : '—'],
       ['Networks', it.chains.length ? it.chains.map(c => CH[c]?.name).join(', ') : '—']],
     link: [it.source ? 'Read the post-mortem' : 'Hacks on DeFiLlama', links.hack(it)] }),
 };
@@ -621,10 +639,7 @@ function miniHTML(it) {
 const CW = 300, CHH = 110, CPAD = 8;
 let chartSeq = 0;
 
-const chartValue = (it, v) => it.kind === 'pool' ? apy(v)
-  : it.kind === 'protocol' ? '$' + compact(v)
-  : it.kind === 'nft' && it.unit === 'SOL' ? `${v.toFixed(2)} SOL`
-  : usd(v);
+const chartValue = (it, v) => (KIND[it.kind].chart?.[3] || usd)(v, it);
 const RANGE_LABEL = { 1: 'past 24 hours', 7: 'past 7 days', 30: 'past 30 days',
   90: 'past 3 months', 365: 'past year', 3650: 'all time' };
 
@@ -632,16 +647,11 @@ async function drawChart(days) {
   const box = el.sheet.querySelector('.sheet-in'); if (!box) return;
   const it = find(box.dataset.id); if (!it) return;
   const host = box.querySelector('.chart-svg'); if (!host) return;
+  const load = KIND[it.kind].chart?.[0]; if (!load) return;
   const token = host.dataset.token = String(++chartSeq);
   host.innerHTML = '<div class="cload"></div>';
   let res = { pts: [], live: false };
-  try {
-    res = it.kind === 'asset' ? await loadAssetChart(it, days)
-      : it.kind === 'pair' ? await loadPairChart(it, days)
-      : it.kind === 'nft' ? await loadNftChart(it, days)
-      : it.kind === 'protocol' ? await loadProtocolChart(it, days)
-      : await loadPoolChart(it, days);
-  } catch { res = { pts: [], live: false }; }
+  try { res = await load(it, days); } catch { res = { pts: [], live: false }; }
   if (host.dataset.token !== token) return;               // a newer range won
   paintChart(box, it, res, days);
 }
@@ -711,8 +721,8 @@ function open(id, { push = true } = {}) {
   el.sheet.innerHTML = sheetHTML(it);
   el.sheet.classList.add('open'); el.sheet.setAttribute('aria-hidden', 'false');
   el.scrim.classList.add('on'); el.sheet.scrollTop = 0; el.sheet.focus();
-  const first = { asset: 1, pair: 7, protocol: 90, pool: 30, nft: 30 }[it.kind];
-  if (first) drawChart(first);
+  const c = KIND[it.kind].chart;
+  if (c) drawChart(c[1]);
 }
 function hide() {
   depth = 0;

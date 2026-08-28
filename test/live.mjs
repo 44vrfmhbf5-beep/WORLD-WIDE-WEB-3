@@ -51,6 +51,8 @@ const llamaPools = { status: 'success', data: [
 const protocols = [
   { id: '1', name: 'Aave V3', slug: 'aave-v3', category: 'Lending', chains: ['Ethereum', 'Base', 'Solana'],
     tvl: 1.9e10, change_1d: 1.2, change_7d: -3.4, url: 'https://aave.com', logo: null },
+  { id: '4', name: 'Poison', slug: 'poison', category: 'Dex', chains: ['Ethereum'],
+    tvl: 5e9, url: 'javascript:alert(document.domain)' },
   { id: '2', name: 'Kamino Lend', slug: 'kamino-lend', category: 'Lending', chains: ['Solana'],
     tvl: 2.4e9, change_1d: -0.7, change_7d: 5.1, url: 'https://app.kamino.finance', logo: null },
   { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },  // below the floor
@@ -83,19 +85,25 @@ await p.route('https://api.llama.fi/**', r => {
   if (u.includes('/overview/dexs')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.2e9 }] });
   if (u.includes('/overview/fees')) return J({ protocols: [{ name: 'Aave V3', total24h: 3.4e6, revenue24h: 9.1e5 }] });
   if (u.includes('/v2/chains')) return J([{ name: 'Ethereum', tvl: 6.2e10 }, { name: 'Solana', tvl: 9.4e9 }]);
+  if (u.includes('/v2/historicalChainTvl/'))
+    return J(Array.from({ length: 200 }, (_, i) => ({ date: i, tvl: 5e10 + i * 1e8 })));
   if (u.includes('/protocol/')) return J({ tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
   if (u.endsWith('/protocols')) return J(protocols);
   if (u.includes('/overview/derivatives')) return J({ protocols: [{ name: 'Aave V3', total24h: 4.2e8 }] });
   if (u.includes('/overview/options')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.1e7 }] });
   if (u.endsWith('/raises')) return J({ raises: [{ date: Math.floor(Date.now() / 1000) - 86400,
     name: 'Ondo Finance', round: 'Series A', amount: 20, chains: ['Ethereum'], sector: 'RWA',
-    leadInvestors: ['Pantera'], otherInvestors: ['Coinbase Ventures'], source: 'https://example.invalid' }] });
+    leadInvestors: ['Pantera'], otherInvestors: ['Coinbase Ventures'], valuation: 4e9,
+    source: 'https://example.invalid' }] });
   if (u.endsWith('/hacks')) return J([{ date: Math.floor(Date.now() / 1000) - 86400 * 5,
     name: 'Curve Finance exploit', amount: 6.1e7, technique: 'Reentrancy', chains: ['Ethereum'] }]);
   r.fulfill({ status: 404, body: '[]' });
 });
 await p.route('https://stablecoins.llama.fi/**', r => {
   seen.push(r.request().url());
+  if (r.request().url().includes('/stablecoincharts/'))
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify(
+      Array.from({ length: 200 }, (_, i) => ({ date: i, totalCirculating: { peggedUSD: 4e10 + i * 1e7 } }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ peggedAssets: [
     { id: '1', symbol: 'USDC', name: 'USD Coin', circulating: { peggedUSD: 4.1e10 },
       price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] }] }) });
@@ -110,7 +118,7 @@ await p.route('https://api.dexscreener.com/**', r => {
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ pairs: [{
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR1', url: 'https://dexscreener.com/solana/PAIR1',
     baseToken: { address: 'CATaddr', name: 'CashCat', symbol: 'CASHCAT' }, quoteToken: { symbol: 'SOL' },
-    priceUsd: '0.00042', priceChange: { h24: 31.4 }, liquidity: { usd: 9.1e5 },
+    priceUsd: '0.00000042', priceChange: { h24: 31.4 }, liquidity: { usd: 9.1e5 },
     volume: { h24: 4.2e6 }, fdv: 2.1e7 }, {
     chainId: 'fantom', dexId: 'spooky', pairAddress: 'PAIR2',
     baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' },
@@ -141,6 +149,8 @@ await p.route('https://nft.llama.fi/**', r => {
     { collectionId: '0xbayc', name: 'Bored Ape Yacht Club', symbol: 'BAYC', chain: 'Ethereum',
       image: null, floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
       floorPricePctChange7Day: 5.4, dailyVolumeUSD: 3.1e6, totalSupply: 10000 },
+    { collectionId: '0xpoly', name: 'Polygon Apes', symbol: 'PAPE', chain: 'Polygon',
+      floorPrice: 240, floorPricePctChange1Day: 1.1, totalSupply: 5000 },
     { collectionId: '0xnofloor', name: 'No Floor Collection', symbol: 'NOPE', chain: 'Ethereum' }]) });
 });
 await p.route('https://api-mainnet.magiceden.dev/**', r => {
@@ -187,6 +197,10 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   const body = await p.locator('#results').textContent();
   ok(body.includes('Bored Ape'), 'EVM collections are indexed');
   ok(body.includes('Mad Lads'), 'Solana collections are indexed from a second marketplace');
+  await p.fill('#q', 'polygon apes'); await p.waitForTimeout(700);
+  ok(/240\.000 POL/.test(await p.locator('.row[data-id="n:0xpoly"]').textContent()),
+    "a floor is quoted in its own chain's token, not always ETH");
+  await p.fill('#q', ''); await p.waitForTimeout(400);
   ok(!body.includes('No Floor Collection'), 'a collection with no floor at all is dropped');
   await p.fill('#q', 'mad lads'); await p.waitForTimeout(600);
   ok(/SOL/.test(await p.locator('.row[data-id^="n:me-"]').first().textContent()),
@@ -212,6 +226,8 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/search\/pools\?query=cashcat&page=1$/),
     'GeckoTerminal /search/pools queried alongside DexScreener');
   ok(await p.locator('.row[data-id^="d:GTCASH"]').count() > 0, 'both DEX indexes contribute results');
+  // toPrecision goes exponential under 1e-6 — the long tail trades right there
+  ok(/\$0\.00000042/.test(body) && !/e-7/.test(body), 'a sub-cent price shows its zeros, not scientific notation');
   await p.fill('#q', '$cashcat'); await p.waitForTimeout(1200);
   ok(await p.locator('.row[data-id^="d:"]').count() > 0, 'a $-prefixed ticker still resolves');
   ok((await p.locator('.gtitle').allTextContents()).filter(x => x === 'DEX pairs').length <= 1,
@@ -225,6 +241,11 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
 {
   await p.fill('#q', 'pantera'); await p.waitForTimeout(500);
   ok(await p.locator('.row[data-id^="f:"]').count() > 0, 'funding rounds are searchable by investor');
+  await p.locator('.row[data-id^="f:"]').first().click();
+  await p.waitForSelector('.sheet-in[data-kind="raise"]', { timeout: 8000 });
+  ok(/\$4\.00B/.test(await p.locator('.sheet').textContent()),
+    'a valuation already in dollars is not scaled by a million again');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   await p.fill('#q', 'reentrancy'); await p.waitForTimeout(500);
   ok(await p.locator('.row[data-id^="h:"]').count() > 0, 'exploits are searchable by technique');
   await p.fill('#q', 'across'); await p.waitForTimeout(500);
@@ -236,6 +257,29 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   ok(body.includes('Aave V3'), 'protocols render as their own kind');
   ok(!body.includes('Tiny'), 'protocol under the TVL floor is dropped');
   ok(body.includes('Networks') || body.includes('Ethereum'), 'networks render with live TVL');
+  // the chain row destructured one field too far, so every network read $0
+  await p.fill('#q', 'ethereum'); await p.waitForTimeout(600);
+  const net = await p.locator('.row[data-id="c:eth"]').textContent();
+  ok(/\$62\.00B/.test(net), `a network carries its real TVL (${net.trim().slice(0, 60)})`);
+  await p.locator('.row[data-id="c:eth"]').click();
+  await p.waitForSelector('.sheet-in[data-kind="chain"]', { timeout: 8000 });
+  await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
+  ok(hit(/\/v2\/historicalChainTvl\/Ethereum$/), 'a network charts its own TVL history');
+  ok(await p.locator('.chart svg .line').count() === 1, 'the network sheet draws a chart');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
+
+console.log('\n# upstream strings that end up in an href');
+{
+  await p.fill('#q', 'poison'); await p.waitForTimeout(700);
+  await p.locator('.row[data-id="r:poison"]').first().click();
+  await p.waitForSelector('.sheet-in[data-kind="protocol"]', { timeout: 8000 });
+  const href = await p.locator('.sheet .cta a').getAttribute('href');
+  ok(!/^javascript:/i.test(href), `a javascript: url from upstream never reaches the href (${href})`);
+  ok(/defillama\.com/.test(href), 'it falls back to the canonical page instead');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  await p.fill('#q', ''); await p.waitForTimeout(400);
 }
 await p.fill('#q', 'aave v3'); await p.waitForTimeout(600);
 const order = await p.locator('.row').evaluateAll(ns => ns.slice(0, 4).map(n => n.dataset.id));
@@ -256,10 +300,28 @@ ok((await p.locator('.sheet').textContent()).includes('Protocol'), 'a lending ma
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', ''); await p.waitForTimeout(400);
 
+console.log('\n# every kind with a series over time gets a chart');
+for (const [q, sel, kind] of [['usd coin', 's:', 'stablecoin'], ['kamino', 'p:', 'pool']]) {
+  await p.fill('#q', q); await p.waitForTimeout(700);
+  await p.locator(`.row[data-id^="${sel}"]`).first().click();
+  await p.waitForSelector(`.sheet-in[data-kind="${kind}"]`, { timeout: 8000 });
+  await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
+  ok(await p.locator('.chart svg .line').count() === 1, `${kind} sheets chart their history`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+}
+ok(hit(/\/stablecoincharts\/all\?stablecoin=1$/), 'stablecoin supply history is fetched');
+await p.fill('#q', ''); await p.waitForTimeout(400);
+
 console.log('\n# per-chain and chart endpoints');
 await p.click('[data-chain=sol]'); await p.waitForTimeout(1500);
 ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1$/),
   'a chain tab pulls that network\'s own tokens');
+{
+  // global assets carry no chain, so a chain filter used to empty this tab
+  await p.click('[data-tab=assets]'); await p.waitForTimeout(900);
+  ok(await p.locator('.row').count() > 0, 'the Assets tab is not empty under a chain filter');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(400);
+}
 await p.click('[data-chain=""]'); await p.waitForTimeout(800);
 await p.fill('#q', 'bitcoin'); await p.waitForTimeout(500);
 await p.locator('.row').first().click();

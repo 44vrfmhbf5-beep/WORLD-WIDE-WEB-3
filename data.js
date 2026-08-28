@@ -2,10 +2,18 @@
    direct browser calls.
 
      api.coingecko.com      assets, prices, price history
-     yields.llama.fi        lending markets, borrow side, market APY history
+     api.coinpaprika.com    the same, when CoinGecko refuses the origin
+     api.binance.com        price history, when neither of the above has it
+     yields.llama.fi        lending markets, borrow side, APY history
      api.llama.fi           protocols, TVL history, DEX volume, fees & revenue,
-                            per-chain TVL
-     stablecoins.llama.fi   stablecoin circulating supply
+                            per-chain TVL and its history, raises, hacks
+     stablecoins.llama.fi   stablecoin supply and its history
+     bridges.llama.fi       cross-chain bridge volume
+     nft.llama.fi           NFT collections and floor history
+     api-mainnet.magiceden.dev  Solana NFT collections
+     api.dexscreener.com    live DEX pair search
+     api.geckoterminal.com  DEX pair search, trending pools, per-chain tokens,
+                            pair OHLCV
 
    They are joined into one index: a lending market carries the protocol behind
    it, a protocol carries the chains it runs on, and every chain knows its own
@@ -70,6 +78,15 @@ export class ApiError extends Error {
 }
 
 const hostOf = u => { try { return new URL(u).host; } catch { return String(u); } };
+
+/* Every `url`/`source` below is an upstream string we drop into an href.
+   Escaping stops attribute breakout but not the scheme: `javascript:` and
+   `data:text/html` still execute on click, with this origin's storage. Only
+   http(s) gets through. */
+const safeUrl = (u, fallback = '') => {
+  try { const p = new URL(u); return /^https?:$/.test(p.protocol) ? p.href : fallback; }
+  catch { return fallback; }
+};
 // A page opened straight off disk sends `Origin: null`, which an API may refuse.
 // The browser reports that identically to being offline, so say so explicitly.
 const FILE_ORIGIN = typeof location !== 'undefined' && location.protocol === 'file:';
@@ -102,6 +119,11 @@ function sampleFor(url) {
   if (u.pathname.includes('/overview/dexs')) return { protocols: S.dexs };
   if (u.pathname.includes('/overview/fees')) return { protocols: S.fees };
   if (u.pathname.endsWith('/v2/chains')) return S.chains;
+  if (u.pathname.includes('/historicalChainTvl/'))
+    return S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, tvl: v }));
+  if (u.pathname.includes('/stablecoincharts/'))
+    return S.tvlSeries('s' + (u.searchParams.get('stablecoin') || ''))
+      .map((v, i) => ({ date: i, totalCirculating: { peggedUSD: v * 40 } }));
   if (u.pathname.includes('/protocol/'))
     return { tvl: S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, totalLiquidityUSD: v })) };
   if (u.pathname.endsWith('/stablecoins')) return { peggedAssets: S.stables };
@@ -152,16 +174,25 @@ async function fetchJson(url, { tries = 2, timeout = 25000 } = {}) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// session-scoped cache; stale entries are still served if a refetch fails
+/* Session cache, two tiers. sessionStorage survives a reload but silently
+   refuses anything over its quota — the pool payload alone is ~10MB — so a
+   memory tier sits in front of it, otherwise every large fetch is a cache miss
+   forever. Stale entries are still served if a refetch fails. */
 const TTL = 5 * 60 * 1000;
-const inflight = new Map();
+const inflight = new Map(), mem = new Map();
+export function clearCache() {
+  mem.clear(); inflight.clear();
+  try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {}
+}
 function cache(key, ttl, fn) {
   if (inflight.has(key)) return inflight.get(key);
-  let hit = null;
-  try { hit = JSON.parse(sessionStorage.getItem('atlas:' + key) || 'null'); } catch {}
+  let hit = mem.get(key) || null;
+  if (!hit) try { hit = JSON.parse(sessionStorage.getItem('atlas:' + key) || 'null'); } catch {}
   if (hit && Date.now() - hit.t < ttl) return Promise.resolve(hit.v);
   const p = fn().then(v => {
-    try { sessionStorage.setItem('atlas:' + key, JSON.stringify({ t: Date.now(), v })); } catch {}
+    const rec = { t: Date.now(), v };
+    mem.set(key, rec);
+    try { sessionStorage.setItem('atlas:' + key, JSON.stringify(rec)); } catch {}
     inflight.delete(key);
     return v;
   }).catch(e => {
@@ -185,10 +216,6 @@ function asset(c, chain) {
     kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
     chain, price: c.current_price ?? 0, chg: c.price_change_percentage_24h ?? 0,
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
-    chgBy: { 1: c.price_change_percentage_24h_in_currency ?? c.price_change_percentage_24h ?? 0,
-      7: c.price_change_percentage_7d_in_currency ?? 0,
-      30: c.price_change_percentage_30d_in_currency ?? 0,
-      365: c.price_change_percentage_1y_in_currency ?? 0 },
     spark: spark.slice(-24), color: colorOf(sym),
     key: `${sym} ${c.name || ''} ${CH[chain]?.name || ''} token coin asset price`,
   };
@@ -225,8 +252,6 @@ function paprikaAsset(p, i) {
   return {
     kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
     chain: null, price: num(q.price), chg: num(q.percent_change_24h),
-    chgBy: { 1: num(q.percent_change_24h), 7: num(q.percent_change_7d),
-      30: num(q.percent_change_30d), 365: num(q.percent_change_1y) },
     mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
     color: colorOf(sym),
     key: `${sym} ${p.name || ''} token coin asset price`,
@@ -325,6 +350,12 @@ async function binance(sym, days) {
 }
 
 const flat = v => Array.from({ length: 24 }, () => Number(v) || 0);
+// Daily series share one rule: take the tail the range asks for, and never
+// hand back an empty chart — a flat line at the current value says more.
+const slice = (all, days, now) => {
+  const pts = days >= 3650 ? all : all.slice(-days);
+  return pts.length > 1 ? { pts, live: true } : { pts: flat(now), live: false };
+};
 
 /** Asset price history, days: 1 | 7 | 30 | 365 */
 export function loadAssetChart(a, days) {
@@ -346,7 +377,7 @@ export function loadAssetChart(a, days) {
 }
 
 /** DEX pair history from GeckoTerminal OHLCV. */
-const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 365: ['day', 365] };
+const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 90: ['day', 90], 365: ['day', 365] };
 export function loadPairChart(p, days) {
   return cache(`pchart:${p.id}:${days}`, TTL, async () => {
     const net = GT_NET[p.chain];
@@ -364,15 +395,13 @@ export function loadPairChart(p, days) {
   });
 }
 
-/** Lending market APY history. Llama returns daily points; slice to the range. */
+/** APY history for a lending market or a yield farm — same endpoint, and the
+    two kinds name their headline rate differently. */
 export function loadPoolChart(pool, days) {
   return cache(`apy:${pool.pool}`, TTL, async () => {
     const j = await get(`${YIELDS}/chart/${encodeURIComponent(pool.pool)}`).catch(() => null);
     return (j?.data || []).map(d => num(d.apy));
-  }).then(all => {
-    const pts = days >= 365 ? all : all.slice(-days);
-    return pts.length > 1 ? { pts, live: true } : { pts: flat(pool.sup), live: false };
-  });
+  }).then(all => slice(all, days, pool.sup ?? pool.apy));
 }
 
 /* ---------- protocols, chains, stablecoins ---------- */
@@ -386,7 +415,7 @@ function protocol(p, dex, fee, perp, opt) {
     kind: 'protocol', id: `r:${p.slug || slugOf(name)}`, slug: p.slug || slugOf(name),
     name, cat: p.category || 'DeFi', chains, chain: chains[0] || null,
     tvl: num(p.tvl), chg1d: num(p.change_1d), chg7d: num(p.change_7d),
-    url: p.url || '', img: p.logo || null, color: colorOf(name),
+    url: safeUrl(p.url), img: p.logo || null, color: colorOf(name),
     vol24: num(dex?.total24h), fees24: num(fee?.total24h),
     rev24: num(fee?.revenue24h ?? fee?.dailyRevenue),
     perps24: num(perp?.total24h), opts24: num(opt?.total24h),
@@ -420,8 +449,8 @@ export function loadChains() {
   return cache('chains', TTL, async () => {
     const rows = await get(`${LLAMA}/v2/chains`).catch(() => []);
     const tvl = Object.fromEntries((rows || []).map(c => [c.name, num(c.tvl)]));
-    return CHAINS.map(([id, name, color, , llama]) => ({
-      kind: 'chain', id: `c:${id}`, chain: id, name, color,
+    return CHAINS.map(([id, name, color, llama]) => ({
+      kind: 'chain', id: `c:${id}`, chain: id, name, color, llama,
       tvl: tvl[llama] || 0,
       key: `${name} ${llama} chain network l1 l2 blockchain`,
     })).sort((a, b) => b.tvl - a.tvl);
@@ -437,7 +466,7 @@ export function loadStables() {
         const sym = String(s.symbol || '?').toUpperCase();
         const chains = (s.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         return {
-          kind: 'stablecoin', id: `s:${s.id ?? sym}`, sym, name: s.name || sym,
+          kind: 'stablecoin', id: `s:${s.id ?? sym}`, sid: s.id ?? '', sym, name: s.name || sym,
           circulating: num(s.circulating?.peggedUSD), price: num(s.price) || 1,
           peg: s.pegType || 'peggedUSD', mech: title(s.pegMechanism || ''),
           chains, chain: chains[0] || null, color: colorOf(sym),
@@ -484,8 +513,10 @@ export function loadRaises() {
         return {
           kind: 'raise', id: `f:${slugOf(r.name)}-${r.date}`, name: r.name,
           amount: num(r.amount) * 1e6, round: r.round || '', date: num(r.date) * 1000,
-          sector: r.sector || r.category || '', investors, valuation: num(r.valuation),
-          source: r.source || '', chains, chain: chains[0] || null, color: colorOf(r.name),
+          sector: r.sector || r.category || '', investors,
+          // amount comes in millions, valuation in whole dollars — accept either
+          valuation: num(r.valuation) > 1e5 ? num(r.valuation) : num(r.valuation) * 1e6,
+          source: safeUrl(r.source), chains, chain: chains[0] || null, color: colorOf(r.name),
           key: `${r.name} ${r.round || ''} ${r.sector || ''} funding raise round investors ${investors.join(' ')}`,
         };
       })
@@ -507,7 +538,7 @@ export function loadHacks() {
           kind: 'hack', id: `h:${slugOf(h.name)}-${h.date}`, name: h.name,
           amount: num(h.amount), date: num(h.date) * 1000,
           technique: h.technique || h.classification || 'Exploit',
-          source: h.source || '', chains, chain: chains[0] || null, color: '#ff6b81',
+          source: safeUrl(h.source), chains, chain: chains[0] || null, color: '#ff6b81',
           key: `${h.name} hack exploit ${h.technique || ''} ${h.classification || ''} ${list.join(' ')}`,
         };
       })
@@ -516,15 +547,32 @@ export function loadHacks() {
   });
 }
 
+/** Chain TVL history — the one kind whose sheet had no chart at all. */
+export function loadChainChart(c, days) {
+  return cache(`cchart:${c.chain}`, TTL, async () => {
+    const name = CH[c.chain]?.llama || c.name;
+    const j = await get(`${LLAMA}/v2/historicalChainTvl/${encodeURIComponent(name)}`, { timeout: 45000 })
+      .catch(() => null);
+    return (Array.isArray(j) ? j : []).map(p => num(p.tvl)).filter(v => v > 0);
+  }).then(all => slice(all, days, c.tvl));
+}
+
+/** Stablecoin circulating supply history. */
+export function loadStableChart(s, days) {
+  return cache(`schart:${s.id}`, TTL, async () => {
+    if (!s.sid) return [];
+    const j = await get(`${STABLE}/stablecoincharts/all?stablecoin=${encodeURIComponent(s.sid)}`,
+      { tries: 1, timeout: 30000 }).catch(() => null);
+    return (Array.isArray(j) ? j : []).map(p => num(p.totalCirculating?.peggedUSD)).filter(v => v > 0);
+  }).then(all => slice(all, days, s.circulating));
+}
+
 /** Protocol TVL history. */
 export function loadProtocolChart(r, days) {
   return cache(`rchart:${r.slug}`, TTL, async () => {
     const j = await get(`${LLAMA}/protocol/${encodeURIComponent(r.slug)}`, { timeout: 45000 }).catch(() => null);
     return (j?.tvl || []).map(p => num(p.totalLiquidityUSD));
-  }).then(all => {
-    const pts = days >= 3650 ? all : all.slice(-days);
-    return pts.length > 1 ? { pts, live: true } : { pts: flat(r.tvl), live: false };
-  });
+  }).then(all => slice(all, days, r.tvl));
 }
 
 /* ---------- DEX pairs ----------
@@ -551,7 +599,7 @@ function pairOf(p) {
     price: Number(p.priceUsd) || 0, chg: num(p.priceChange?.h24),
     liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), fdv: num(p.fdv),
     quote: String(p.quoteToken?.symbol || '').toUpperCase(),
-    url: p.url || '', color: colorOf(sym),
+    url: safeUrl(p.url), color: colorOf(sym),
     key: `${sym} ${base.name || ''} ${dex} ${netName(p.chainId)} dex pair token memecoin swap trade`,
   };
 }
@@ -620,17 +668,23 @@ export function loadTrendingPairs() {
    arrive in different units, so each collection carries a formatted label and
    the two sources are ranked separately rather than compared across units. */
 const SOL_LAMPORTS = 1e9;
+/* A floor is quoted in the chain's own gas token, not always ETH. Calling a
+   Polygon floor "ETH" misprices it by ~1000x, so the unit follows the chain. */
+const NFT_UNIT = { eth: 'ETH', base: 'ETH', arb: 'ETH', op: 'ETH', blast: 'ETH', linea: 'ETH',
+  scrl: 'ETH', zks: 'ETH', poly: 'POL', bnb: 'BNB', avax: 'AVAX', sol: 'SOL', btc: 'BTC' };
 
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
   const floorUsd = num(c.floorPriceUSD ?? c.floorPrice1dUSD);
   const floor = num(c.floorPrice);
+  const chain = BY_LLAMA[c.chain] || null;
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: c.image || c.logo || null, chain: BY_LLAMA[c.chain] || null,
-    net: c.chain || 'Ethereum', market: 'OpenSea',
-    floorUsd, floor, unit: 'ETH',
+    img: c.image || c.logo || null, chain,
+    // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
+    net: c.chain || 'Ethereum', market: 'DeFiLlama',
+    floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
     chg1d: num(c.floorPricePctChange1Day), chg7d: num(c.floorPricePctChange7Day),
     volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
     key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
@@ -674,29 +728,28 @@ export function loadNFTs() {
 /** Floor price history for a collection. */
 export function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
-    if (!n.cid || n.market !== 'OpenSea') return [];
+    if (!n.cid || n.market !== 'DeFiLlama') return [];
     const j = await get(`${NFT}/chart/${encodeURIComponent(n.cid)}`, { tries: 1, timeout: 20000 })
       .catch(() => null);
     const rows = Array.isArray(j) ? j : (j?.data || []);
     return rows.map(r => num(r.floorPriceUSD ?? r.floorPrice ?? r[1])).filter(v => v > 0);
-  }).then(all => {
-    const pts = days >= 365 ? all : all.slice(-days);
-    return pts.length > 1 ? { pts, live: true } : { pts: flat(n.floorUsd || n.floor), live: false };
-  });
+  }).then(all => slice(all, days, n.floorUsd || n.floor));
 }
 
 export const links = {
-  asset: a => `https://www.coingecko.com/en/coins/${a.cg}`,
+  // a CoinPaprika-sourced asset has no CoinGecko id to link to
+  asset: a => a.cg ? `https://www.coingecko.com/en/coins/${encodeURIComponent(a.cg)}`
+    : `https://www.coingecko.com/en/search?query=${encodeURIComponent(a.sym)}`,
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
-  protocol: r => r.url || `https://defillama.com/protocol/${r.slug}`,
+  protocol: r => safeUrl(r.url, `https://defillama.com/protocol/${encodeURIComponent(r.slug)}`),
   stablecoin: () => 'https://defillama.com/stablecoins',
   bridge: () => 'https://defillama.com/bridges',
-  raise: r => r.source || 'https://defillama.com/raises',
-  hack: h => h.source || 'https://defillama.com/hacks',
+  raise: r => safeUrl(r.source, 'https://defillama.com/raises'),
+  hack: h => safeUrl(h.source, 'https://defillama.com/hacks'),
   yield: y => `https://defillama.com/yields/pool/${y.pool}`,
   nft: n => n.market === 'Magic Eden'
     ? `https://magiceden.io/marketplace/${encodeURIComponent(n.cid)}`
     : `https://defillama.com/nfts/collection/${encodeURIComponent(n.cid)}`,
-  pair: p => p.url || `https://dexscreener.com/${Object.keys(DEX_CHAIN).find(k => DEX_CHAIN[k] === p.chain) || 'solana'}/${p.addr}`,
+  pair: p => safeUrl(p.url, `https://dexscreener.com/search?q=${encodeURIComponent(p.addr || p.sym)}`),
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };
