@@ -359,6 +359,19 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
 .vt:hover{color:var(--text);border-color:var(--line2)}
 .vt .i{width:15px;height:15px}
+/* the only control here with an on/off meaning, so it is the only one that lights up */
+.vt.sf[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--up) 45%,transparent);
+  background:color-mix(in srgb,var(--up) 12%,var(--surface))}
+.vt.sf[aria-pressed=true] .i{color:var(--up)}
+
+/* "N hidden" in the results line, one tap to undo — never filter silently, so
+   the count sits outside the part that ellipsises when the line runs short */
+.meta{display:flex;align-items:baseline;gap:8px;min-width:0}
+.mtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.link{flex:none;color:var(--dim);font:inherit;text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:var(--line2)}
+.link::before{content:"· ";text-decoration:none;color:var(--faint);opacity:.6}
+.link:hover{color:var(--text)}
 
 /* ---- table view ----
    Grid rows, not <table>: the same .row nodes the card view uses, so the keyed
@@ -421,8 +434,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
   /* results line and density control share one row instead of wrapping */
   .bar{flex-wrap:nowrap;gap:10px;align-items:center}
-  .bar .meta{padding:10px 2px;flex:1;min-width:0;overflow:hidden;
-    white-space:nowrap;text-overflow:ellipsis}
+  .bar .meta{padding:10px 2px;flex:1;min-width:0}
   .kbd-hint{display:none}
   .viewtools{align-self:center}
   .sortbar:not(:empty){padding-bottom:8px}
@@ -480,8 +492,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .sortbar:not(:empty){display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
     padding:0 0 10px;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
   .sortbar::-webkit-scrollbar{display:none}
-  /* the table toggle cannot do anything at this width — do not offer it */
+  /* the table toggle cannot do anything at this width — do not offer it, and
+     the density label can go: the filter is the control worth naming here */
   #view{display:none}
+  #density span{display:none}
+  #density{padding:9px 10px}
   .bar{gap:8px}
   .bar .meta{padding:12px 2px 8px}
 

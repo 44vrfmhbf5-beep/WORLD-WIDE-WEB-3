@@ -59,6 +59,7 @@ const S = {
   loading: true, err: null, warn: null, at: 0,
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
+  safe: store.get('atlas:safe') !== '0',
   sort: null,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -123,6 +124,33 @@ const everything = () => KINDS.flatMap(k => SRC[k]());
 
 /** Rows behind a category. Assets borrows the chain's own traded tokens,
     because a global asset carries no chain and the filter would empty the tab. */
+/* One filter, because dead and fake rows share their tells: nothing trades, or
+   the row is a copy of something real. Each kind says what "trading" means for
+   it; two more rules apply only to the DEX long tail, which is where fakes
+   live — the curated sources (protocols, bridges, raises, chains) need none. */
+function sift(rows) {
+  if (!S.safe) return rows;
+  const listed = new Set(S.assets.map(x => x.sym));
+  const deepest = new Map();                 // ticker on one network -> real pool
+  for (const i of rows) {
+    if (i.kind !== 'pair') continue;
+    const k = i.sym + '@' + i.net, b = deepest.get(k);
+    if (!b || i.liq > b.liq) deepest.set(k, i);
+  }
+  return rows.filter(i => {
+    const ok = KIND[i.kind].ok;
+    if (ok && !ok(i)) return false;
+    if (i.kind !== 'pair') return true;
+    // A ticker repeated on one network is usually copies of one token — but two
+    // indexes carrying the same real token look identical from here, so only
+    // drop what is an order of magnitude shallower than the deepest pool.
+    const best = deepest.get(i.sym + '@' + i.net);
+    if (best !== i && i.liq < best.liq * 0.1) return false;
+    // wearing a listed ticker without the liquidity to be it
+    return !(listed.has(i.sym) && i.liq < 25e4);
+  });
+}
+
 function rowsFor(tab) {
   if (tab === 'saved') {
     const live = everything();
@@ -132,8 +160,14 @@ function rowsFor(tab) {
   if (!k) return everything();
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
-const countOf = tab => rowsFor(tab).filter(onChain).length;
-const scope = () => rowsFor(S.tab).filter(onChain);
+const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
+let hidden = 0;
+function scope() {
+  const all = rowsFor(S.tab).filter(onChain);
+  const keep = sift(all);
+  hidden = all.length - keep.length;         // never filter silently
+  return keep;
+}
 function reindex() {
   S.fuse = new Fuse(scope(), {
     keys: [{ name: 'sym', weight: 3 }, { name: 'name', weight: 3 }, { name: 'proto', weight: 2 }, { name: 'key', weight: 1 }],
@@ -232,6 +266,7 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
+    ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
@@ -240,6 +275,7 @@ const KIND = {
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
+    ok: i => i.supplyUsd >= 1e6,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
       ['Util', i => i.util.toFixed(0) + '%', 'util']],
@@ -249,6 +285,8 @@ const KIND = {
     n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
+    // four-figure APY on a small pool is the oldest farm scam there is
+    ok: i => i.tvl >= 1e6 && i.apy > 0 && i.apy <= 1000,
     cols: [['APY', i => apy(i.apy), 'apy', 'up'], ['Base', i => apy(i.apyBase), 'apyBase'],
       ['Rewards', i => i.apyReward ? apy(i.apyReward) : '—', 'apyReward'], ['TVL', i => money(i.tvl), 'tvl']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
@@ -268,6 +306,7 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
+    ok: i => i.volUsd > 0 || i.floor > 0,
     cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => i.chg1d ? pct(i.chg1d) : '—', 'chg1d', 'sgn'],
       ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
       ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
@@ -281,6 +320,7 @@ const KIND = {
     cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
+    ok: i => i.vol24 >= 1000 && i.liq >= 5000,
     cols: [['Price', i => i.price ? usd(i.price) : '—', 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['Liquidity', i => money(i.liq), 'liq'], ['Volume 24h', i => money(i.vol24), 'vol24'],
       ['FDV', i => i.fdv ? money(i.fdv) : '—', 'fdv']],
@@ -517,11 +557,14 @@ function render() {
   paintStats(); paintCounts();
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
-  el.meta.innerHTML = !list.length ? '' : S.q
+  const metaText = !list.length ? '' : S.q
     ? `${list.length} result${list.length > 1 ? 's' : ''} for “${esc(S.q.trim())}” · ${esc(where)}`
     // the keyboard hint is meaningless on a phone, and the line is a whole row there
     : S.tab === 'saved' ? `${list.length} saved`
     : `Top of ${esc(where)} · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ to browse, ↵ to open</span>`;
+  el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
+  if (hidden && S.safe && list.length)
+    el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
 
   if (!list.length && S.remote.busy) {
@@ -574,7 +617,7 @@ function withRemote(list) {
   const k = TAB_KIND[S.tab];
   if (k && k !== 'pair') return list;
   const have = new Set(list.map(i => i.id));
-  const extra = S.remote.rows.filter(r => !have.has(r.id));
+  const extra = sift(S.remote.rows.filter(r => !have.has(r.id)));
   if (!extra.length) return list;
   const at = list.map(i => i.kind).lastIndexOf('pair');
   return at === -1 ? [...list, ...extra]
@@ -936,6 +979,7 @@ function syncUrl(now) {
     if (S.sort) p.set('sort', (S.sort.dir > 0 ? '' : '-') + S.sort.key);
     if (S.view === 'cards') p.set('view', 'cards');
     if (S.dense) p.set('dense', '1');
+    if (!S.safe) p.set('all', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -950,6 +994,7 @@ function fromUrl() {
   S.sort = key && SORTABLE.has(key) ? { key, dir: sort[0] === '-' ? -1 : 1 } : null;
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
   if (p.get('dense')) S.dense = p.get('dense') === '1';
+  if (p.get('all')) S.safe = p.get('all') !== '1';
   paintFilters(); paintTools();
 }
 
@@ -984,6 +1029,7 @@ function paintTools() {
   $('#density span').textContent = S.dense ? 'Compact' : 'Comfortable';
   $('#density').setAttribute('aria-pressed', S.dense);
   $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
+  $('#safe').setAttribute('aria-pressed', S.safe);
 }
 
 /* ---------- events ---------- */
@@ -992,6 +1038,12 @@ el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; ren
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));
 narrow.addEventListener('change', () => { nodes.clear(); render(); });
+function setSafe(on) {
+  S.safe = on; store.set('atlas:safe', on ? '1' : '0');
+  paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
+}
+$('#safe').addEventListener('click', () => setSafe(!S.safe));
+el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
 $('#density').addEventListener('click', () => {
   S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0');
   paintTools(); render(); syncUrl(true);

@@ -94,6 +94,42 @@ first to answer wins. Charts try CoinGecko, then Binance klines, then the 7-day
 sparkline, and finally draw a flat line at the current value labelled as having
 no history — a chart never renders as an empty box.
 
+### One filter
+
+A single toggle, on by default, for the two things that make a large onchain
+index unusable: rows that no longer trade, and rows pretending to be something
+else. They share their tells, so they share a control.
+
+Each kind says what trading means for it, as one more field on the same `KIND`
+descriptor:
+
+| Kind | Kept when |
+| --- | --- |
+| Asset | it has 24h volume |
+| Lending market | at least $1M supplied |
+| Yield farm | at least $1M TVL, and an APY above 0 but not above 1000% |
+| NFT collection | it has volume or a floor |
+| DEX pair | at least $1k of 24h volume and $5k of liquidity |
+
+Two more rules apply only to the DEX long tail, which is where the fakes are.
+A pair wearing a **listed ticker** it cannot back — under $250k of liquidity
+while sharing a symbol with a top-100 asset — is an impersonator. And a ticker
+repeated on one network is usually one token plus a stack of copies, so only
+the deepest pool survives.
+
+That last rule needed care. Two indexes carrying the *same real token* look
+identical from here — DexScreener and GeckoTerminal both return CASHCAT on
+Solana — so dropping every repeat would have deleted the federation's own
+results. It only drops what is an order of magnitude shallower than the
+deepest pool.
+
+Protocols, chains, stablecoins, bridges, raises and exploits have no rule:
+they come from curated sources that have already done this.
+
+**It never filters silently.** The results line carries `N hidden`, and that
+count is a button that turns the filter off. The choice is in the URL
+(`?all=1`) and remembered per browser.
+
 ### Layout
 
 Two references, and they want opposite things. DefiLlama makes a large index

@@ -37,6 +37,9 @@ const markets = [
   { id: 'usd-coin', symbol: 'usdc', name: 'USDC', image: 'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
     current_price: 0.9999, market_cap: 4.12e10, market_cap_rank: 5, total_volume: 7.1e9,
     price_change_percentage_24h: 0.01, sparkline_in_7d: { price: walk('usdc', 168, 1) } },
+  // nothing has traded in this one for a day
+  { id: 'ghostcoin', symbol: 'ghost', name: 'Ghostcoin', current_price: 0.5,
+    market_cap: 9e6, market_cap_rank: 900, total_volume: 0 },
 ];
 // borrow fields carried on the pool itself; /lendBorrow is failed below on purpose
 const llamaPools = { status: 'success', data: [
@@ -46,6 +49,12 @@ const llamaPools = { status: 'success', data: [
     poolMeta: 'main', apyBaseBorrow: 8.91, apyRewardBorrow: 0, totalSupplyUsd: 8.4e8, totalBorrowUsd: 6e8, ltv: 0.75 },
   { pool: 'cc33', chain: 'Fantom', project: 'x', symbol: 'FTM', tvlUsd: 9e8, apy: 5, apyBase: 5,
     totalSupplyUsd: 9e8, totalBorrowUsd: 1e8, ltv: .5 },   // unsupported chain, must drop
+  // clears the ingest floor, but nobody is using it
+  { pool: 'dd44', chain: 'Ethereum', project: 'deadpool-fi', symbol: 'DEADPOOL', tvlUsd: 6e5,
+    apy: 1, apyBase: 1, apyBaseBorrow: 2, totalSupplyUsd: 6e5, totalBorrowUsd: 1e4, ltv: .5 },
+  // 5000% APY on a small pool is the oldest farm scam there is
+  { pool: 'ee55', chain: 'Ethereum', project: 'scamfarm', symbol: 'SCAMFARM', tvlUsd: 2e6,
+    apy: 5000, apyBase: 5000, apyReward: 0 },
 ] };
 
 const protocols = [
@@ -126,10 +135,22 @@ R('https://api.dexscreener.com/**', r => {
     volume: { h24: 4.2e6 }, fdv: 2.1e7 }, {
     chainId: 'fantom', dexId: 'spooky', pairAddress: 'PAIR2',
     baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' },
-    priceUsd: '1', liquidity: { usd: 9e5 } }, {
+    // it trades: this row is about chain coverage, not about being filtered
+    priceUsd: '1', liquidity: { usd: 9e5 }, volume: { h24: 5e4 } }, {
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR3',
     baseToken: { address: 'y', name: 'Dust', symbol: 'DUST' },
-    priceUsd: '1', liquidity: { usd: 100 } }] }) });
+    priceUsd: '1', liquidity: { usd: 100 } }, {
+    // the same ticker twice on one network: one token, one copy
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'TWINDEEP',
+    baseToken: { address: 'tw1', name: 'TwinCat', symbol: 'TWINCAT' },
+    priceUsd: '1', liquidity: { usd: 8e5 }, volume: { h24: 2e6 } }, {
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'TWINSHALLOW',
+    baseToken: { address: 'tw2', name: 'TwinCat', symbol: 'TWINCAT' },
+    priceUsd: '1', liquidity: { usd: 9e3 }, volume: { h24: 4e3 } }, {
+    // wearing a listed ticker without the liquidity to be it
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'FAKEBTC',
+    baseToken: { address: 'fk', name: 'Bitcoin', symbol: 'BTC' },
+    priceUsd: '0.004', liquidity: { usd: 9e3 }, volume: { h24: 5e3 } }] }) });
 });
 R('https://api.geckoterminal.com/**', r => {
   const u = r.request().url(); seen.push(u);
@@ -378,6 +399,47 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
 
+console.log('\n# one toggle, for things that do not trade or are not what they say');
+{
+  const shown = async q => {
+    await p.fill('#q', q); await p.waitForTimeout(1400);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id));
+  };
+  ok(await p.locator('#safe').getAttribute('aria-pressed') === 'true', 'the filter is on by default');
+
+  const junk = [
+    ['ghostcoin', 'a:ghostcoin', 'an asset nothing has traded'],
+    ['deadpool', 'p:dd44', 'a lending market nobody is using'],
+    ['scamfarm', 'y:ee55', 'a four-figure APY on a small pool'],
+    ['twincat', 'd:TWINSHALLOW', 'the shallower copy of a duplicated ticker'],
+    ['bitcoin', 'd:FAKEBTC', 'a pair wearing a listed ticker it cannot back'],
+  ];
+  for (const [q, id, what] of junk) {
+    const ids = await shown(q);
+    ok(!ids.includes(id), `hides ${what}`);
+  }
+  // the deep half of the duplicate is the one that survives
+  ok((await shown('twincat')).includes('d:TWINDEEP'), 'and keeps the real one');
+  // and cashcat, the long tail this app exists for, is not collateral damage
+  // two indexes carry this same token; neither may be mistaken for a copy
+  const cc = await shown('cashcat');
+  ok(cc.includes('d:PAIR1') && cc.some(i => i.startsWith('d:GTCASH')),
+    `the same real token from two indexes survives (${cc.filter(i => i[0] === 'd').join(' ')})`);
+
+  const on = await p.locator('#meta').textContent();
+  ok(/\d+ hidden/.test(on), `it says how much it hid (${on.trim().slice(-24)})`);
+
+  await p.click('[data-unsafe]'); await p.waitForTimeout(1200);
+  ok(await p.locator('#safe').getAttribute('aria-pressed') === 'false', 'the count turns it off');
+  for (const [q, id, what] of junk) {
+    const ids = await shown(q);
+    ok(ids.includes(id), `shows ${what} again with the filter off`);
+  }
+  ok(/all=1/.test(p.url()), 'and the choice is in the url');
+  await p.click('#safe'); await p.waitForTimeout(1200);
+  await p.fill('#q', ''); await p.waitForTimeout(600);
+}
+
 console.log('\n# a row belongs to exactly one category');
 {
   await p.click('[data-chain=sol]'); await p.waitForTimeout(2200);
@@ -524,6 +586,18 @@ console.log('\n# mobile');
   ok(await q.locator('#results.table').count() === 0, 'a phone gets cards, not five numeric columns');
   ok(!await q.locator('#view').isVisible(), 'and is not offered a table toggle that cannot work');
   ok(!await q.locator('.hero').isVisible(), 'the decorative hero does not cost a phone its first screen');
+
+  // the count is the only signal that the filter is holding something back, so
+  // it must not be the part that ellipsises when the line runs out of room
+  {
+    const link = q.locator('[data-unsafe]');
+    ok(await link.count() === 1, 'a phone still says how much was hidden');
+    const fits = await link.evaluate(e => {
+      const l = e.getBoundingClientRect(), m = document.querySelector('#meta').getBoundingClientRect();
+      return l.width > 0 && l.right <= m.right + 1;
+    });
+    ok(fits, 'and the count is not truncated away with the rest of the line');
+  }
 
   // the column headers are the desktop sort control; a phone needs its own
   ok(await q.locator('#sortbar button').count() >= 4, 'sort is reachable as chips');
