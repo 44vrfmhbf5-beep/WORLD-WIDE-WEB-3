@@ -64,7 +64,9 @@ http.createServer(async (req,res)=>{
   if(p==='/api/v3/coins/markets') return json(markets(u.searchParams.get('category')));
   if(p.startsWith('/api/v3/coins/')&&p.endsWith('/market_chart')){
     const id=p.split('/')[4], days=+u.searchParams.get('days')||1;
-    return json({prices:walk(id+days,Math.min(days*24,400),PRICES.SOL).map((v,i)=>[Date.now()-i*36e5,v])});
+    const n=Math.min(days*24,400);
+    return json({prices:walk(id+days,n,PRICES.SOL).map((v,i)=>[Date.now()-i*36e5,v]),
+      total_volumes:walk('v'+id+days,n,3e9).map((v,i)=>[Date.now()-i*36e5,v])});
   }
   if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
     id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, slug:PROJECTS[i%PROJECTS.length]+(i?'-'+i:''),

@@ -265,7 +265,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .w40{width:40%}.w25{width:25%}.w15{width:64px;height:14px;flex:none}
 @keyframes shimmer{to{background-position:-220% 0}}
 
-.cload{height:110px;display:grid;place-items:center;color:var(--faint);font-size:12.5px}
+.cload{height:136px;display:grid;place-items:center;color:var(--faint);font-size:12.5px}
 .cload:not(.err){background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.05) 50%,transparent 70%);
   background-size:220% 100%;animation:shimmer 1.4s linear infinite}
 
@@ -309,8 +309,26 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @keyframes blink{50%{opacity:.4}}
 
 /* ---- interactive chart ---- */
-.chart-svg{position:relative;height:110px}
-.chart-svg svg{display:block;width:100%;height:110px;touch-action:none}
+.chart-svg{position:relative;height:136px;outline-offset:-2px}
+.chart-svg svg{display:block;width:100%;height:120px;touch-action:none}
+/* the high/low envelope behind the close line, and a hairline at the range's
+   opening value so the move is visible against something */
+.chart-svg .band{opacity:0;animation:fadein .5s .35s var(--ease) forwards}
+.chart-svg .base{stroke:var(--line2);stroke-width:1}
+.chart-svg .vol rect{transform-box:fill-box;transform-origin:bottom;
+  animation:rise .5s var(--ease) both}
+@keyframes rise{from{transform:scaleY(0)}}
+
+/* axis labels are HTML, not SVG text: the svg is stretched to fit, which would
+   stretch any text in it too */
+.ax{position:absolute;font-size:10px;font-weight:600;letter-spacing:.02em;
+  color:var(--faint);font-variant-numeric:tabular-nums;pointer-events:none;white-space:nowrap}
+.ax.hi{top:2px;right:8px}
+.ax.lo{top:76px;right:8px}
+.ax.t0{bottom:1px;left:8px}
+.ax.t1{bottom:1px;right:8px}
+/* out of the bars' way: the panel is labelled above them, not across them */
+.ax.vk{top:92px;left:8px;opacity:.75;font-size:9px;text-transform:uppercase;letter-spacing:.09em}
 .chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
@@ -319,12 +337,17 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   opacity:0;transition:opacity .12s;pointer-events:none}
 .chart-svg .cdot{position:absolute;width:9px;height:9px;border-radius:50%;margin:-4.5px 0 0 -4.5px;
   box-shadow:0 0 0 2px var(--surface);opacity:0;transition:opacity .12s;pointer-events:none}
-.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:3px 8px;border-radius:8px;
-  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;font-weight:600;
-  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:4px 9px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;
+  pointer-events:none;display:flex;flex-direction:column;gap:1px;align-items:center}
+/* the value leads, the label follows: here the reader has the point and wants the number */
+.chart-svg .tip b{font-weight:700;color:var(--text)}
+.chart-svg .tip span{font-size:10px;font-weight:500;color:var(--faint)}
 .nohist{position:absolute;inset:auto 0 8px;text-align:center;color:var(--faint);font-size:11.5px}
 @media (prefers-reduced-motion:reduce){.chart-svg .line{animation:none;stroke-dashoffset:0}
-  .chart-svg .area{animation:none;opacity:1}}
+  .chart-svg .area,.chart-svg .band{animation:none;opacity:1}
+  .chart-svg .vol rect{animation:none}}
 
 
 /* ---- layout: DefiLlama's rail and density, Aave's calm ----
@@ -965,16 +988,57 @@ function loadPools() {
   });
 }
 
+const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 90: ['day', 90], 365: ['day', 365] };
+
 /* Charts must always draw. Sources are tried in order and, if none answers,
    a flat series at the current value is returned with live:false so the UI can
    say so rather than showing an empty box. */
 const KLINE = { 1: ['15m', 96], 7: ['1h', 168], 30: ['4h', 180], 90: ['12h', 180], 365: ['1d', 365] };
 
+/* Both candle sources hand back high, low and volume alongside the close, and
+   we were keeping only the close. Same request, three more encodings. */
+function candles(rows, h, l, c, v) {
+  const s = { pts: [], hi: [], lo: [], vol: [] };
+  for (const r of rows || []) {
+    const close = Number(r[c]);
+    if (!Number.isFinite(close)) continue;
+    s.pts.push(close);
+    s.hi.push(Number(r[h]) || close);
+    s.lo.push(Number(r[l]) || close);
+    s.vol.push(Math.max(0, Number(r[v]) || 0));
+  }
+  return s;
+}
+
 async function binance(sym, days) {
   const [interval, limit] = KLINE[days] || KLINE[30];
   const j = await get(`${BINANCE}/klines?symbol=${encodeURIComponent(sym)}USDT&interval=${interval}&limit=${limit}`,
     { tries: 1, timeout: 12000 });
-  return (Array.isArray(j) ? j : []).map(k => Number(k[4])).filter(Number.isFinite);
+  // [openTime, o, h, l, c, baseVol, closeTime, quoteVol, ...] — quote volume is USDT
+  return candles(Array.isArray(j) ? j : [], 2, 3, 4, 7);
+}
+
+/** OHLCV for one GeckoTerminal pool. Rows arrive newest first. */
+async function poolCandles(net, addr, days) {
+  const [tf, limit] = OHLCV[days] || OHLCV[7];
+  const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(addr)}/ohlcv/${tf}?limit=${limit}`,
+    { tries: 1, timeout: 12000 });
+  const rows = (j?.data?.attributes?.ohlcv_list || []).slice().reverse();
+  return candles(rows, 2, 3, 4, 5);
+}
+
+/* Last resort before giving up on an asset: it is not on CoinGecko and not on
+   Binance, but if anyone trades it at all there is a pool somewhere. Find the
+   deepest one and chart that. */
+async function poolChartFor(sym, days) {
+  const j = await get(`${GT}/search/pools?query=${encodeURIComponent(sym)}&page=1`,
+    { tries: 1, timeout: 12000 });
+  const best = (j?.data || [])
+    .map(row => ({ net: String(row.id || '').split('_')[0],
+      addr: row.attributes?.address, liq: Number(row.attributes?.reserve_in_usd) || 0 }))
+    .filter(p => p.net && p.addr)
+    .sort((x, y) => y.liq - x.liq)[0];
+  return best ? poolCandles(best.net, best.addr, days) : { pts: [] };
 }
 
 const flat = v => Array.from({ length: 24 }, () => Number(v) || 0);
@@ -985,40 +1049,47 @@ const slice = (all, days, now) => {
   return pts.length > 1 ? { pts, live: true } : { pts: flat(now), live: false };
 };
 
-/** Asset price history, days: 1 | 7 | 30 | 365 */
+/** Asset price history, days: 1 | 7 | 30 | 365. Five sources, in order of how
+    much they know, so a chart is only ever flat when nobody trades the thing. */
 function loadAssetChart(a, days) {
   return cache(`chart:${a.id}:${days}`, TTL, async () => {
     if (a.cg) {
       try {
         const j = await get(`${CG}/coins/${encodeURIComponent(a.cg)}/market_chart?vs_currency=usd&days=${days}`);
         const pts = (j?.prices || []).map(p => p[1]).filter(Number.isFinite);
-        if (pts.length > 1) return { pts, live: true };
+        // market_chart carries volume in the same payload; it was being dropped
+        const vol = (j?.total_volumes || []).map(p => p[1]).filter(Number.isFinite);
+        if (pts.length > 1) return { pts, vol: vol.length === pts.length ? vol : null, live: true };
       } catch { /* try the next source */ }
     }
     try {
-      const pts = await binance(a.sym, days);
-      if (pts.length > 1) return { pts, live: true };
+      const s = await binance(a.sym, days);
+      if (s.pts.length > 1) return { ...s, live: true };
+    } catch { /* try the next source */ }
+    try {
+      const s = await poolChartFor(a.sym, days);       // whoever does trade it
+      if (s.pts.length > 1) return { ...s, live: true, via: 'a DEX pool' };
     } catch { /* try the next source */ }
     if (days <= 7 && a.spark?.length > 1) return { pts: a.spark, live: true };
     return { pts: flat(a.price), live: false };
   });
 }
 
-/** DEX pair history from GeckoTerminal OHLCV. */
-const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 90: ['day', 90], 365: ['day', 365] };
+/** DEX pair history from GeckoTerminal OHLCV, then by symbol if the pool
+    address does not resolve — a pair is never left without a chart. */
 function loadPairChart(p, days) {
   return cache(`pchart:${p.id}:${days}`, TTL, async () => {
     const net = GT_NET[p.chain];
     if (net && p.addr) {
       try {
-        const [tf, limit] = OHLCV[days] || OHLCV[7];
-        const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(p.addr)}/ohlcv/${tf}?limit=${limit}`,
-          { tries: 1, timeout: 12000 });
-        const pts = (j?.data?.attributes?.ohlcv_list || []).map(r => Number(r[4]))
-          .filter(Number.isFinite).reverse();
-        if (pts.length > 1) return { pts, live: true };
+        const s = await poolCandles(net, p.addr, days);
+        if (s.pts.length > 1) return { ...s, live: true };
       } catch { /* fall through */ }
     }
+    try {
+      const s = await poolChartFor(p.sym, days);
+      if (s.pts.length > 1) return { ...s, live: true, via: 'the deepest pool for this ticker' };
+    } catch { /* fall through */ }
     return { pts: flat(p.price), live: false };
   });
 }
@@ -2012,7 +2083,9 @@ function chartBox(it) {
   if (!c) return '';
   const tabs = c[2].map(([d, l]) =>
     `<span class="${d === c[1] ? 'on' : ''}" data-days="${d}" role="button" tabindex="0">${l}</span>`).join('');
-  return `<div class="chart"><div class="chart-svg"><div class="cload"></div></div><div class="rangebar">${tabs}</div></div>`;
+  return `<div class="chart"><div class="chart-svg" tabindex="0" role="img"
+    aria-label="History. Arrow keys read out each point."><div class="cload"></div></div>
+    <div class="rangebar">${tabs}</div></div>`;
 }
 let depth = 0;                       // sheet entries pushed since the sheet opened
 // remote DEX results are transient — they live in S.list, not the prefetched index
@@ -2209,7 +2282,6 @@ function miniHTML(it) {
    One component for every kind. It animates in, follows the pointer, and always
    draws: when a source has no history the series is flat at the current value
    and the chart says so instead of showing an empty box. */
-const CW = 300, CHH = 110, CPAD = 8;
 let chartSeq = 0;
 
 const chartValue = (it, v) => (KIND[it.kind].chart?.[3] || usd)(v, it);
@@ -2229,61 +2301,144 @@ async function drawChart(days) {
   paintChart(box, it, res, days);
 }
 
-function paintChart(box, it, { pts, live }, days) {
+/* Geometry. Two stacked panels sharing one x-axis: price above, volume below.
+   Never one plot with two y-scales — that invents a correlation the data does
+   not have. All text is an HTML overlay, because preserveAspectRatio="none"
+   stretches SVG text horizontally along with everything else. */
+// the svg is the plot only; the time axis lives in a gutter beneath it, so
+// labels never sit on top of the volume bars
+const CW = 300, PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
+
+/* Resolution follows the range. Month-and-day across a year prints "Aug 29" at
+   both ends, a year apart, which reads as no span at all. */
+const stamp = (d, days) => days <= 1
+  // a bare clock time reads the same at both ends of a 24h span
+  ? d.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  : days <= 90 ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  : d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+
+function paintChart(box, it, s, days) {
   const host = box.querySelector('.chart-svg');
-  if (!pts?.length) pts = [0, 0];
-  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
-  const first = pts[0], last = pts[pts.length - 1];
+  const pts = s.pts?.length > 1 ? s.pts : [0, 0];
+  const n = pts.length;
+  const hi = s.hi?.length === n ? s.hi : null;
+  const lo = s.lo?.length === n ? s.lo : null;
+  const vol = s.vol?.length === n && s.vol.some(v => v > 0) ? s.vol : null;
+  const live = s.live;
+
+  const min = Math.min(...(lo || pts)), max = Math.max(...(hi || pts));
+  const span = max - min || Math.abs(max) || 1;
+  const first = pts[0], last = pts[n - 1];
   const move = first ? (last - first) / Math.abs(first) * 100 : 0;
   const up = move >= 0;
   const stroke = up ? 'var(--up)' : 'var(--down)';
-  const d = path(pts, CW, CHH, CPAD);
+
+  const X = i => (i / (n - 1)) * CW;
+  const Y = v => CPAD + (1 - (v - min) / span) * (PH - CPAD * 2);
+  const line = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
+  const d = line(pts);
+  // the high/low envelope: down one edge and back along the other
+  const band = hi && lo
+    ? line(hi) + lo.map((v, i) => `L${X(n - 1 - i).toFixed(1)} ${Y(lo[n - 1 - i]).toFixed(1)}`).join('') + 'Z'
+    : '';
+  /* An hourly month is 720 bars in 370 pixels — sub-pixel marks that read as one
+     solid block. Sum into buckets wide enough to be bars. The tooltip still
+     reads the full-resolution series, so nothing is lost, only drawn coarser. */
+  const buckets = (a, m) => {
+    if (a.length <= m) return a;
+    const out = [], step = a.length / m;
+    for (let i = 0; i < m; i++) {
+      let s = 0;
+      for (let j = Math.floor(i * step); j < Math.floor((i + 1) * step); j++) s += a[j];
+      out.push(s);
+    }
+    return out;
+  };
+  const vb = vol ? buckets(vol, 64) : null;
+  const vmax = vb ? Math.max(...vb) || 1 : 1;
+  const bw = vb ? Math.max(1.2, CW / vb.length - 1) : 0;
+  const bars = vb ? vb.map((v, i) => {
+    const h = (v / vmax) * VH;
+    return `<rect x="${(i / vb.length * CW).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
+       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="0.5"/>`;
+  }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CHH}" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" preserveAspectRatio="none" aria-hidden="true">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
-      <path class="area" d="${d}L${CW} ${CHH}L0 ${CHH}Z" fill="url(#cgrad)"/>
+      ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
+      <path class="area" d="${d}L${CW} ${PH}L0 ${PH}Z" fill="url(#cgrad)"/>
+      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"
+        vector-effect="non-scaling-stroke"/>
       <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
-        stroke-linejoin="round" stroke-linecap="round"/>
+        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
     </svg>
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
-    <div class="tip"></div>
-    ${live ? '' : `<div class="nohist">No price history available — showing the current value</div>`}`;
+    <div class="tip"><b></b><span></span></div>
+    <div class="ax hi"></div><div class="ax lo"></div>
+    <div class="ax t0"></div><div class="ax t1"></div>
+    ${vol ? '<div class="ax vk">volume</div>' : ''}
+    ${live ? '' : '<div class="nohist">No history from any source — showing the current value</div>'}`;
 
-  // the headline follows the range, not a fixed 24 hours
+  // scale read off the axis labels, so the tooltip is an enhancement not a gate
+  const put = (sel, text) => { host.querySelector(sel).textContent = text; };
+  const fmt = v => chartValue(it, v);
+  put('.hi', fmt(max)); put('.lo', fmt(min));
+  const when = i => new Date(Date.now() - (1 - i / (n - 1)) * days * 864e5);
+  put('.t0', stamp(when(0), days)); put('.t1', stamp(when(n - 1), days));
+
   const head = box.querySelector('.chgline');
   const big = box.querySelector('.big');
-  const baseBig = chartValue(it, last);
+  const baseBig = fmt(last);
+  const source = !live ? ' · no history' : s.via ? ` · via ${s.via}` : '';
   const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
-    <span class="mute">${esc(RANGE_LABEL[days] || '')}${live ? '' : ' · no history'}</span>`;
+    <span class="mute">${esc(RANGE_LABEL[days] || '')}${esc(source)}</span>`;
   if (big) big.textContent = baseBig;
   if (head) head.innerHTML = summary;
 
-  const yOf = v => CPAD + (1 - (v - lo) / span) * (CHH - CPAD * 2);
-  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot'), tip = host.querySelector('.tip');
+  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot');
+  const tip = host.querySelector('.tip');
+  const tipV = tip.querySelector('b'), tipL = tip.querySelector('span');
 
+  let cur = -1;
   const at = i => {
-    const v = pts[i], xp = i / (pts.length - 1) * 100;
+    cur = i;
+    const v = pts[i], xp = i / (n - 1) * 100;
     cx.style.cssText = `left:${xp}%;opacity:1`;
-    dot.style.cssText = `left:${xp}%;top:${yOf(v) / CHH * 100}%;background:${stroke};opacity:1`;
-    tip.textContent = chartValue(it, v);
+    dot.style.cssText = `left:${xp}%;top:${Y(v) / CH2 * 100}%;background:${stroke};opacity:1`;
+    tipV.textContent = fmt(v);                        // value leads
+    tipL.textContent = stamp(when(i), days) + (vol ? ` · ${money(vol[i])} vol` : '');
     tip.style.cssText = `left:${xp}%;opacity:1`;
-    if (big) big.textContent = chartValue(it, v);
-    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
+    if (big) big.textContent = fmt(v);
+    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${
+      pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
       <span class="mute">from the start of this range</span>`;
   };
   const clear = () => {
+    cur = -1;
     cx.style.opacity = dot.style.opacity = tip.style.opacity = 0;
     if (big) big.textContent = baseBig;
     if (head) head.innerHTML = summary;
   };
-  host.onpointermove = e => {
+  const nearest = clientX => {
     const r = host.getBoundingClientRect();
-    at(Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1)))));
+    return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left) / r.width * (n - 1))));
   };
+  host.onpointermove = e => at(nearest(e.clientX));
   host.onpointerleave = clear;
+  // the same readout on keyboard as on hover
+  host.onfocus = () => at(n - 1);
+  host.onblur = clear;
+  // Escape is the sheet's, not the chart's — blurring is what clears the readout
+  host.onkeydown = e => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    at(Math.max(0, Math.min(n - 1, (cur < 0 ? n - 1 : cur) + step)));
+  };
 }
 
 function showSheet(html) {

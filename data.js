@@ -337,16 +337,57 @@ export function loadPools() {
   });
 }
 
+const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 90: ['day', 90], 365: ['day', 365] };
+
 /* Charts must always draw. Sources are tried in order and, if none answers,
    a flat series at the current value is returned with live:false so the UI can
    say so rather than showing an empty box. */
 const KLINE = { 1: ['15m', 96], 7: ['1h', 168], 30: ['4h', 180], 90: ['12h', 180], 365: ['1d', 365] };
 
+/* Both candle sources hand back high, low and volume alongside the close, and
+   we were keeping only the close. Same request, three more encodings. */
+function candles(rows, h, l, c, v) {
+  const s = { pts: [], hi: [], lo: [], vol: [] };
+  for (const r of rows || []) {
+    const close = Number(r[c]);
+    if (!Number.isFinite(close)) continue;
+    s.pts.push(close);
+    s.hi.push(Number(r[h]) || close);
+    s.lo.push(Number(r[l]) || close);
+    s.vol.push(Math.max(0, Number(r[v]) || 0));
+  }
+  return s;
+}
+
 async function binance(sym, days) {
   const [interval, limit] = KLINE[days] || KLINE[30];
   const j = await get(`${BINANCE}/klines?symbol=${encodeURIComponent(sym)}USDT&interval=${interval}&limit=${limit}`,
     { tries: 1, timeout: 12000 });
-  return (Array.isArray(j) ? j : []).map(k => Number(k[4])).filter(Number.isFinite);
+  // [openTime, o, h, l, c, baseVol, closeTime, quoteVol, ...] — quote volume is USDT
+  return candles(Array.isArray(j) ? j : [], 2, 3, 4, 7);
+}
+
+/** OHLCV for one GeckoTerminal pool. Rows arrive newest first. */
+async function poolCandles(net, addr, days) {
+  const [tf, limit] = OHLCV[days] || OHLCV[7];
+  const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(addr)}/ohlcv/${tf}?limit=${limit}`,
+    { tries: 1, timeout: 12000 });
+  const rows = (j?.data?.attributes?.ohlcv_list || []).slice().reverse();
+  return candles(rows, 2, 3, 4, 5);
+}
+
+/* Last resort before giving up on an asset: it is not on CoinGecko and not on
+   Binance, but if anyone trades it at all there is a pool somewhere. Find the
+   deepest one and chart that. */
+async function poolChartFor(sym, days) {
+  const j = await get(`${GT}/search/pools?query=${encodeURIComponent(sym)}&page=1`,
+    { tries: 1, timeout: 12000 });
+  const best = (j?.data || [])
+    .map(row => ({ net: String(row.id || '').split('_')[0],
+      addr: row.attributes?.address, liq: Number(row.attributes?.reserve_in_usd) || 0 }))
+    .filter(p => p.net && p.addr)
+    .sort((x, y) => y.liq - x.liq)[0];
+  return best ? poolCandles(best.net, best.addr, days) : { pts: [] };
 }
 
 const flat = v => Array.from({ length: 24 }, () => Number(v) || 0);
@@ -357,40 +398,47 @@ const slice = (all, days, now) => {
   return pts.length > 1 ? { pts, live: true } : { pts: flat(now), live: false };
 };
 
-/** Asset price history, days: 1 | 7 | 30 | 365 */
+/** Asset price history, days: 1 | 7 | 30 | 365. Five sources, in order of how
+    much they know, so a chart is only ever flat when nobody trades the thing. */
 export function loadAssetChart(a, days) {
   return cache(`chart:${a.id}:${days}`, TTL, async () => {
     if (a.cg) {
       try {
         const j = await get(`${CG}/coins/${encodeURIComponent(a.cg)}/market_chart?vs_currency=usd&days=${days}`);
         const pts = (j?.prices || []).map(p => p[1]).filter(Number.isFinite);
-        if (pts.length > 1) return { pts, live: true };
+        // market_chart carries volume in the same payload; it was being dropped
+        const vol = (j?.total_volumes || []).map(p => p[1]).filter(Number.isFinite);
+        if (pts.length > 1) return { pts, vol: vol.length === pts.length ? vol : null, live: true };
       } catch { /* try the next source */ }
     }
     try {
-      const pts = await binance(a.sym, days);
-      if (pts.length > 1) return { pts, live: true };
+      const s = await binance(a.sym, days);
+      if (s.pts.length > 1) return { ...s, live: true };
+    } catch { /* try the next source */ }
+    try {
+      const s = await poolChartFor(a.sym, days);       // whoever does trade it
+      if (s.pts.length > 1) return { ...s, live: true, via: 'a DEX pool' };
     } catch { /* try the next source */ }
     if (days <= 7 && a.spark?.length > 1) return { pts: a.spark, live: true };
     return { pts: flat(a.price), live: false };
   });
 }
 
-/** DEX pair history from GeckoTerminal OHLCV. */
-const OHLCV = { 1: ['hour', 24], 7: ['hour', 168], 30: ['day', 30], 90: ['day', 90], 365: ['day', 365] };
+/** DEX pair history from GeckoTerminal OHLCV, then by symbol if the pool
+    address does not resolve — a pair is never left without a chart. */
 export function loadPairChart(p, days) {
   return cache(`pchart:${p.id}:${days}`, TTL, async () => {
     const net = GT_NET[p.chain];
     if (net && p.addr) {
       try {
-        const [tf, limit] = OHLCV[days] || OHLCV[7];
-        const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(p.addr)}/ohlcv/${tf}?limit=${limit}`,
-          { tries: 1, timeout: 12000 });
-        const pts = (j?.data?.attributes?.ohlcv_list || []).map(r => Number(r[4]))
-          .filter(Number.isFinite).reverse();
-        if (pts.length > 1) return { pts, live: true };
+        const s = await poolCandles(net, p.addr, days);
+        if (s.pts.length > 1) return { ...s, live: true };
       } catch { /* fall through */ }
     }
+    try {
+      const s = await poolChartFor(p.sym, days);
+      if (s.pts.length > 1) return { ...s, live: true, via: 'the deepest pool for this ticker' };
+    } catch { /* fall through */ }
     return { pts: flat(p.price), live: false };
   });
 }

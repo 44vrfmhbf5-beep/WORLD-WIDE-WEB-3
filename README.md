@@ -171,6 +171,39 @@ One component for every kind. The line animates in, the pointer reads out any
 point, and the headline percentage is computed from the range on screen rather
 than a fixed 24 hours — switch to 1Y and it reports the year.
 
+**What it encodes.** Close price, its high/low envelope, and volume — on two
+panels sharing one x-axis. Never one plot with two y-scales: that invents a
+correlation the data does not have. The sources were already sending high, low
+and volume in the same responses and we were keeping only the close, so this
+cost no extra requests. Volume is summed into 64 buckets to draw; an hourly
+month is 720 marks in 370 pixels, which reads as one solid block. The tooltip
+still reads the full-resolution series.
+
+**What it says without hovering.** The high and low of the range, both ends of
+the time axis, and a hairline at the opening value so the move has something to
+be measured against. Resolution follows the range — a bare clock time reads
+identically at both ends of a 24-hour span, and month-and-day does the same
+across a year.
+
+**Reachable by keyboard.** The plot is focusable and arrow keys scrub it, with
+the same readout hovering gives. Escape belongs to the sheet, not the chart.
+
+### No chart is blank
+
+Sources are tried in order of how much they know, and the last one is a search:
+
+```
+asset   CoinGecko /market_chart  ->  Binance klines  ->  the deepest DEX pool
+                                     trading that ticker  ->  7d sparkline  ->  flat
+pair    that pool's OHLCV        ->  the deepest pool for the ticker  ->  flat
+```
+
+The pool search is the one that matters: a token on no price feed at all still
+charts, because if anyone trades it there is a pool somewhere. The chart says
+where the data came from (`via a DEX pool`) rather than passing it off as a
+first-party price. Only when nothing trades does it fall back to a flat line,
+and then it says so.
+
 Which loader, which ranges and how a value reads back are four fields in the
 `KIND` table, so every kind with a series over time has a chart: assets, DEX
 pairs, lending markets, yield farms, protocols, NFT floors, stablecoin supply

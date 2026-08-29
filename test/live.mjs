@@ -78,8 +78,9 @@ const R = (glob, fn) => routes.push([glob, fn]);
 R('https://api.coingecko.com/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.includes('/market_chart')) {
-    return r.fulfill({ contentType: 'application/json',
-      body: JSON.stringify({ prices: walk('c', 100, 3400).map((v, i) => [Date.now() - i * 36e5, v]) }) });
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      prices: walk('c', 100, 3400).map((v, i) => [Date.now() - i * 36e5, v]),
+      total_volumes: walk('v', 100, 2e9).map((v, i) => [Date.now() - i * 36e5, v]) }) });
   }
   const cat = new URL(u).searchParams.get('category');
   r.fulfill({ contentType: 'application/json', body: JSON.stringify(cat ? markets.slice(0, 2) : markets) });
@@ -500,6 +501,34 @@ ok(await p.locator('.chart svg .line').count() === 1, 'the chart draws an animat
 await p.click('[data-days="365"]'); await p.waitForTimeout(1200);
 ok(hit(/\/market_chart\?vs_currency=usd&days=365$/), 'range switch changes the days param');
 ok(/past year/.test(await p.locator('.chgline').textContent()), 'the percentage follows the range');
+console.log('\n# what the chart encodes');
+{
+  // charts open on 1D, and that is the range where a clock-only label collided
+  await p.click('[data-days="1"]'); await p.waitForTimeout(900);
+  const d1 = await p.locator('.chart-svg .ax').allTextContents();
+  ok(d1[2] !== d1[3], `1D labels its two ends apart (${d1[2]} -> ${d1[3]})`);
+  await p.click('[data-days="365"]'); await p.waitForTimeout(900);
+  // price, its high/low envelope and volume, on two panels sharing one x-axis —
+  // never one plot with two y-scales
+  ok(await p.locator('.chart-svg .vol rect').count() > 0, 'volume rides under the price on its own panel');
+  const ax = await p.locator('.chart-svg .ax').allTextContents();
+  ok(ax.filter(Boolean).length >= 4, `the scale is readable without hovering (${ax.join(' | ')})`);
+  ok(/\$/.test(ax[0] || ''), 'the high and low of the range are labelled');
+  // a year-long range printed "Aug 29" at both ends, which reads as no span
+  ok(ax[2] !== ax[3], `the two ends of the range are distinguishable (${ax[2]} -> ${ax[3]})`);
+
+  // the same readout on keyboard as on hover
+  const rest = await p.locator('.big').textContent();
+  await p.locator('.chart-svg').focus(); await p.waitForTimeout(200);
+  await p.keyboard.press('ArrowLeft'); await p.keyboard.press('ArrowLeft');
+  await p.waitForTimeout(250);
+  ok((await p.locator('.big').textContent()) !== rest, 'arrow keys scrub the chart');
+  ok(/\d/.test(await p.locator('.chart-svg .tip b').textContent()), 'and the tooltip leads with the value');
+  // Escape belongs to the sheet; blurring the chart is what puts the readout back
+  await p.locator('.chart-svg').blur(); await p.waitForTimeout(250);
+  ok((await p.locator('.big').textContent()) === rest, 'leaving the chart restores the headline');
+  ok(await p.locator('.sheet.open').count() === 1, 'and scrubbing never closed the sheet');
+}
 {
   const box = await p.locator('.chart-svg').boundingBox();
   const before = await p.locator('.big').textContent();
@@ -534,7 +563,8 @@ console.log('\n# CoinGecko refusing the origin must not empty the app');
   await ctx.route('https://api.geckoterminal.com/**', r => r.fulfill({ contentType: 'application/json', body: '{"data":[]}' }));
   await ctx.route('https://api.dexscreener.com/**', r => r.fulfill({ contentType: 'application/json', body: '{"pairs":[]}' }));
   await ctx.route('https://api.binance.com/**', r => r.fulfill({ contentType: 'application/json',
-    body: JSON.stringify(Array.from({ length: 100 }, (_, i) => [0, 0, 0, 0, String(100 + i), 0])) }));
+    body: JSON.stringify(Array.from({ length: 100 }, (_, i) =>
+      [0, 0, String(104 + i), String(96 + i), String(100 + i), '5', 0, String(1e6 + i * 1e4)])) }));
   await q.goto(U, { waitUntil: 'commit' });
   await q.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
   const body = await q.locator('#results').textContent();
@@ -543,6 +573,46 @@ console.log('\n# CoinGecko refusing the origin must not empty the app');
   await q.locator('.row[data-id^="a:"]').first().click();
   await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
   ok(await q.locator('.chart svg .line').count() === 1, 'charts fall back to Binance klines');
+  // klines carry high, low and quote volume in the same rows
+  ok(await q.locator('.chart-svg .band').count() === 1, 'and bring a high/low envelope with them');
+  ok(await q.locator('.chart-svg .vol rect').count() > 0, 'and their volume');
+  await ctx.close();
+}
+
+console.log('\n# an asset off every price feed still gets a real chart');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  q.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
+  const gt = [];
+  await ctx.route('https://api.coingecko.com/**', r => r.abort('failed'));   // no cg id downstream
+  await ctx.route('https://api.coinpaprika.com/**', r => r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify([{ id: 'pk-obscure', name: 'Obscure Token', symbol: 'OBSC', rank: 1,
+      quotes: { USD: { price: 0.42, market_cap: 9e8, volume_24h: 1e6, percent_change_24h: 2 } } }]) }));
+  await ctx.route('https://api.binance.com/**', r => r.abort('failed'));     // not listed there either
+  await ctx.route('https://api.geckoterminal.com/**', r => {
+    const u = r.request().url(); gt.push(u);
+    const J = o => r.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
+    if (u.includes('/search/pools')) return J({ data: [
+      { id: 'solana_SHALLOW', attributes: { address: 'shallow', reserve_in_usd: '4000' } },
+      { id: 'solana_DEEP', attributes: { address: 'deep', reserve_in_usd: '900000' } }] });
+    if (u.includes('/ohlcv/')) return J({ data: { attributes: { ohlcv_list:
+      Array.from({ length: 60 }, (_, i) => [i, 0.4, 0.45, 0.38, 0.4 + i * 0.001, 1e4 + i * 50]) } } });
+    return J({ data: [] });
+  });
+  for (const h of ['https://yields.llama.fi/**', 'https://api.llama.fi/**', 'https://stablecoins.llama.fi/**',
+    'https://bridges.llama.fi/**', 'https://api.dexscreener.com/**', 'https://nft.llama.fi/**',
+    'https://api-mainnet.magiceden.dev/**'])
+    await ctx.route(h, r => r.fulfill({ contentType: 'application/json', body: '{}' }));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('.row[data-id^="a:"]', { timeout: 20000 }).catch(() => {});
+  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
+  ok(await q.locator('.chart svg .line').count() === 1, 'a token on no price feed still charts');
+  ok(gt.some(u => /\/search\/pools\?query=OBSC/.test(u)), 'by finding where it actually trades');
+  ok(gt.some(u => /\/pools\/deep\/ohlcv\//.test(u)), 'and charting the deepest pool, not the first');
+  ok(await q.locator('.nohist').count() === 0, 'so it is not labelled as having no history');
+  ok(/via a DEX pool/.test(await q.locator('.chgline').textContent()), 'and it says where the data came from');
   await ctx.close();
 }
 

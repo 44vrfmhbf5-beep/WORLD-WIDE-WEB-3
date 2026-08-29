@@ -248,7 +248,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .w40{width:40%}.w25{width:25%}.w15{width:64px;height:14px;flex:none}
 @keyframes shimmer{to{background-position:-220% 0}}
 
-.cload{height:110px;display:grid;place-items:center;color:var(--faint);font-size:12.5px}
+.cload{height:136px;display:grid;place-items:center;color:var(--faint);font-size:12.5px}
 .cload:not(.err){background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.05) 50%,transparent 70%);
   background-size:220% 100%;animation:shimmer 1.4s linear infinite}
 
@@ -292,8 +292,26 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @keyframes blink{50%{opacity:.4}}
 
 /* ---- interactive chart ---- */
-.chart-svg{position:relative;height:110px}
-.chart-svg svg{display:block;width:100%;height:110px;touch-action:none}
+.chart-svg{position:relative;height:136px;outline-offset:-2px}
+.chart-svg svg{display:block;width:100%;height:120px;touch-action:none}
+/* the high/low envelope behind the close line, and a hairline at the range's
+   opening value so the move is visible against something */
+.chart-svg .band{opacity:0;animation:fadein .5s .35s var(--ease) forwards}
+.chart-svg .base{stroke:var(--line2);stroke-width:1}
+.chart-svg .vol rect{transform-box:fill-box;transform-origin:bottom;
+  animation:rise .5s var(--ease) both}
+@keyframes rise{from{transform:scaleY(0)}}
+
+/* axis labels are HTML, not SVG text: the svg is stretched to fit, which would
+   stretch any text in it too */
+.ax{position:absolute;font-size:10px;font-weight:600;letter-spacing:.02em;
+  color:var(--faint);font-variant-numeric:tabular-nums;pointer-events:none;white-space:nowrap}
+.ax.hi{top:2px;right:8px}
+.ax.lo{top:76px;right:8px}
+.ax.t0{bottom:1px;left:8px}
+.ax.t1{bottom:1px;right:8px}
+/* out of the bars' way: the panel is labelled above them, not across them */
+.ax.vk{top:92px;left:8px;opacity:.75;font-size:9px;text-transform:uppercase;letter-spacing:.09em}
 .chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
@@ -302,12 +320,17 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   opacity:0;transition:opacity .12s;pointer-events:none}
 .chart-svg .cdot{position:absolute;width:9px;height:9px;border-radius:50%;margin:-4.5px 0 0 -4.5px;
   box-shadow:0 0 0 2px var(--surface);opacity:0;transition:opacity .12s;pointer-events:none}
-.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:3px 8px;border-radius:8px;
-  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;font-weight:600;
-  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;pointer-events:none}
+.chart-svg .tip{position:absolute;top:4px;transform:translateX(-50%);padding:4px 9px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--line2);font-size:11.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:0;transition:opacity .12s;
+  pointer-events:none;display:flex;flex-direction:column;gap:1px;align-items:center}
+/* the value leads, the label follows: here the reader has the point and wants the number */
+.chart-svg .tip b{font-weight:700;color:var(--text)}
+.chart-svg .tip span{font-size:10px;font-weight:500;color:var(--faint)}
 .nohist{position:absolute;inset:auto 0 8px;text-align:center;color:var(--faint);font-size:11.5px}
 @media (prefers-reduced-motion:reduce){.chart-svg .line{animation:none;stroke-dashoffset:0}
-  .chart-svg .area{animation:none;opacity:1}}
+  .chart-svg .area,.chart-svg .band{animation:none;opacity:1}
+  .chart-svg .vol rect{animation:none}}
 
 
 /* ---- layout: DefiLlama's rail and density, Aave's calm ----

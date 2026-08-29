@@ -630,7 +630,9 @@ function chartBox(it) {
   if (!c) return '';
   const tabs = c[2].map(([d, l]) =>
     `<span class="${d === c[1] ? 'on' : ''}" data-days="${d}" role="button" tabindex="0">${l}</span>`).join('');
-  return `<div class="chart"><div class="chart-svg"><div class="cload"></div></div><div class="rangebar">${tabs}</div></div>`;
+  return `<div class="chart"><div class="chart-svg" tabindex="0" role="img"
+    aria-label="History. Arrow keys read out each point."><div class="cload"></div></div>
+    <div class="rangebar">${tabs}</div></div>`;
 }
 let depth = 0;                       // sheet entries pushed since the sheet opened
 // remote DEX results are transient — they live in S.list, not the prefetched index
@@ -827,7 +829,6 @@ function miniHTML(it) {
    One component for every kind. It animates in, follows the pointer, and always
    draws: when a source has no history the series is flat at the current value
    and the chart says so instead of showing an empty box. */
-const CW = 300, CHH = 110, CPAD = 8;
 let chartSeq = 0;
 
 const chartValue = (it, v) => (KIND[it.kind].chart?.[3] || usd)(v, it);
@@ -847,61 +848,144 @@ async function drawChart(days) {
   paintChart(box, it, res, days);
 }
 
-function paintChart(box, it, { pts, live }, days) {
+/* Geometry. Two stacked panels sharing one x-axis: price above, volume below.
+   Never one plot with two y-scales — that invents a correlation the data does
+   not have. All text is an HTML overlay, because preserveAspectRatio="none"
+   stretches SVG text horizontally along with everything else. */
+// the svg is the plot only; the time axis lives in a gutter beneath it, so
+// labels never sit on top of the volume bars
+const CW = 300, PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
+
+/* Resolution follows the range. Month-and-day across a year prints "Aug 29" at
+   both ends, a year apart, which reads as no span at all. */
+const stamp = (d, days) => days <= 1
+  // a bare clock time reads the same at both ends of a 24h span
+  ? d.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+  : days <= 90 ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  : d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+
+function paintChart(box, it, s, days) {
   const host = box.querySelector('.chart-svg');
-  if (!pts?.length) pts = [0, 0];
-  const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
-  const first = pts[0], last = pts[pts.length - 1];
+  const pts = s.pts?.length > 1 ? s.pts : [0, 0];
+  const n = pts.length;
+  const hi = s.hi?.length === n ? s.hi : null;
+  const lo = s.lo?.length === n ? s.lo : null;
+  const vol = s.vol?.length === n && s.vol.some(v => v > 0) ? s.vol : null;
+  const live = s.live;
+
+  const min = Math.min(...(lo || pts)), max = Math.max(...(hi || pts));
+  const span = max - min || Math.abs(max) || 1;
+  const first = pts[0], last = pts[n - 1];
   const move = first ? (last - first) / Math.abs(first) * 100 : 0;
   const up = move >= 0;
   const stroke = up ? 'var(--up)' : 'var(--down)';
-  const d = path(pts, CW, CHH, CPAD);
+
+  const X = i => (i / (n - 1)) * CW;
+  const Y = v => CPAD + (1 - (v - min) / span) * (PH - CPAD * 2);
+  const line = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
+  const d = line(pts);
+  // the high/low envelope: down one edge and back along the other
+  const band = hi && lo
+    ? line(hi) + lo.map((v, i) => `L${X(n - 1 - i).toFixed(1)} ${Y(lo[n - 1 - i]).toFixed(1)}`).join('') + 'Z'
+    : '';
+  /* An hourly month is 720 bars in 370 pixels — sub-pixel marks that read as one
+     solid block. Sum into buckets wide enough to be bars. The tooltip still
+     reads the full-resolution series, so nothing is lost, only drawn coarser. */
+  const buckets = (a, m) => {
+    if (a.length <= m) return a;
+    const out = [], step = a.length / m;
+    for (let i = 0; i < m; i++) {
+      let s = 0;
+      for (let j = Math.floor(i * step); j < Math.floor((i + 1) * step); j++) s += a[j];
+      out.push(s);
+    }
+    return out;
+  };
+  const vb = vol ? buckets(vol, 64) : null;
+  const vmax = vb ? Math.max(...vb) || 1 : 1;
+  const bw = vb ? Math.max(1.2, CW / vb.length - 1) : 0;
+  const bars = vb ? vb.map((v, i) => {
+    const h = (v / vmax) * VH;
+    return `<rect x="${(i / vb.length * CW).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
+       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="0.5"/>`;
+  }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CHH}" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" preserveAspectRatio="none" aria-hidden="true">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
-      <path class="area" d="${d}L${CW} ${CHH}L0 ${CHH}Z" fill="url(#cgrad)"/>
+      ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
+      <path class="area" d="${d}L${CW} ${PH}L0 ${PH}Z" fill="url(#cgrad)"/>
+      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"
+        vector-effect="non-scaling-stroke"/>
       <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
-        stroke-linejoin="round" stroke-linecap="round"/>
+        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
     </svg>
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
-    <div class="tip"></div>
-    ${live ? '' : `<div class="nohist">No price history available — showing the current value</div>`}`;
+    <div class="tip"><b></b><span></span></div>
+    <div class="ax hi"></div><div class="ax lo"></div>
+    <div class="ax t0"></div><div class="ax t1"></div>
+    ${vol ? '<div class="ax vk">volume</div>' : ''}
+    ${live ? '' : '<div class="nohist">No history from any source — showing the current value</div>'}`;
 
-  // the headline follows the range, not a fixed 24 hours
+  // scale read off the axis labels, so the tooltip is an enhancement not a gate
+  const put = (sel, text) => { host.querySelector(sel).textContent = text; };
+  const fmt = v => chartValue(it, v);
+  put('.hi', fmt(max)); put('.lo', fmt(min));
+  const when = i => new Date(Date.now() - (1 - i / (n - 1)) * days * 864e5);
+  put('.t0', stamp(when(0), days)); put('.t1', stamp(when(n - 1), days));
+
   const head = box.querySelector('.chgline');
   const big = box.querySelector('.big');
-  const baseBig = chartValue(it, last);
+  const baseBig = fmt(last);
+  const source = !live ? ' · no history' : s.via ? ` · via ${s.via}` : '';
   const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
-    <span class="mute">${esc(RANGE_LABEL[days] || '')}${live ? '' : ' · no history'}</span>`;
+    <span class="mute">${esc(RANGE_LABEL[days] || '')}${esc(source)}</span>`;
   if (big) big.textContent = baseBig;
   if (head) head.innerHTML = summary;
 
-  const yOf = v => CPAD + (1 - (v - lo) / span) * (CHH - CPAD * 2);
-  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot'), tip = host.querySelector('.tip');
+  const cx = host.querySelector('.cx'), dot = host.querySelector('.cdot');
+  const tip = host.querySelector('.tip');
+  const tipV = tip.querySelector('b'), tipL = tip.querySelector('span');
 
+  let cur = -1;
   const at = i => {
-    const v = pts[i], xp = i / (pts.length - 1) * 100;
+    cur = i;
+    const v = pts[i], xp = i / (n - 1) * 100;
     cx.style.cssText = `left:${xp}%;opacity:1`;
-    dot.style.cssText = `left:${xp}%;top:${yOf(v) / CHH * 100}%;background:${stroke};opacity:1`;
-    tip.textContent = chartValue(it, v);
+    dot.style.cssText = `left:${xp}%;top:${Y(v) / CH2 * 100}%;background:${stroke};opacity:1`;
+    tipV.textContent = fmt(v);                        // value leads
+    tipL.textContent = stamp(when(i), days) + (vol ? ` · ${money(vol[i])} vol` : '');
     tip.style.cssText = `left:${xp}%;opacity:1`;
-    if (big) big.textContent = chartValue(it, v);
-    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
+    if (big) big.textContent = fmt(v);
+    if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${
+      pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
       <span class="mute">from the start of this range</span>`;
   };
   const clear = () => {
+    cur = -1;
     cx.style.opacity = dot.style.opacity = tip.style.opacity = 0;
     if (big) big.textContent = baseBig;
     if (head) head.innerHTML = summary;
   };
-  host.onpointermove = e => {
+  const nearest = clientX => {
     const r = host.getBoundingClientRect();
-    at(Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1)))));
+    return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left) / r.width * (n - 1))));
   };
+  host.onpointermove = e => at(nearest(e.clientX));
   host.onpointerleave = clear;
+  // the same readout on keyboard as on hover
+  host.onfocus = () => at(n - 1);
+  host.onblur = clear;
+  // Escape is the sheet's, not the chart's — blurring is what clears the readout
+  host.onkeydown = e => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    at(Math.max(0, Math.min(n - 1, (cur < 0 ? n - 1 : cur) + step)));
+  };
 }
 
 function showSheet(html) {
