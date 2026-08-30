@@ -380,6 +380,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
 .railk{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
   padding-left:11px}
+/* a heading over each group: four things to scan instead of fourteen to read */
+.railk.nav{margin:13px 0 5px}
+.railnav>.railk.nav:first-child{margin-top:0}
 .railchains{display:flex;flex-direction:column;gap:2px;overflow-y:auto;padding-right:2px;
   max-height:min(42vh,340px);scrollbar-width:thin}
 .railchains .chip{border:0;background:none;border-radius:9px;padding:6px 10px;justify-content:flex-start}
@@ -468,7 +471,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   #banner{order:2}
   #statbar{order:3}
   .bar{order:4}
-  #sortbar{order:5}
+  #refine{order:5}
   #results{order:6}
   .hero{display:none}
 
@@ -487,6 +490,17 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .viewtools{align-self:center}
   .sortbar:not(:empty){padding-bottom:8px}
   .sortbar button{padding:6px 11px}
+  /* filter and sort are the same question on a phone — how do I narrow this —
+     and two stacked strips cost a row of the first screen that the results need.
+     One scroller carries both, chips wrapping onto no lines at all. */
+  .refine{display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .refine::-webkit-scrollbar{display:none}
+  .refine>*{flex:none}
+  /* the padding lives on the strips, so a category with neither takes no row */
+  .facetbar:not(:empty),.sortbar:not(:empty){flex-wrap:nowrap;overflow:visible;padding:0 0 9px;
+    -webkit-mask-image:none}
+  .facetbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
   /* one row: categories scroll, the network button stays put at the end */
@@ -525,6 +539,25 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* sort chips: the column headers are hidden on a phone, so the same descriptor
    renders as a scrolling strip instead */
+/* filter chips: the row that says what the category is being narrowed to.
+   Always visible where a kind defines facets, on every width — unlike the sort
+   strip, which only appears where the column headers cannot. */
+.facetbar{display:none}
+.facetbar:not(:empty){display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 10px}
+.facetbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);flex:none;padding-right:2px}
+.facetbar button{display:inline-flex;align-items:center;gap:7px;flex:none;padding:6px 11px;
+  border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--dim);
+  font-size:12.5px;font-weight:600;white-space:nowrap;transition:.14s var(--ease)}
+.facetbar button:hover:not(:disabled){color:var(--text);border-color:var(--line2)}
+.facetbar button.on{background:color-mix(in srgb,var(--accent) 15%,var(--surface2));
+  color:var(--text);border-color:var(--accent-dim)}
+.facetbar button:disabled{opacity:.38;cursor:default}
+.facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
+.facetbar button.on .fn{color:var(--accent)}
+.facetbar .clr{background:none;border-color:transparent;color:var(--faint)}
+.facetbar .clr:hover{color:var(--text)}
+
 .sortbar{display:none}
 .sortbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);flex:none;align-self:center;padding-right:2px}
@@ -637,7 +670,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
       </button>
     </div>
   </div>
-  <div class="sortbar" id="sortbar" aria-label="Sort"></div>
+  <div class="refine" id="refine">
+    <div class="facetbar" id="facetbar" aria-label="Filter"></div>
+    <div class="sortbar" id="sortbar" aria-label="Sort"></div>
+  </div>
   <div id="results" class="results" role="listbox" aria-label="Results"></div>
 </main>
 </div>
@@ -871,13 +907,25 @@ const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) 
 const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
 
+/* The markets call already asks for 7d, 30d and 1y moves and returns supply and
+   all-time-high alongside them. All of it was being dropped on the floor; the
+   request is unchanged, the row now carries what it paid for. */
 function asset(c, chain) {
   const sym = (c.symbol || '?').toUpperCase();
   const spark = c.sparkline_in_7d?.price || [];
+  const price = c.current_price ?? 0;
   return {
     kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
-    chain, price: c.current_price ?? 0, chg: c.price_change_percentage_24h ?? 0,
+    chain, price, chg: c.price_change_percentage_24h ?? 0,
+    chg7d: num(c.price_change_percentage_7d_in_currency),
+    chg30d: num(c.price_change_percentage_30d_in_currency),
+    chg1y: num(c.price_change_percentage_1y_in_currency),
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
+    fdv: num(c.fully_diluted_valuation), supply: num(c.circulating_supply),
+    maxSupply: num(c.max_supply), high24: num(c.high_24h), low24: num(c.low_24h),
+    ath: num(c.ath), athChg: num(c.ath_change_percentage),
+    // turnover is the one liquidity read that compares a $2T asset to a $2M one
+    turn: c.market_cap ? num(c.total_volume) / c.market_cap * 100 : 0,
     spark: spark.slice(-24), color: colorOf(sym),
     key: `${sym} ${c.name || ''} ${CH[chain]?.name || ''} token coin asset price`,
   };
@@ -894,8 +942,12 @@ function pool(p, lb) {
     sup: p.apy ?? p.apyBase ?? 0,
     supBase: p.apyBase ?? 0, supReward: p.apyReward ?? 0,
     bor: (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
+    borBase: num(lb.apyBaseBorrow), borReward: num(lb.apyRewardBorrow),
     tvl: p.tvlUsd ?? 0, supplyUsd, borrowUsd,
     util: supplyUsd > 0 ? Math.min(100, borrowUsd / supplyUsd * 100) : 0,
+    mean30: num(p.apyMean30d), stable: !!p.stablecoin,
+    // free liquidity is what you can actually withdraw or borrow right now
+    free: Math.max(0, supplyUsd - borrowUsd),
     ltv: lb.ltv ?? 0, meta: p.poolMeta || '', color: colorOf(sym),
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} lending lend borrow supply pool market yield apy earn`,
   };
@@ -914,6 +966,11 @@ function paprikaAsset(p, i) {
   return {
     kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
     chain: null, price: num(q.price), chg: num(q.percent_change_24h),
+    chg7d: num(q.percent_change_7d), chg30d: num(q.percent_change_30d),
+    chg1y: num(q.percent_change_1y), ath: num(q.ath_price),
+    athChg: num(q.percent_from_price_ath), supply: num(p.circulating_supply),
+    maxSupply: num(p.max_supply), high24: 0, low24: 0,
+    turn: q.market_cap ? num(q.volume_24h) / num(q.market_cap) * 100 : 0,
     mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
     color: colorOf(sym),
     key: `${sym} ${p.name || ''} token coin asset price`,
@@ -956,7 +1013,7 @@ function loadStocks() {
   return cache('stocks', TTL, async () => {
     const got = await Promise.allSettled(STOCK_CATS.map(c =>
       get(`${CG}/coins/markets?vs_currency=usd&category=${c}&order=market_cap_desc` +
-        `&per_page=100&page=1&sparkline=true&price_change_percentage=24h`, { tries: 1 })));
+        `&per_page=100&page=1&sparkline=true&price_change_percentage=24h,7d,30d`, { tries: 1 })));
     const seen = new Set(), out = [];
     for (const r of got) {
       if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
@@ -992,13 +1049,28 @@ function loadChainTokens(chainId) {
   });
 }
 
+/* A headline APY on its own says nothing about whether the rate will still be
+   there tomorrow. The same payload carries the 30-day mean, the 30-day drift and
+   DeFiLlama's own outlook, and those are what separate a real yield from a rate
+   that spiked this morning. */
+const OUTLOOK = { Stable: 'holding', Up: 'rising', Down: 'falling' };
+
 function farm(p) {
   const sym = (p.symbol || '?').toUpperCase();
   const proto = title(p.project || '');
   const chain = BY_LLAMA[p.chain];
+  const apy = num(p.apy ?? p.apyBase);
+  const mean = num(p.apyMean30d);
   return {
     kind: 'yield', id: `y:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
-    apy: num(p.apy ?? p.apyBase), apyBase: num(p.apyBase), apyReward: num(p.apyReward),
+    apy, apyBase: num(p.apyBase), apyReward: num(p.apyReward),
+    mean30: mean, drift30: num(p.apyPct30D),
+    // how far today sits above its own month — 2 means the rate has doubled
+    spike: mean > 0 ? apy / mean : 0,
+    outlook: OUTLOOK[p.predictions?.predictedClass] || '',
+    conf: num(p.predictions?.predictedProbability),
+    sigma: num(p.sigma), exposure: p.exposure || '', outlier: !!p.outlier,
+    rewards: (p.rewardTokens || []).length,
     tvl: num(p.tvlUsd), meta: p.poolMeta || '', stable: !!p.stablecoin,
     risk: p.ilRisk || '', color: colorOf(sym),
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} yield farm pool apy earn staking liquidity`,
@@ -1615,12 +1687,13 @@ const S = {
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
-  sort: null,
+  sort: null, facets: new Set(),
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
   clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), sortbar: $('#sortbar'),
+  facetbar: $('#facetbar'),
 };
 const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
 
@@ -1716,12 +1789,19 @@ function rowsFor(tab) {
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
 const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
-let hidden = 0;
+let hidden = 0, base = [];   // base: the category before its facets, for the chip counts
+/* Facets narrow together: a row has to answer every question that is on. */
+const facetPred = (skip) => {
+  const on = facetsFor(S.tab).filter(f => f !== skip && facetOn(f));
+  return on.length ? (i => on.every(f => f[2](i))) : null;
+};
 function scope() {
   const all = rowsFor(S.tab).filter(onChain);
   const keep = sift(all);
   hidden = all.length - keep.length;         // never filter silently
-  return keep;
+  base = keep;
+  const p = facetPred();
+  return p ? keep.filter(p) : keep;
 }
 function reindex() {
   S.fuse = new Fuse(scope(), {
@@ -1823,6 +1903,8 @@ const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
     ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
+      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+      ['30d', i => i.chg30d ? pct(i.chg30d) : '—', 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
@@ -1832,6 +1914,7 @@ const KIND = {
   stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
     chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
+      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => (i.under || i.sym).slice(0, 4),
     title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
@@ -1843,17 +1926,20 @@ const KIND = {
     ok: i => i.supplyUsd >= 1e6,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
-      ['Util', i => i.util.toFixed(0) + '%', 'util']],
+      ['Available', i => money(i.free), 'free'], ['Util', i => i.util.toFixed(0) + '%', 'util']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
     n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
-    // four-figure APY on a small pool is the oldest farm scam there is
-    ok: i => i.tvl >= 1e6 && i.apy > 0 && i.apy <= 1000,
+    // four-figure APY on a small pool is the oldest farm scam there is, and a
+    // rate five times its own 30-day mean is the same trick told quietly
+    ok: i => i.tvl >= 1e6 && i.apy > 0 && i.apy <= 1000 && !i.outlier && i.spike <= 5,
     cols: [['APY', i => apy(i.apy), 'apy', 'up'], ['Base', i => apy(i.apyBase), 'apyBase'],
-      ['Rewards', i => i.apyReward ? apy(i.apyReward) : '—', 'apyReward'], ['TVL', i => money(i.tvl), 'tvl']],
+      ['Rewards', i => i.apyReward ? apy(i.apyReward) : '—', 'apyReward'],
+      ['30d avg', i => i.mean30 ? apy(i.mean30) : '—', 'mean30'],
+      ['Trend', i => i.outlook ? title2(i.outlook) : '—', null, 'txt'], ['TVL', i => money(i.tvl), 'tvl']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: i => i.stable ? 'Stable yield' : 'Yield',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.tvl)} TVL`,
@@ -1863,7 +1949,8 @@ const KIND = {
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
     cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => pct(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
-      ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24']],
+      ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
+      ['Revenue 24h', i => i.rev24 ? money(i.rev24) : '—', 'rev24']],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.cat,
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
@@ -1946,6 +2033,54 @@ const KIND = {
     n1: i => '$' + compact(i.tvl), n2: () => 'TVL', cls: () => 'mute' },
 };
 const KINDS = Object.keys(KIND);
+
+/* Within a category the useful next cut is rarely another sort — it is a
+   question. Which of these can I borrow against, which rates are holding, which
+   stablecoin has come off its peg. Each kind names its own; they narrow together
+   and every chip carries how much it would leave. */
+const FACET = {
+  asset: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
+    ['big', 'Large cap', i => i.mcap >= 1e10],
+    ['busy', 'Heavily traded', i => i.turn >= 10],
+    ['dip', 'Far off high', i => i.athChg <= -50]],
+  stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
+    ['big', 'Large cap', i => i.mcap >= 1e8]],
+  pool: [['borrow', 'Borrowable', i => i.bor > 0 && i.free > 0],
+    ['stable', 'Stablecoin', i => i.stable],
+    ['deep', '$100M+', i => i.supplyUsd >= 1e8],
+    ['ltv', 'High LTV', i => i.ltv >= 0.75],
+    ['room', 'Room to borrow', i => i.util < 70]],
+  yield: [['stable', 'Stablecoin', i => i.stable],
+    ['noil', 'No IL risk', i => i.risk === 'no' || i.exposure === 'single'],
+    ['ten', '10%+ APY', i => i.apy >= 10],
+    ['holding', 'Rate not falling', i => i.outlook === 'holding' || i.outlook === 'rising'],
+    ['deep', '$10M+', i => i.tvl >= 1e7]],
+  protocol: [['fees', 'Earning fees', i => i.fees24 > 0],
+    ['dex', 'DEXs', i => i.vol24 > 0],
+    ['perps', 'Perps', i => i.perps24 > 0],
+    ['big', '$1B+ TVL', i => i.tvl >= 1e9],
+    ['up', 'Growing', i => i.chg7d > 0]],
+  nft: [['live', 'Trading now', i => i.volUsd > 0],
+    ['up', 'Floor up', i => i.chg1d > 0],
+    ['blue', '$1M+ volume', i => i.volUsd >= 1e6]],
+  pair: [['deep', '$1M+ liquidity', i => i.liq >= 1e6],
+    ['up', 'Gainers', i => i.chg > 0],
+    ['busy', 'Volume over liquidity', i => i.liq > 0 && i.vol24 > i.liq]],
+  stablecoin: [['peg', 'On peg', i => Math.abs(i.price - 1) <= 0.01],
+    ['off', 'Off peg', i => Math.abs(i.price - 1) > 0.01],
+    ['big', '$1B+', i => i.circulating >= 1e9]],
+  bridge: [['up', 'Busier than yesterday', i => i.volPrev > 0 && i.vol24 > i.volPrev],
+    ['big', '$10M+ a day', i => i.vol24 >= 1e7]],
+  raise: [['year', 'Past year', i => Date.now() - i.date < 365 * 864e5],
+    ['big', '$50M+', i => i.amount >= 5e7],
+    ['valued', 'Valuation disclosed', i => i.valuation > 0]],
+  hack: [['year', 'Past year', i => Date.now() - i.date < 365 * 864e5],
+    ['big', '$50M+ lost', i => i.amount >= 5e7]],
+  chain: [['big', '$1B+ TVL', i => i.tvl >= 1e9],
+    ['live', 'Has lending', i => S.pools.some(p => p.chain === i.chain)]],
+};
+const facetsFor = tab => FACET[TAB_KIND[tab]] || [];
+const facetOn = f => S.facets.has(f[0]);
 // only keys a column actually declares can be sorted from the URL
 const SORTABLE = new Set(KINDS.flatMap(k => (KIND[k].cols || []).map(c => c[2]).filter(Boolean)));
 /* Category rail: every kind that has rows of its own gets a destination, which
@@ -2084,6 +2219,23 @@ function paintSort() {
   el.sortbar.innerHTML = `<span class="sk">Sort</span>${cols.map(chip).join('')}`;
 }
 
+/* Each chip says how much it would leave, counted against the other chips that
+   are already on — so the row never offers a filter that empties the screen. */
+function paintFacets() {
+  const fs = facetsFor(S.tab);
+  if (!fs.length) return el.facetbar.replaceChildren();
+  const chip = f => {
+    const others = facetPred(f);
+    const pool = others ? base.filter(others) : base;
+    let n = 0; for (const i of pool) if (f[2](i)) n++;
+    const on = facetOn(f);
+    return `<button data-facet="${esc(f[0])}" class="${on ? 'on' : ''}" aria-pressed="${on}"${
+      n || on ? '' : ' disabled'}>${esc(f[1])}<span class="fn">${compact(n)}</span></button>`;
+  };
+  el.facetbar.innerHTML = `<span class="sk">Filter</span>${fs.map(chip).join('')}${
+    S.facets.size ? `<button class="clr" data-facet="">Clear ${S.facets.size}</button>` : ''}`;
+}
+
 /** Bring the results back into view when the query or a filter changes. */
 function scrollToResults() {
   const y = el.res.getBoundingClientRect().top + scrollY - 150;
@@ -2119,7 +2271,7 @@ function render() {
 
   const list = S.list = applySort(withRemote(compute()));
   mode = tableKind(list) || '';
-  paintStats(); paintCounts();
+  paintStats(); paintCounts(); paintFacets();
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   const metaText = !list.length ? '' : S.q
@@ -2139,7 +2291,11 @@ function render() {
   if (!list.length) {
     const cat = TAB_KIND[S.tab] && KIND[TAB_KIND[S.tab]].group.toLowerCase();
     el.res.innerHTML =
-      S.tab === 'saved' && !S.q
+      S.facets.size
+        ? `<div class="empty"><b>Nothing matches those filters</b>${esc(
+            facetsFor(S.tab).filter(facetOn).map(f => f[1]).join(' + '))} leaves no ${esc(cat || 'results')}${
+            S.q ? ` matching “${esc(S.q.trim())}”` : ''}.<div class="cta one"><button class="p" data-facet="">Clear filters</button></div></div>`
+      : S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
       : !S.q && S.chain
         ? `<div class="empty"><b>No ${esc(cat || 'results')} on ${esc(CH[S.chain].name)}</b>Nothing is indexed for this network yet. Newer chains often appear here before the aggregators cover them.<div class="cta one"><button class="p" data-allchains>Show all chains</button></div></div>`
@@ -2200,7 +2356,9 @@ const listOf = (a, n = 3) => a.slice(0, n).join(', ') + (a.length > n ? ` and ${
    than restating its own category. */
 const ABOUT = {
   asset: i => `${i.name} trades as ${i.sym}${i.rank ? `, the #${i.rank} crypto asset by market cap` : ''}`
-    + `, at ${usd(i.price)} with $${compact(i.vol)} traded in the last day.`,
+    + `, at ${usd(i.price)} with $${compact(i.vol)} traded in the last day`
+    + `${i.chg7d ? `, ${pct(i.chg7d)} over the week` : ''}`
+    + `${i.athChg ? `. It sits ${Math.abs(i.athChg).toFixed(0)}% below its ${usd(i.ath)} high` : ''}.`,
   stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
     + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
   pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
@@ -2209,7 +2367,9 @@ const ABOUT = {
     + `$${compact(i.supplyUsd)} is supplied here, ${i.util.toFixed(0)}% of it lent out.`,
   yield: i => `A ${i.stable ? 'stablecoin ' : ''}farm on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}`
     + ` paying ${apy(i.apy)} on ${i.sym}${i.apyReward ? `, of which ${apy(i.apyReward)} is incentives` : ''}`
-    + `, with $${compact(i.tvl)} deposited${i.risk === 'yes' ? '. Two-sided, so impermanent loss applies' : ''}.`,
+    + `, with $${compact(i.tvl)} deposited${i.risk === 'yes' ? '. Two-sided, so impermanent loss applies' : ''}.`
+    // a rate is only worth what it keeps paying, so say what it has been paying
+    + `${i.mean30 ? ` It has averaged ${apy(i.mean30)} over the past month and the rate is ${i.outlook || 'unrated'}.` : ''}`,
   protocol: i => `${i.name} is a ${String(i.cat).toLowerCase()} protocol holding $${compact(i.tvl)}`
     + `${netsOf(i).length ? ` across ${listOf(netsOf(i))}` : ''}`
     + `${i.vol24 ? `, and turned over $${compact(i.vol24)} in the last day` : ''}.`,
@@ -2264,7 +2424,8 @@ let depth = 0;                       // sheet entries pushed since the sheet ope
 // remote DEX results are transient — they live in S.list, not the prefetched index
 const find = id => everything().find(x => x.id === id)
   || S.list.find(x => x.id === id) || S.remote.rows.find(x => x.id === id) || S.watch.get(id);
-const stat = (k, v, extra = '') => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${extra}</div>`;
+const stat = (k, v, extra = '', cls = '') =>
+  `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${extra}</div>`;
 
 function sheetHTML(it) {
   const c = CH[it.chain];
@@ -2283,8 +2444,12 @@ function sheetHTML(it) {
       <div class="stats">
         ${stat('Market cap', '$' + compact(it.mcap))}
         ${stat('24h volume', '$' + compact(it.vol))}
-        ${c ? stat('Network', esc(c.name)) : stat('Lending markets', String(markets.length))}
-        ${stat('Rank', it.rank ? '#' + it.rank : '—')}
+        ${stat('7d', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down')}
+        ${stat('30d', pct(it.chg30d), '', it.chg30d >= 0 ? 'up' : 'down')}
+        ${stat('All-time high', usd(it.ath))}
+        ${stat('Off its high', it.athChg ? pct(it.athChg) : '—')}
+        ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
+        ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
       ${aboutBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
@@ -2328,7 +2493,9 @@ function sheetHTML(it) {
         ${stat('7d change', pct(it.chg7d))}
         ${it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length))}
         ${it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl))}
-        ${it.rev24 ? `<div class="stat wide"><div class="k">24h revenue</div><div class="v">$${compact(it.rev24)}</div></div>` : ''}
+        ${it.rev24 ? stat('24h revenue', '$' + compact(it.rev24)) : ''}
+        ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
+        ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
       </div>
       ${aboutBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
@@ -2386,7 +2553,9 @@ function sheetHTML(it) {
       ${stat('Total supplied', '$' + compact(it.supplyUsd))}
       ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
       ${stat('Borrow APY', apy(it.bor))}
+      ${stat('Available now', '$' + compact(it.free))}
       ${stat('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—')}
+      ${it.mean30 ? stat('30d average supply', apy(it.mean30)) : ''}
       <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
@@ -2404,8 +2573,11 @@ const SHEET = {
     sub: [it.sym, CH[it.chain]?.name, it.meta].filter(Boolean).join(' · '),
     stats: [['Protocol', it.proto], ['Asset', it.sym], ['TVL', '$' + compact(it.tvl)],
       ['Network', CH[it.chain]?.name || '—'],
+      it.mean30 ? ['30d average', apy(it.mean30)] : null,
+      it.outlook ? ['Outlook', `${title2(it.outlook)}${it.conf ? ` (${it.conf.toFixed(0)}%)` : ''}`] : null,
       it.apyReward ? ['Base APY', apy(it.apyBase)] : null,
       it.apyReward ? ['Rewards', apy(it.apyReward)] : null,
+      it.exposure ? ['Exposure', title2(it.exposure)] : null,
       it.risk ? ['IL risk', title2(it.risk)] : null],
     related: S.pools.filter(p => p.sym === it.sym).slice(0, 3), relatedTitle: `Lend ${it.sym} instead`,
     link: ['Open on DeFiLlama', links.yield(it)] }),
@@ -2716,6 +2888,7 @@ function syncUrl(now) {
     if (S.chain) p.set('chain', S.chain);
     if (S.tab !== 'all') p.set('tab', S.tab);
     if (S.sort) p.set('sort', (S.sort.dir > 0 ? '' : '-') + S.sort.key);
+    if (S.facets.size) p.set('f', [...S.facets].join(','));
     if (S.view === 'cards') p.set('view', 'cards');
     if (S.dense) p.set('dense', '1');
     if (!S.safe) p.set('all', '1');
@@ -2731,6 +2904,8 @@ function fromUrl() {
   const sort = p.get('sort') || '';
   const key = sort.replace(/^-/, '');
   S.sort = key && SORTABLE.has(key) ? { key, dir: sort[0] === '-' ? -1 : 1 } : null;
+  const known = new Set(facetsFor(S.tab).map(f => f[0]));
+  S.facets = new Set((p.get('f') || '').split(',').filter(x => known.has(x)));
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
   if (p.get('dense')) S.dense = p.get('dense') === '1';
   if (p.get('all')) S.safe = p.get('all') !== '1';
@@ -2738,13 +2913,32 @@ function fromUrl() {
 }
 
 /* ---------- chrome ---------- */
-// every kind is a destination in the rail, plus All and Saved at the ends
-const TABS = [['all', 'All'], ...KINDS.map(k => {
-  const tab = Object.keys(TAB_KIND).find(t => TAB_KIND[t] === k);
-  return [tab, KIND[k].group];
-}), ['saved', 'Saved']];
-$('#tabs').innerHTML = TABS.map(([k, l]) =>
-  `<button class="tab" role="tab" data-tab="${k}" aria-selected="false">${esc(l)}<span class="ct"></span></button>`).join('');
+/* Fourteen destinations in one flat column is a list you read rather than scan.
+   They group into four questions people actually arrive with — what is it worth,
+   what does it pay, what is running, what happened — and a heading over each
+   makes the rail scannable at a glance. */
+const tabOf = k => Object.keys(TAB_KIND).find(t => TAB_KIND[t] === k);
+const NAV = [
+  ['', ['all']],
+  ['Markets', ['assets', 'stocks', 'dex', 'nfts']],
+  ['Earn', ['lending', 'yield']],
+  ['Onchain', ['protocols', 'stables', 'bridges', 'networks']],
+  ['Activity', ['raises', 'hacks']],
+  ['', ['saved']],
+];
+const LABEL = { all: 'All', saved: 'Saved',
+  ...Object.fromEntries(KINDS.map(k => [tabOf(k), KIND[k].group])) };
+// a kind added to the table but not to a group would otherwise vanish from the
+// rail without anything failing — give it a home instead of losing it
+const placed = new Set(NAV.flatMap(([, t]) => t));
+const loose = KINDS.map(tabOf).filter(t => t && !placed.has(t));
+if (loose.length) NAV.splice(NAV.length - 1, 0, ['More', loose]);
+
+const TABS = NAV.flatMap(([, tabs]) => tabs.map(t => [t, LABEL[t]]));
+$('#tabs').innerHTML = NAV.map(([head, tabs]) =>
+  (head ? `<div class="railk nav" role="presentation">${esc(head)}</div>` : '') +
+  tabs.map(t => `<button class="tab" role="tab" data-tab="${t}" aria-selected="false">${
+    esc(LABEL[t])}<span class="ct"></span></button>`).join('')).join('');
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${esc(name)}</button>`).join('');
 $('#netCount').textContent = `${CHAINS.length} networks`;
@@ -2791,7 +2985,7 @@ $('#stocks').addEventListener('click', () => {
   const on = S.tab === 'stocks';
   if (!on) lastTab = S.tab;
   S.tab = on ? (lastTab === 'stocks' ? 'all' : lastTab) : 'stocks';
-  S.sel = 0; S.sort = null;
+  S.sel = 0; S.sort = null; S.facets.clear();
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
@@ -2813,6 +3007,17 @@ const onSort = e => {
 };
 el.res.addEventListener('click', onSort, true);
 el.sortbar.addEventListener('click', onSort);
+
+// facets: a chip is a question about the rows, and they narrow together
+function onFacet(e) {
+  const b = e.target.closest('[data-facet]'); if (!b) return;
+  const id = b.dataset.facet;
+  if (!id) S.facets.clear();
+  else S.facets.has(id) ? S.facets.delete(id) : S.facets.add(id);
+  S.sel = 0; reindex(); render(); syncUrl(true);
+}
+el.facetbar.addEventListener('click', onFacet);
+el.res.addEventListener('click', onFacet);
 
 /* A bottom sheet you cannot swipe away feels stuck. Drag only from the grabber,
    so it never competes with scrolling the sheet's own content. */
@@ -2838,7 +3043,7 @@ el.sheet.addEventListener('pointercancel', endDrag);
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
   if (S.tab !== 'stocks') lastTab = S.tab;
-  S.tab = b.dataset.tab; S.sel = 0; S.sort = null;
+  S.tab = b.dataset.tab; S.sel = 0; S.sort = null; S.facets.clear();
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 let chainSeq = 0;

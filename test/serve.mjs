@@ -24,10 +24,20 @@ const PRICES = { BTC:96240, ETH:3412.8, SOL:186.42, USDT:1.0001, USDC:0.9999, BN
 const walk = (seed, n, base) => { let h = 0; for (const c of seed) h = (h*31+c.charCodeAt(0))>>>0;
   const o=[]; let v=base; for(let i=0;i<n;i++){h=(h*1664525+1013904223)>>>0; v*=1+((h/4294967296)-.5)*.02; o.push(v);} return o; };
 
+const BY_ID = Object.fromEntries(NAMES.map(([id,sym])=>[id,PRICES[sym]??1.23]));
 const markets = (cat) => NAMES.map(([id,sym,name],i)=>({
   id, symbol:sym.toLowerCase(), name, image:`https://assets.coingecko.com/coins/images/${i}/large/x.png`,
   current_price:PRICES[sym]??1.23, market_cap:(2e12)/(i+1), market_cap_rank:i+1,
-  total_volume:(4e10)/(i+1), price_change_percentage_24h:((i%7)-3)*1.4,
+  total_volume:(4e10)/(i+1)*(1+(i%9)*.9), price_change_percentage_24h:((i%7)-3)*1.4,
+  // the request already asks for these windows; a fixture that omits them lets
+  // a dropped field pass as an em dash
+  price_change_percentage_7d_in_currency:((i%9)-4)*2.6,
+  price_change_percentage_30d_in_currency:((i%11)-5)*5.2,
+  price_change_percentage_1y_in_currency:((i%13)-4)*24,
+  circulating_supply:(2.1e7)*(i+1), max_supply:i%3?null:(2.1e7)*(i+1)*2,
+  high_24h:(PRICES[sym]??1.23)*1.03, low_24h:(PRICES[sym]??1.23)*0.96,
+  ath:(PRICES[sym]??1.23)*1.6, ath_change_percentage:-((i%9)*7+4),
+  fully_diluted_valuation:(2e12)/(i+1)*1.2,
   sparkline_in_7d:{price:walk(id,168,PRICES[sym]??1.23)},
 })).slice(0, cat ? 40 : 101);
 
@@ -38,6 +48,8 @@ const EQ=[['tesla-xstock','TSLAX','Tesla xStock',412.6,8.4e8],['nvidia-xstock','
 const STOCKS=(cat)=>EQ.map(([id,sym,name,price,mcap],i)=>({
   id, symbol:sym.toLowerCase(), name, image:null, current_price:price, market_cap:mcap,
   market_cap_rank:i+1, total_volume:mcap/40, price_change_percentage_24h:((i%5)-2)*1.3,
+  price_change_percentage_7d_in_currency:((i%7)-3)*2.1,
+  ath:price*1.3, ath_change_percentage:-((i%6)*6+3), circulating_supply:mcap/price,
   sparkline_in_7d:{price:walk(id,168,price)},
   // the second category overlaps the first: the loader must dedupe
 })).slice(cat==='xstocks-ecosystem'?2:0);
@@ -49,8 +61,13 @@ const pools=[]; const lend=[];
 for(let i=0;i<1300;i++){
   const id=`pool-${i}`, sym=SYMS[i%SYMS.length];
   const supply=(1e10)/(i+3), borrow=supply*(.2+((i*7)%60)/100);
+  const apy=1+((i*13)%900)/100+(i%4?0:1.5);
   pools.push({pool:id, chain:CHAINS[i%CHAINS.length], project:PROJECTS[i%PROJECTS.length], symbol:sym,
-    tvlUsd:supply-borrow, apyBase:1+((i*13)%900)/100, apyReward:i%4?0:1.5, apy:1+((i*13)%900)/100+(i%4?0:1.5),
+    tvlUsd:supply-borrow, apyBase:1+((i*13)%900)/100, apyReward:i%4?0:1.5, apy,
+    // the rate's own month, and DeFiLlama's read on where it is going
+    apyMean30d:apy*(.85+((i%7)/20)), apyPct30D:((i%9)-4)*1.8, sigma:((i%5)+1)/10,
+    predictions:{predictedClass:['Stable','Up','Down'][i%3], predictedProbability:55+(i%40)},
+    exposure:i%3?'single':'multi', ilRisk:i%3?'no':'yes',
     poolMeta:i%5?null:'e-mode', stablecoin:sym.startsWith('US')});
   lend.push({pool:id, apyBaseBorrow:2+((i*17)%1100)/100, apyRewardBorrow:i%3?0:.9,
     totalSupplyUsd:supply, totalBorrowUsd:borrow, ltv:.5+((i%40)/100), borrowable:true});
@@ -60,6 +77,12 @@ pools.push({pool:'tiny',chain:'Ethereum',project:'aave-v3',symbol:'USDC',tvlUsd:
 lend.push({pool:'tiny',totalSupplyUsd:1e4,totalBorrowUsd:1e3,ltv:.5});
 pools.push({pool:'exotic',chain:'Fantom',project:'x',symbol:'FTM',tvlUsd:1e9,apy:5,apyBase:5});
 lend.push({pool:'exotic',totalSupplyUsd:1e9,totalBorrowUsd:1e8,ltv:.5});
+// a rate eight times its own month, and one the source itself flags — both look
+// perfectly ordinary in every column the table shows
+pools.push({pool:'spikefarm',chain:'Ethereum',project:'spike-fi',symbol:'SPIKE',tvlUsd:4e6,
+  apy:96,apyBase:96,apyMean30d:12,apyPct30D:700,predictions:{predictedClass:'Down',predictedProbability:81}});
+pools.push({pool:'outlierfarm',chain:'Ethereum',project:'outlier-fi',symbol:'OUTLIER',tvlUsd:8e6,
+  apy:41,apyBase:41,apyMean30d:39,outlier:true});
 
 const MIME={'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript'};
 let hits=0;
@@ -87,7 +110,7 @@ http.createServer(async (req,res)=>{
   if(p.startsWith('/api/v3/coins/')&&p.endsWith('/market_chart')){
     const id=p.split('/')[4], days=+u.searchParams.get('days')||1;
     const n=Math.min(days*24,400);
-    return json({prices:walk(id+days,n,PRICES.SOL).map((v,i)=>[Date.now()-i*36e5,v]),
+    return json({prices:walk(id+days,n,BY_ID[id]??PRICES.SOL).map((v,i)=>[Date.now()-i*36e5,v]),
       total_volumes:walk('v'+id+days,n,3e9).map((v,i)=>[Date.now()-i*36e5,v])});
   }
   if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
@@ -96,8 +119,10 @@ http.createServer(async (req,res)=>{
     chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
     url:'https://example.invalid/'+i, logo:null })));
-  if(p==='/dl/overview/dexs') return json({protocols:[{name:'Aave V3',total24h:1.2e9},{name:'aave-v3',total24h:1.2e9}]});
-  if(p==='/dl/overview/fees') return json({protocols:[{name:'Aave V3',total24h:3.4e6,revenue24h:9.1e5}]});
+  const overview=(f)=>({protocols:Array.from({length:120},(_,i)=>({
+    name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, ...f(i)})).filter((_,i)=>i%3!==2)});
+  if(p==='/dl/overview/dexs') return json(overview(i=>({total24h:(1.2e9)/(i+1)})));
+  if(p==='/dl/overview/fees') return json(overview(i=>({total24h:(3.4e6)/(i+1),revenue24h:(9.1e5)/(i+1)})));
   if(p==='/dl/v2/chains') return json(CHAINS.map((c,i)=>({name:c,tvl:(9e10)/(i+1),tokenSymbol:c.slice(0,3).toUpperCase()})));
   if(p.startsWith('/dl/protocol/')) return json({
     description:`<p>${p.split('/').pop()} is a protocol described by its own source.</p>`,
@@ -105,8 +130,8 @@ http.createServer(async (req,res)=>{
   if(p==='/stable/stablecoins') return json({peggedAssets:[
     {id:'1',symbol:'USDC',name:'USD Coin',circulating:{peggedUSD:4.1e10},price:1.0001,pegMechanism:'fiat-backed',chains:['Ethereum','Solana']},
     {id:'2',symbol:'USDT',name:'Tether',circulating:{peggedUSD:1.18e11},price:0.9998,pegMechanism:'fiat-backed',chains:['Ethereum','BSC']}]});
-  if(p==='/dl/overview/derivatives') return json({protocols:[{name:'Aave V3',total24h:4.2e8}]});
-  if(p==='/dl/overview/options') return json({protocols:[{name:'Aave V3',total24h:1.1e7}]});
+  if(p==='/dl/overview/derivatives') return json(overview(i=>({total24h:(4.2e8)/(i+1)})));
+  if(p==='/dl/overview/options') return json(overview(i=>({total24h:(1.1e7)/(i+1)})));
   if(p==='/bridge/bridges') return json({bridges:Array.from({length:14},(_,i)=>({
     id:i, name:'bridge'+i, displayName:'Bridge '+i, chains:[CHAINS[i%CHAINS.length],CHAINS[(i+2)%CHAINS.length]],
     lastDailyVolume:(4e8)/(i+1), volumePrev2Day:(3.6e8)/(i+1) }))});

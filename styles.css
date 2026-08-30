@@ -363,6 +363,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railfoot{margin-top:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
 .railk{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
   padding-left:11px}
+/* a heading over each group: four things to scan instead of fourteen to read */
+.railk.nav{margin:13px 0 5px}
+.railnav>.railk.nav:first-child{margin-top:0}
 .railchains{display:flex;flex-direction:column;gap:2px;overflow-y:auto;padding-right:2px;
   max-height:min(42vh,340px);scrollbar-width:thin}
 .railchains .chip{border:0;background:none;border-radius:9px;padding:6px 10px;justify-content:flex-start}
@@ -451,7 +454,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   #banner{order:2}
   #statbar{order:3}
   .bar{order:4}
-  #sortbar{order:5}
+  #refine{order:5}
   #results{order:6}
   .hero{display:none}
 
@@ -470,6 +473,17 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .viewtools{align-self:center}
   .sortbar:not(:empty){padding-bottom:8px}
   .sortbar button{padding:6px 11px}
+  /* filter and sort are the same question on a phone — how do I narrow this —
+     and two stacked strips cost a row of the first screen that the results need.
+     One scroller carries both, chips wrapping onto no lines at all. */
+  .refine{display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .refine::-webkit-scrollbar{display:none}
+  .refine>*{flex:none}
+  /* the padding lives on the strips, so a category with neither takes no row */
+  .facetbar:not(:empty),.sortbar:not(:empty){flex-wrap:nowrap;overflow:visible;padding:0 0 9px;
+    -webkit-mask-image:none}
+  .facetbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
   /* one row: categories scroll, the network button stays put at the end */
@@ -508,6 +522,25 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* sort chips: the column headers are hidden on a phone, so the same descriptor
    renders as a scrolling strip instead */
+/* filter chips: the row that says what the category is being narrowed to.
+   Always visible where a kind defines facets, on every width — unlike the sort
+   strip, which only appears where the column headers cannot. */
+.facetbar{display:none}
+.facetbar:not(:empty){display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 10px}
+.facetbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);flex:none;padding-right:2px}
+.facetbar button{display:inline-flex;align-items:center;gap:7px;flex:none;padding:6px 11px;
+  border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--dim);
+  font-size:12.5px;font-weight:600;white-space:nowrap;transition:.14s var(--ease)}
+.facetbar button:hover:not(:disabled){color:var(--text);border-color:var(--line2)}
+.facetbar button.on{background:color-mix(in srgb,var(--accent) 15%,var(--surface2));
+  color:var(--text);border-color:var(--accent-dim)}
+.facetbar button:disabled{opacity:.38;cursor:default}
+.facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
+.facetbar button.on .fn{color:var(--accent)}
+.facetbar .clr{background:none;border-color:transparent;color:var(--faint)}
+.facetbar .clr:hover{color:var(--text)}
+
 .sortbar{display:none}
 .sortbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);flex:none;align-self:center;padding-right:2px}

@@ -86,6 +86,26 @@ Live, keyless, straight from the browser — no backend, no wallet.
 
 Thirty endpoints across eleven hosts, all keyless and CORS-open.
 
+### More from the same bytes
+
+The cheapest new data is the data already downloaded and thrown away. Two
+responses were being read for a quarter of what they carry:
+
+- The CoinGecko markets call already asks for 7d, 30d and 1y moves, and returns
+  all-time high, circulating and max supply, and the 24h range beside them.
+  Every one of those was dropped in the normaliser. Assets now show their week
+  and month as columns, and their high, range and turnover in the sheet.
+- The ~10MB yields payload carries `apyMean30d`, `apyPct30D`, DeFiLlama's own
+  `predictions` outlook, `sigma`, `exposure` and an `outlier` flag. A headline
+  APY says nothing about whether the rate will still be there tomorrow; the
+  30-day mean and the outlook are what separate a real yield from a rate that
+  spiked this morning. Both are columns now, and the outlier flag and a rate
+  five times its own mean are two new junk signals.
+- Protocol revenue, perps volume and options volume were already being fetched
+  and merged, and never rendered.
+
+No new requests, no new hosts.
+
 ### No single source can empty the app
 
 CoinGecko refuses some browser origins, which used to take the whole asset layer
@@ -129,7 +149,7 @@ descriptor:
 | --- | --- |
 | Asset | it has 24h volume |
 | Lending market | at least $1M supplied |
-| Yield farm | at least $1M TVL, and an APY above 0 but not above 1000% |
+| Yield farm | at least $1M TVL, an APY above 0 but not above 1000%, not flagged an outlier by the source, and not paying more than 5× its own 30-day mean |
 | NFT collection | it has volume or a floor |
 | DEX pair | at least $1k of 24h volume and $5k of liquidity |
 
@@ -271,10 +291,38 @@ in the rail with its own columns and its own sort. One table maps a tab to a
 kind and one maps a kind to its rows, so `everything()`, the rail, the counts
 and the tab scopes cannot drift apart.
 
-### Eleven kinds, one index
+Fourteen destinations in one flat column is a list you read rather than scan, so
+the rail groups them under **Markets**, **Earn**, **Onchain** and **Activity** —
+four questions people actually arrive with. The grouping is one table; a kind
+added to `KIND` but left out of a group would silently vanish from the rail, so
+anything unplaced is collected into a **More** group rather than lost.
 
-Assets · lending markets · yield farms · protocols · NFT collections · DEX
-pairs · stablecoins · bridges · funding rounds · exploits · networks.
+### Filters that ask a question
+
+Sorting answers *which is biggest*. It does not answer *which of these can I
+borrow against*, *which rates are holding*, or *which stablecoin has come off
+its peg*. Each kind names three to five such questions on its own descriptor,
+and they render as a row of chips above the results:
+
+| Category | Asks |
+| --- | --- |
+| Assets | Gainers · Losers · Large cap · Heavily traded · Far off high |
+| Lending | Borrowable · Stablecoin · $100M+ · High LTV · Room to borrow |
+| Yield | Stablecoin · No IL risk · 10%+ APY · Rate not falling · $10M+ |
+| Protocols | Earning fees · DEXs · Perps · $1B+ TVL · Growing |
+| Stablecoins | On peg · Off peg · $1B+ |
+
+Chips narrow **together** — a row has to answer every question that is on — and
+each one carries the count it would leave, computed against the *other* active
+chips, so a chip that would empty the screen is shown as unavailable rather than
+as a trap. Filters live in the URL (`?f=stable,ten`), clear when you change
+category, and an emptied list keeps the row on screen with a way back out.
+
+### Twelve kinds, one index
+
+Assets · tokenized stocks · lending markets · yield farms · protocols · NFT
+collections · DEX pairs · stablecoins · bridges · funding rounds · exploits ·
+networks.
 
 NFT floors arrive in different units from different marketplaces — dollars from
 the EVM marketplaces, SOL from Magic Eden — so each collection carries its own
@@ -364,7 +412,7 @@ Kamino — and its scores are re-ranked afterwards so an exact ticker always win
 
 - **`/` or `⌘K`** focus search · **`↑` `↓`** browse · **`↵`** open · **`esc`** back out
 - Multi-token search — `usdc lending` ranks USDC markets above the USDC asset
-- Filter by type (All / Assets / Lending / Saved) and by network
+- Filter by category, by network, and by the chips each category defines
 - Detail sheets cross-link both ways; charts are real history with working ranges
 - **Saved** stars anything to `localStorage`, and survives a reload offline
 - Query, filters and the open sheet all live in the URL, so views are shareable

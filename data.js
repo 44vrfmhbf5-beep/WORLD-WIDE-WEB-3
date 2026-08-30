@@ -209,13 +209,25 @@ const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) 
 const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
 
+/* The markets call already asks for 7d, 30d and 1y moves and returns supply and
+   all-time-high alongside them. All of it was being dropped on the floor; the
+   request is unchanged, the row now carries what it paid for. */
 function asset(c, chain) {
   const sym = (c.symbol || '?').toUpperCase();
   const spark = c.sparkline_in_7d?.price || [];
+  const price = c.current_price ?? 0;
   return {
     kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
-    chain, price: c.current_price ?? 0, chg: c.price_change_percentage_24h ?? 0,
+    chain, price, chg: c.price_change_percentage_24h ?? 0,
+    chg7d: num(c.price_change_percentage_7d_in_currency),
+    chg30d: num(c.price_change_percentage_30d_in_currency),
+    chg1y: num(c.price_change_percentage_1y_in_currency),
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
+    fdv: num(c.fully_diluted_valuation), supply: num(c.circulating_supply),
+    maxSupply: num(c.max_supply), high24: num(c.high_24h), low24: num(c.low_24h),
+    ath: num(c.ath), athChg: num(c.ath_change_percentage),
+    // turnover is the one liquidity read that compares a $2T asset to a $2M one
+    turn: c.market_cap ? num(c.total_volume) / c.market_cap * 100 : 0,
     spark: spark.slice(-24), color: colorOf(sym),
     key: `${sym} ${c.name || ''} ${CH[chain]?.name || ''} token coin asset price`,
   };
@@ -232,8 +244,12 @@ function pool(p, lb) {
     sup: p.apy ?? p.apyBase ?? 0,
     supBase: p.apyBase ?? 0, supReward: p.apyReward ?? 0,
     bor: (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
+    borBase: num(lb.apyBaseBorrow), borReward: num(lb.apyRewardBorrow),
     tvl: p.tvlUsd ?? 0, supplyUsd, borrowUsd,
     util: supplyUsd > 0 ? Math.min(100, borrowUsd / supplyUsd * 100) : 0,
+    mean30: num(p.apyMean30d), stable: !!p.stablecoin,
+    // free liquidity is what you can actually withdraw or borrow right now
+    free: Math.max(0, supplyUsd - borrowUsd),
     ltv: lb.ltv ?? 0, meta: p.poolMeta || '', color: colorOf(sym),
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} lending lend borrow supply pool market yield apy earn`,
   };
@@ -252,6 +268,11 @@ function paprikaAsset(p, i) {
   return {
     kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
     chain: null, price: num(q.price), chg: num(q.percent_change_24h),
+    chg7d: num(q.percent_change_7d), chg30d: num(q.percent_change_30d),
+    chg1y: num(q.percent_change_1y), ath: num(q.ath_price),
+    athChg: num(q.percent_from_price_ath), supply: num(p.circulating_supply),
+    maxSupply: num(p.max_supply), high24: 0, low24: 0,
+    turn: q.market_cap ? num(q.volume_24h) / num(q.market_cap) * 100 : 0,
     mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
     color: colorOf(sym),
     key: `${sym} ${p.name || ''} token coin asset price`,
@@ -294,7 +315,7 @@ export function loadStocks() {
   return cache('stocks', TTL, async () => {
     const got = await Promise.allSettled(STOCK_CATS.map(c =>
       get(`${CG}/coins/markets?vs_currency=usd&category=${c}&order=market_cap_desc` +
-        `&per_page=100&page=1&sparkline=true&price_change_percentage=24h`, { tries: 1 })));
+        `&per_page=100&page=1&sparkline=true&price_change_percentage=24h,7d,30d`, { tries: 1 })));
     const seen = new Set(), out = [];
     for (const r of got) {
       if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
@@ -330,13 +351,28 @@ export function loadChainTokens(chainId) {
   });
 }
 
+/* A headline APY on its own says nothing about whether the rate will still be
+   there tomorrow. The same payload carries the 30-day mean, the 30-day drift and
+   DeFiLlama's own outlook, and those are what separate a real yield from a rate
+   that spiked this morning. */
+const OUTLOOK = { Stable: 'holding', Up: 'rising', Down: 'falling' };
+
 function farm(p) {
   const sym = (p.symbol || '?').toUpperCase();
   const proto = title(p.project || '');
   const chain = BY_LLAMA[p.chain];
+  const apy = num(p.apy ?? p.apyBase);
+  const mean = num(p.apyMean30d);
   return {
     kind: 'yield', id: `y:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
-    apy: num(p.apy ?? p.apyBase), apyBase: num(p.apyBase), apyReward: num(p.apyReward),
+    apy, apyBase: num(p.apyBase), apyReward: num(p.apyReward),
+    mean30: mean, drift30: num(p.apyPct30D),
+    // how far today sits above its own month — 2 means the rate has doubled
+    spike: mean > 0 ? apy / mean : 0,
+    outlook: OUTLOOK[p.predictions?.predictedClass] || '',
+    conf: num(p.predictions?.predictedProbability),
+    sigma: num(p.sigma), exposure: p.exposure || '', outlier: !!p.outlier,
+    rewards: (p.rewardTokens || []).length,
     tvl: num(p.tvlUsd), meta: p.poolMeta || '', stable: !!p.stablecoin,
     risk: p.ilRisk || '', color: colorOf(sym),
     key: `${proto} ${sym} ${CH[chain]?.name || ''} ${p.poolMeta || ''} yield farm pool apy earn staking liquidity`,

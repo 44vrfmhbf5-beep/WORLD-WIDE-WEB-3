@@ -30,13 +30,23 @@ const walk = (seed, n, base) => { let h = 0; for (const c of seed) h = (h * 31 +
 const markets = [
   { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
     current_price: 96240, market_cap: 1.9e12, market_cap_rank: 1, total_volume: 2.8e10,
-    price_change_percentage_24h: 1.86, sparkline_in_7d: { price: walk('btc', 168, 96240) } },
+    price_change_percentage_24h: 1.86, price_change_percentage_7d_in_currency: 5.4,
+    price_change_percentage_30d_in_currency: -8.2, price_change_percentage_1y_in_currency: 62.1,
+    ath: 108500, ath_change_percentage: -11.3, circulating_supply: 1.98e7, max_supply: 2.1e7,
+    high_24h: 97400, low_24h: 94810, fully_diluted_valuation: 2.02e12,
+    sparkline_in_7d: { price: walk('btc', 168, 96240) } },
   { id: 'ethereum', symbol: 'eth', name: 'Ethereum', image: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
     current_price: 3412.8, market_cap: 4.11e11, market_cap_rank: 2, total_volume: 1.42e10,
-    price_change_percentage_24h: -1.14, sparkline_in_7d: { price: walk('eth', 168, 3412) } },
+    price_change_percentage_24h: -1.14, price_change_percentage_7d_in_currency: -6.8,
+    price_change_percentage_30d_in_currency: 3.1, ath: 4878, ath_change_percentage: -30.0,
+    circulating_supply: 1.2e8, high_24h: 3480, low_24h: 3361,
+    sparkline_in_7d: { price: walk('eth', 168, 3412) } },
   { id: 'usd-coin', symbol: 'usdc', name: 'USDC', image: 'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
     current_price: 0.9999, market_cap: 4.12e10, market_cap_rank: 5, total_volume: 7.1e9,
-    price_change_percentage_24h: 0.01, sparkline_in_7d: { price: walk('usdc', 168, 1) } },
+    price_change_percentage_24h: 0.01, price_change_percentage_7d_in_currency: 0.02,
+    price_change_percentage_30d_in_currency: -0.01, ath: 1.17, ath_change_percentage: -14.5,
+    circulating_supply: 4.12e10, high_24h: 1.0004, low_24h: 0.9994,
+    sparkline_in_7d: { price: walk('usdc', 168, 1) } },
   // nothing has traded in this one for a day
   { id: 'ghostcoin', symbol: 'ghost', name: 'Ghostcoin', current_price: 0.5,
     market_cap: 9e6, market_cap_rank: 900, total_volume: 0 },
@@ -44,7 +54,8 @@ const markets = [
 // borrow fields carried on the pool itself; /lendBorrow is failed below on purpose
 const llamaPools = { status: 'success', data: [
   { pool: 'aa11', chain: 'Ethereum', project: 'aave-v3', symbol: 'USDC', tvlUsd: 2.9e9, apyBase: 6.72, apyReward: 0, apy: 6.72,
-    poolMeta: null, apyBaseBorrow: 8.44, apyRewardBorrow: 0, totalSupplyUsd: 2.9e9, totalBorrowUsd: 2.4e9, ltv: 0.87 },
+    poolMeta: null, apyBaseBorrow: 8.44, apyRewardBorrow: 0, totalSupplyUsd: 2.9e9, totalBorrowUsd: 2.4e9, ltv: 0.87,
+    apyMean30d: 6.1, stablecoin: true },
   { pool: 'bb22', chain: 'Solana', project: 'kamino-lend', symbol: 'SOL', tvlUsd: 8.4e8, apyBase: 6.42, apyReward: 1.2, apy: 7.62,
     poolMeta: 'main', apyBaseBorrow: 8.91, apyRewardBorrow: 0, totalSupplyUsd: 8.4e8, totalBorrowUsd: 6e8, ltv: 0.75 },
   { pool: 'cc33', chain: 'Fantom', project: 'x', symbol: 'FTM', tvlUsd: 9e8, apy: 5, apyBase: 5,
@@ -55,6 +66,20 @@ const llamaPools = { status: 'success', data: [
   // 5000% APY on a small pool is the oldest farm scam there is
   { pool: 'ee55', chain: 'Ethereum', project: 'scamfarm', symbol: 'SCAMFARM', tvlUsd: 2e6,
     apy: 5000, apyBase: 5000, apyReward: 0 },
+  // real farms: no borrow side, so these are the Yield category
+  { pool: 'ff66', chain: 'Ethereum', project: 'curve-dex', symbol: 'USDC-USDT', tvlUsd: 4.2e8,
+    apy: 9.14, apyBase: 6.14, apyReward: 3, apyMean30d: 8.72, apyPct30D: 4.8, sigma: 0.11,
+    stablecoin: true, ilRisk: 'no', exposure: 'multi', rewardTokens: ['CRV'],
+    predictions: { predictedClass: 'Stable', predictedProbability: 78 } },
+  { pool: 'gg77', chain: 'Solana', project: 'orca', symbol: 'SOL', tvlUsd: 9.1e7,
+    apy: 14.2, apyBase: 14.2, apyMean30d: 15.9, apyPct30D: -11.2, exposure: 'single', ilRisk: 'no',
+    predictions: { predictedClass: 'Down', predictedProbability: 64 } },
+  // a rate eight times its own month, and one the source itself flags — neither
+  // looks unusual in any column the table shows
+  { pool: 'hh88', chain: 'Ethereum', project: 'spike-fi', symbol: 'SPIKE', tvlUsd: 6e6,
+    apy: 96, apyBase: 96, apyMean30d: 12, apyPct30D: 700 },
+  { pool: 'ii99', chain: 'Ethereum', project: 'outlier-fi', symbol: 'OUTLIER', tvlUsd: 8e6,
+    apy: 41, apyBase: 41, apyMean30d: 39, outlier: true },
 ] };
 
 const protocols = [
@@ -539,6 +564,129 @@ console.log('\n# an empty category says which one');
   await p.click('[data-allchains]'); await p.waitForTimeout(700);
   ok(await p.locator('.row').count() > 0, 'which clears the chain filter');
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# the rail groups its categories, and loses none of them');
+{
+  const rail = await p.evaluate(() => ({
+    heads: [...document.querySelectorAll('#tabs .railk')].map(h => h.textContent),
+    tabs: [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab),
+  }));
+  ok(rail.heads.length >= 4, `the column is grouped under headings (${rail.heads.join(', ')})`);
+  // a kind added to the table but left out of a group would vanish from the
+  // rail with nothing failing, so check the rail against the kinds themselves
+  const kinds = await p.evaluate(() =>
+    [...document.querySelectorAll('#results .gtitle')].length);
+  for (const t of ['assets', 'stocks', 'dex', 'nfts', 'lending', 'yield', 'protocols',
+    'stables', 'bridges', 'networks', 'raises', 'hacks', 'all', 'saved'])
+    ok(rail.tabs.includes(t), `${t} has a place in the rail`);
+  ok(rail.tabs.length === new Set(rail.tabs).size, 'and none of them is listed twice');
+  ok(kinds > 0, `the All view still groups its rows (${kinds} headings)`);
+}
+
+console.log('\n# the payloads already downloaded carry more than four columns');
+{
+  await p.click('[data-tab=assets]'); await p.waitForTimeout(900);
+  const head = await p.locator('.thead').textContent();
+  ok(/7d/.test(head) && /30d/.test(head), `assets carry their week and month (${head.replace(/\s+/g, ' ').trim()})`);
+  const btc = await p.locator('.row[data-id="a:bitcoin"]').textContent();
+  ok(/\+5\.40%/.test(btc) && /-8\.20%/.test(btc), `and they are the real numbers, not zeroes (${btc.replace(/\s+/g, ' ').trim().slice(0, 80)})`);
+
+  await p.click('[data-tab=yield]'); await p.waitForTimeout(900);
+  const yh = await p.locator('.thead').textContent();
+  ok(/30d avg/i.test(yh) && /Trend/.test(yh), 'a farm shows the rate\'s own month beside the rate');
+  const ff = await p.locator('.row[data-id="y:ff66"]').textContent();
+  ok(/8\.72%/.test(ff), `the 30-day mean is read off the payload (${ff.replace(/\s+/g, ' ').trim().slice(0, 70)})`);
+  ok(/Holding/.test(ff), 'and so is the outlook the source publishes');
+
+  await p.click('[data-tab=lending]'); await p.waitForTimeout(900);
+  ok(/Available/.test(await p.locator('.thead').textContent()),
+    'a lending market says what is left to take out');
+  const aa = await p.locator('.row[data-id="p:aa11"]').textContent();
+  ok(/\$500\.0M/.test(aa), `supplied minus borrowed, not supplied (${aa.replace(/\s+/g, ' ').trim().slice(0, 90)})`);
+
+  await p.click('[data-tab=protocols]'); await p.waitForTimeout(900);
+  ok(/Revenue 24h/.test(await p.locator('.thead').textContent()),
+    'revenue was being fetched and never shown');
+  ok(/\$910K/.test(await p.locator('#results').textContent()), 'and it reaches the row');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a rate far above its own month is the same trick told quietly');
+{
+  const idsFor = async q => { await p.fill('#q', q); await p.waitForTimeout(1400);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id)); };
+  ok(!(await idsFor('spike')).includes('y:hh88'), 'hides a farm paying eight times its 30-day mean');
+  ok(!(await idsFor('outlier')).includes('y:ii99'), 'hides a farm the source itself flags');
+  await p.click('#safe'); await p.waitForTimeout(1000);
+  ok((await idsFor('spike')).includes('y:hh88'), 'and shows it again with the filter off');
+  ok((await idsFor('outlier')).includes('y:ii99'), 'as it does the flagged one');
+  await p.click('#safe'); await p.waitForTimeout(800);
+  await p.fill('#q', ''); await p.waitForTimeout(600);
+}
+
+console.log('\n# a category narrows by question, not only by sort');
+{
+  await p.click('[data-tab=yield]'); await p.waitForTimeout(1000);
+  const chips = await p.locator('#facetbar button[data-facet]').evaluateAll(
+    bs => bs.map(b => b.textContent.trim()));
+  ok(chips.length >= 4, `the category offers its own filters (${chips.join(' · ')})`);
+  ok(chips.every(c => /\d/.test(c)), 'and every chip says how much it would leave');
+
+  const before = await p.locator('#results .row').count();
+  await p.click('[data-facet=stable]'); await p.waitForTimeout(900);
+  const after = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .map(r => r.dataset.id));
+  ok(after.length && after.length < before, `one chip narrows the list (${before} to ${after.length})`);
+  ok(after.includes('y:ff66'), 'keeping the rows that answer it');
+  ok(!after.includes('y:gg77'), 'and dropping the rows that do not');
+  ok(/f=stable/.test(p.url()), `the filter is in the url (${p.url().split('?')[1]})`);
+
+  // a chip that would empty the screen is offered as unavailable, not as a trap
+  ok(await p.locator('#facetbar button[data-facet]:disabled').count() > 0,
+    'a chip that would leave nothing is not clickable');
+
+  // two chips are an and, not an or
+  const next = await p.locator('#facetbar button[data-facet]:not(.on):not([disabled])')
+    .first().getAttribute('data-facet');
+  await p.click(`[data-facet="${next}"]`); await p.waitForTimeout(900);
+  const both = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .map(r => r.dataset.id));
+  ok(both.length && both.every(id => after.includes(id)),
+    `a second chip narrows what the first left (${next}: ${after.length} to ${both.length})`);
+  ok(await p.locator('#facetbar .clr').count() === 1, 'and the row offers to clear them');
+
+  await p.goto(p.url()); await p.waitForSelector('.row:not(.sk), .empty', { timeout: 20000 });
+  await p.waitForTimeout(1400);
+  ok(await p.locator('#facetbar button.on').count() === 2, 'both survive a reload of the link');
+
+  await p.click('#facetbar .clr'); await p.waitForTimeout(900);
+  ok(await p.locator('#facetbar button.on').count() === 0, 'clear turns them all off');
+  ok(await p.locator('#results .row').count() === before, 'and the category comes back whole');
+}
+
+console.log('\n# a filter can never trap you behind an empty screen');
+{
+  await p.click('[data-tab=bridges]'); await p.waitForTimeout(900);
+  const bridge = await p.locator('#facetbar button[data-facet]').evaluateAll(
+    bs => bs.map(b => b.dataset.facet));
+  ok(bridge.length >= 1, 'bridges have their own questions, not the yield ones');
+  ok(!bridge.includes('stable'), 'switching category drops the last category\'s chips');
+  ok(!/f=/.test(p.url()), 'and does not carry its filters over');
+
+  // force the empty case: every chip on at once
+  for (const f of bridge) { await p.click(`[data-facet="${f}"]`); await p.waitForTimeout(500); }
+  if (await p.locator('#results .row').count() === 0) {
+    ok(await p.locator('#facetbar').isVisible(), 'an emptied list still shows the filter row');
+    ok(await p.locator('.empty [data-facet=""]').count() === 1, 'and offers to clear it');
+    await p.click('.empty [data-facet=""]'); await p.waitForTimeout(800);
+    ok(await p.locator('#results .row').count() > 0, 'which brings the rows back');
+  } else {
+    ok(await p.locator('#facetbar button.on').count() === bridge.length,
+      'every chip can be on at once');
+    await p.click('#facetbar .clr'); await p.waitForTimeout(600);
+  }
+  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
 }
 
 console.log('\n# a sorted view survives a reload and a shared link');
