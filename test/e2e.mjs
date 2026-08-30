@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -180,6 +181,49 @@ console.log('\n# boots even when the font host hangs');
   await s.fill('#q', 'usdc'); await s.waitForTimeout(300);
   ok(await s.locator('.row').count() > 0, 'search works with the font host hanging');
   await ctx.close();
+}
+
+console.log('\n# the published artifact, with no network at all');
+{
+  /* The artifact is body-level HTML with the sample dataset bundled in, served
+     under a CSP that blocks every external host. It is the thing people are
+     actually handed, and nothing else in this suite looks at it. */
+  const file = path.join(HERE, '..', 'artifact.html');
+  const art = http.createServer((_, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<!doctype html><html><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'
+      + fs.readFileSync(file) + '</body></html>');
+  }).listen(8903);
+  const ctx = await b.newContext({ viewport: { width: 1400, height: 1000 } });
+  const q = await ctx.newPage();
+  const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await ctx.route('**', r => r.request().url().startsWith('http://localhost:8903')
+    ? r.continue() : r.abort('failed'));
+  await q.goto('http://localhost:8903/', { waitUntil: 'domcontentloaded' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
+  await q.waitForTimeout(2200);
+
+  const tabs = await q.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
+  const empty = [], mismatch = [];
+  for (const t of tabs) {
+    if (t === 'saved') continue;
+    await q.click(`[data-tab="${t}"]`); await q.waitForTimeout(600);
+    if (!await q.locator('#results .row:not(.sk)').count()) { empty.push(t); continue; }
+    const row = (await q.locator('#results .row:not(.sk)').first()
+      .locator('.n1, .cell').first().textContent()).trim();
+    await q.locator('#results .row:not(.sk)').first().click();
+    await q.waitForTimeout(1200);
+    const big = (await q.locator('.sheet-in .big').textContent()).trim();
+    // the chart rewrites the headline with its last point, so a series that does
+    // not end where the row does shows one thing's number under another's name
+    if (big !== row) mismatch.push(`${t}: ${row} vs ${big}`);
+    await q.keyboard.press('Escape'); await q.waitForTimeout(350);
+  }
+  ok(!empty.length, `every category has rows offline${empty.length ? ' — blank: ' + empty.join(', ') : ''}`);
+  ok(!mismatch.length, `and every sheet's headline is its row's own number${mismatch.length ? ' — ' + mismatch.join('; ') : ''}`);
+  ok(!errs.length, `no page error with every host blocked${errs.length ? ' — ' + errs[0] : ''}`);
+  await ctx.close(); art.close();
 }
 
 console.log('\n# degraded modes');

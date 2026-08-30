@@ -4,7 +4,8 @@ import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStabl
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
   loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
-  links, flags, clearCache } from './data.js';
+  loadVerified, loadMorpho, loadBridgeChart,
+  links, actions, flags, clearCache } from './data.js';
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -15,6 +16,10 @@ const compact = n => !isFinite(n) || !n ? '0' : n >= 1e12 ? (n / 1e12).toFixed(2
   : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K' : n.toFixed(0);
 // toPrecision goes exponential below 1e-6, which is exactly where the DEX long
 // tail lives — show the zeros instead, trimmed to the significant digits.
+/* compact() is for money, where two significant figures is the point. A count
+   is not money: "1K of 1K" hides the difference between 1,029 and 1,200, which
+   is the whole thing the number is there to say. */
+const count = n => n < 1e5 ? String(n | 0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : compact(n);
 const tiny = n => n.toFixed(Math.min(20, 3 - Math.floor(Math.log10(n)))).replace(/0+$/, '').replace(/\.$/, '');
 const usd = n => !isFinite(n) ? '—' : n < 0 ? '-' + usd(-n)
   : n >= 1e4 ? '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 })
@@ -49,6 +54,9 @@ const store = {
 const readWatch = () => {
   try { return JSON.parse(store.get('atlas:watch') || '[]'); } catch { return []; }
 };
+const readSeen = () => {
+  try { return JSON.parse(store.get('atlas:seen') || '[]'); } catch { return []; }
+};
 
 /* ---------- state ---------- */
 const S = {
@@ -57,11 +65,13 @@ const S = {
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
   pairs: [], chainTokens: [], nfts: [], stockRows: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
+  verified: null, morpho: 0,
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
-  sort: null, facets: new Set(),
+  sort: null, facets: new Set(), limit: 40,
   watch: new Map(readWatch().map(i => [i.id, i])),
+  seen: readSeen(),
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
@@ -106,6 +116,27 @@ async function enrich() {
   // a lending market now carries the protocol behind it
   for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
   nodes.clear(); reindex(); render();
+  third();
+}
+
+/* Phase three. Two registries that say which token is the real one, and the
+   isolated lending markets one protocol publishes and the aggregator only
+   samples. Both are pure addition: if neither answers, nothing changes. */
+let thirded = false;
+async function third() {
+  if (thirded) return; thirded = true;
+  const [v, m] = await Promise.allSettled([loadVerified(), loadMorpho()]);
+  if (v.status === 'fulfilled') S.verified = v.value;
+  if (m.status === 'fulfilled' && m.value.length) {
+    // DeFiLlama already carries the largest Morpho markets; keep one of each
+    const have = new Set(S.pools.filter(p => /morpho/i.test(p.slug))
+      .map(p => `${p.sym}@${p.chain}`));
+    const add = m.value.filter(x => !have.has(`${x.sym}@${x.chain}`));
+    for (const x of add) x.protocol = S.byProto[x.slug] || null;
+    S.pools = [...S.pools, ...add].sort((a, b) => b.supplyUsd - a.supplyUsd);
+    S.morpho = add.length;
+  }
+  if (S.verified?.count || S.morpho) { nodes.clear(); reindex(); render(); }
 }
 
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
@@ -129,6 +160,27 @@ const everything = () => KINDS.flatMap(k => SRC[k]());
    the row is a copy of something real. Each kind says what "trading" means for
    it; two more rules apply only to the DEX long tail, which is where fakes
    live — the curated sources (protocols, bridges, raises, chains) need none. */
+/* A registry that names the token outright beats any heuristic about it. Where
+   one answers, `isReal` is a fact; where none does, it is null and the rules
+   below stand on their own exactly as they did. */
+const NET_ID = Object.fromEntries(CHAINS.map(([id, name]) => [name.toLowerCase(), id]));
+/* Where the row carries a contract address, only the address counts. Matching
+   on the ticker would have handed every impersonator the thing it is imitating:
+   a fake USDC on Ethereum satisfies "USDC@eth" exactly as well as the real one,
+   and would have been waved past the rule that exists to catch it. The ticker is
+   only consulted for rows that have no address to check. */
+function isReal(i) {
+  const v = S.verified;
+  if (!v?.count) return null;
+  const addr = i.addr && String(i.addr).toLowerCase();
+  const chain = i.chain || NET_ID[String(i.net || '').toLowerCase()];
+  for (const [name, set] of v.by) {
+    if (addr) { if (set.addrs.has(addr)) return name; continue; }
+    if (chain && set.syms.has(`${i.sym}@${chain}`)) return name;
+  }
+  return null;                                   // absence is not proof
+}
+
 function sift(rows) {
   if (!S.safe) return rows;
   const listed = new Set(S.assets.map(x => x.sym));
@@ -142,6 +194,8 @@ function sift(rows) {
     const ok = KIND[i.kind].ok;
     if (ok && !ok(i)) return false;
     if (i.kind !== 'pair') return true;
+    // a registry naming this exact token settles it; the guesses below do not apply
+    if (isReal(i)) return true;
     // A ticker repeated on one network is usually copies of one token — but two
     // indexes carrying the same real token look identical from here, so only
     // drop what is an order of magnitude shallower than the deepest pool.
@@ -185,15 +239,33 @@ function reindex() {
 
 const size = i => KIND[i.kind].size(i);
 
+/* A category holds far more than fits on a screen, so it is cut to a page.
+   The cut has to be the LAST thing that happens: sorting the page instead of
+   the category answered a different question than the one asked — "highest APY"
+   meant "highest APY among the forty biggest". `matched` is the size before the
+   cut, so the list can say what it is showing and offer the rest. */
+const PAGE = 60;
+let shown = 0, matched = 0;
+const order = l => S.sort ? applySort(l) : [...l].sort((x, y) => size(y) - size(x));
+function cap(list) {
+  matched = list.length;
+  const out = list.slice(0, S.limit);
+  shown = out.length;
+  return out;
+}
+
 /* With no query the two kinds are ranked separately. Market cap and supplied-USD
    are not the same scale — real assets reach $2T where the largest lending market
    is a few $B — so one combined sort buries every market under the assets. */
 function trending() {
   const all = scope();
-  if (S.tab !== 'all') return all.sort((x, y) => size(y) - size(x)).slice(0, 40);
+  if (S.tab !== 'all') return cap(order(all));
+  // All is a tour of every kind rather than a list of one, so it is balanced
+  // per kind and has no more to show
   const per = { asset: 12, pool: 10, yield: 10, protocol: 10, nft: 10, stablecoin: 8, bridge: 6, raise: 8, hack: 6, chain: 12 };
-  return KINDS.flatMap(k => all.filter(i => i.kind === k)
-    .sort((x, y) => size(y) - size(x)).slice(0, per[k] || 6));
+  const out = KINDS.flatMap(k => order(all.filter(i => i.kind === k)).slice(0, per[k] || 6));
+  matched = shown = out.length;
+  return out;
 }
 
 function compute() {
@@ -243,7 +315,9 @@ function compute() {
   // every search, while browsing still showed them.)
   const groups = KINDS.map(k => hits.filter(x => x[0].kind === k)).filter(g => g.length);
   groups.sort((x, y) => y[0][1] - x[0][1]);
-  return groups.flat().map(x => x[0]).slice(0, 60);
+  const found = groups.flat().map(x => x[0]);
+  // an explicit column sort outranks relevance, and must see every match
+  return cap(S.sort ? applySort(found) : found);
 }
 
 /* ---------- rows ---------- */
@@ -358,14 +432,15 @@ const KIND = {
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
-    cols: [['Price', i => usd(i.price), 'price'], ['Circulating', i => money(i.circulating), 'circulating'],
+    cols: [['Circulating', i => money(i.circulating), 'circulating'], ['Peg', i => usd(i.price), 'price'],
       ['Mechanism', i => i.mech || '—', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
-    meta: i => i.mech || 'Pegged', tail: i => `$${compact(i.circulating)} circulating`,
-    n1: i => usd(i.price), n2: i => 'peg', cls: () => 'mute' },
+    meta: i => i.mech || 'Pegged', tail: i => `${usd(i.price)} against its peg`,
+    n1: i => '$' + compact(i.circulating), n2: i => 'circulating', cls: () => 'mute' },
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
+    chart: [loadBridgeChart, 90, R.long, money],
     cols: [['Volume 24h', i => money(i.vol24), 'vol24'],
       ['Previous day', i => i.volPrev ? money(i.volPrev) : '—', 'volPrev'],
       ['Change', i => i.volPrev ? pct((i.vol24 - i.volPrev) / i.volPrev * 100) : '—', null, 'sgn'],
@@ -417,7 +492,7 @@ const FACET = {
     ['busy', 'Heavily traded', i => i.turn >= 10],
     ['dip', 'Far off high', i => i.athChg <= -50]],
   stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
-    ['big', 'Large cap', i => i.mcap >= 1e8]],
+    ['big', '$500M+', i => i.mcap >= 5e8]],
   pool: [['borrow', 'Borrowable', i => i.bor > 0 && i.free > 0],
     ['stable', 'Stablecoin', i => i.stable],
     ['deep', '$100M+', i => i.supplyUsd >= 1e8],
@@ -433,12 +508,13 @@ const FACET = {
     ['perps', 'Perps', i => i.perps24 > 0],
     ['big', '$1B+ TVL', i => i.tvl >= 1e9],
     ['up', 'Growing', i => i.chg7d > 0]],
-  nft: [['live', 'Trading now', i => i.volUsd > 0],
-    ['up', 'Floor up', i => i.chg1d > 0],
-    ['blue', '$1M+ volume', i => i.volUsd >= 1e6]],
-  pair: [['deep', '$1M+ liquidity', i => i.liq >= 1e6],
+  nft: [['up', 'Floor up', i => i.chg1d > 0], ['down', 'Floor down', i => i.chg1d < 0],
+    ['blue', '$1M+ volume', i => i.volUsd >= 1e6],
+    ['big', '10k+ items', i => i.supply >= 10000]],
+  pair: [['real', 'Verified token', i => !!isReal(i)],
+    ['deep', '$1M+ liquidity', i => i.liq >= 1e6],
     ['up', 'Gainers', i => i.chg > 0],
-    ['busy', 'Volume over liquidity', i => i.liq > 0 && i.vol24 > i.liq]],
+    ['busy', 'Turning over daily', i => i.liq > 0 && i.vol24 > i.liq]],
   stablecoin: [['peg', 'On peg', i => Math.abs(i.price - 1) <= 0.01],
     ['off', 'Off peg', i => Math.abs(i.price - 1) > 0.01],
     ['big', '$1B+', i => i.circulating >= 1e9]],
@@ -594,20 +670,37 @@ function paintSort() {
 
 /* Each chip says how much it would leave, counted against the other chips that
    are already on — so the row never offers a filter that empties the screen. */
+/* On All and Saved there are no per-kind questions to ask, but a mixed result
+   set has a shape worth showing: how much of it is which kind, and one click to
+   see only that. Same row, so there is one place that says how to narrow. */
+function paintKinds() {
+  if (!S.q.trim()) return el.facetbar.replaceChildren();
+  const counts = new Map();
+  for (const i of S.list) counts.set(i.kind, (counts.get(i.kind) || 0) + 1);
+  if (counts.size < 2) return el.facetbar.replaceChildren();
+  el.facetbar.innerHTML = `<span class="sk">In</span>` + [...counts]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `<button data-jump="${esc(k)}">${esc(KIND[k].group)}<span class="fn">${count(n)}</span></button>`)
+    .join('');
+}
+
 function paintFacets() {
   const fs = facetsFor(S.tab);
-  if (!fs.length) return el.facetbar.replaceChildren();
+  if (!fs.length) return paintKinds();
   const chip = f => {
     const others = facetPred(f);
     const pool = others ? base.filter(others) : base;
     let n = 0; for (const i of pool) if (f[2](i)) n++;
     const on = facetOn(f);
     return `<button data-facet="${esc(f[0])}" class="${on ? 'on' : ''}" aria-pressed="${on}"${
-      n || on ? '' : ' disabled'}>${esc(f[1])}<span class="fn">${compact(n)}</span></button>`;
+      n || on ? '' : ' disabled'}>${esc(f[1])}<span class="fn">${count(n)}</span></button>`;
   };
   el.facetbar.innerHTML = `<span class="sk">Filter</span>${fs.map(chip).join('')}${
     S.facets.size ? `<button class="clr" data-facet="">Clear ${S.facets.size}</button>` : ''}`;
 }
+
+/** The last dozen things opened, as far as they are still in the index. */
+const recent = () => S.seen.map(id => everything().find(x => x.id === id)).filter(Boolean).slice(0, 6);
 
 /** Bring the results back into view when the query or a filter changes. */
 function scrollToResults() {
@@ -642,16 +735,18 @@ function render() {
     return;
   }
 
-  const list = S.list = applySort(withRemote(compute()));
+  const list = S.list = withRemote(compute());
   mode = tableKind(list) || '';
   paintStats(); paintCounts(); paintFacets();
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   const metaText = !list.length ? '' : S.q
-    ? `${list.length} result${list.length > 1 ? 's' : ''} for “${esc(S.q.trim())}” · ${esc(where)}`
+    ? `${matched > shown ? `${shown} of ${count(matched)}` : list.length} result${
+        matched === 1 ? '' : 's'} for “${esc(S.q.trim())}”<span class="mnet"> · ${esc(where)}</span>`
     // the keyboard hint is meaningless on a phone, and the line is a whole row there
     : S.tab === 'saved' ? `${list.length} saved`
-    : `Top of ${esc(where)} · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ to browse, ↵ to open</span>`;
+    : `${matched > shown ? `${shown} of ${count(matched)}` : 'Top of'}<span class="mnet"> ${
+        matched > shown ? 'in ' : ''}${esc(where)}</span> · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ browse · ↵ open · [ ] category</span>`;
   el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
   if (hidden && S.safe && list.length)
     el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
@@ -669,7 +764,8 @@ function render() {
             facetsFor(S.tab).filter(facetOn).map(f => f[1]).join(' + '))} leaves no ${esc(cat || 'results')}${
             S.q ? ` matching “${esc(S.q.trim())}”` : ''}.<div class="cta one"><button class="p" data-facet="">Clear filters</button></div></div>`
       : S.tab === 'saved' && !S.q
-        ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.</div>`
+        ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.${
+            recent().length ? `<div class="seen"><h3>Recently viewed</h3>${recent().map(miniHTML).join('')}</div>` : ''}</div>`
       : !S.q && S.chain
         ? `<div class="empty"><b>No ${esc(cat || 'results')} on ${esc(CH[S.chain].name)}</b>Nothing is indexed for this network yet. Newer chains often appear here before the aggregators cover them.<div class="cta one"><button class="p" data-allchains>Show all chains</button></div></div>`
       : !S.q
@@ -699,6 +795,12 @@ function render() {
     }
     frag.appendChild(nodeFor(it, i));
   });
+  if (matched > shown) {
+    const b = document.createElement('button');
+    b.className = 'more'; b.dataset.more = '1';
+    b.textContent = `Show ${Math.min(PAGE, matched - shown)} more · ${count(matched - shown)} left`;
+    frag.appendChild(b);
+  }
   el.res.replaceChildren(frag);
   paintSel();
 }
@@ -797,6 +899,14 @@ let depth = 0;                       // sheet entries pushed since the sheet ope
 // remote DEX results are transient — they live in S.list, not the prefetched index
 const find = id => everything().find(x => x.id === id)
   || S.list.find(x => x.id === id) || S.remote.rows.find(x => x.id === id) || S.watch.get(id);
+/* One primary way out, plus the venues that can act on this row. Atlas holds no
+   wallet and quotes no price; handing off with the token already resolved is
+   the point of having found it here. */
+const ctaHTML = (it, label, href) => `<div class="cta">
+  <a class="p" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)} \u2197</a>
+  ${actions(it).map(([l, u]) => `<a class="s" href="${esc(u)}"
+    target="_blank" rel="noopener noreferrer">${esc(l)} \u2197</a>`).join('')}</div>`;
+
 const stat = (k, v, extra = '', cls = '') =>
   `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${extra}</div>`;
 
@@ -829,7 +939,7 @@ function sheetHTML(it) {
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
       </div>
-      <div class="cta"><a class="p" href="${esc(links.asset(it))}" target="_blank" rel="noopener noreferrer">View on CoinGecko ↗</a></div>
+      ${ctaHTML(it, 'View on CoinGecko', links.asset(it))}
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live prices from CoinGecko.'} Not financial advice.</div>
     </div>`;
   }
@@ -848,7 +958,7 @@ function sheetHTML(it) {
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
-      <div class="cta"><a class="p" href="${esc(s.link[1])}" target="_blank" rel="noopener noreferrer">${esc(s.link[0])} ↗</a></div>
+      ${ctaHTML(it, s.link[0], s.link[1])}
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live data from DeFiLlama.'} Not financial advice.</div>
     </div>`;
   }
@@ -873,7 +983,7 @@ function sheetHTML(it) {
       ${aboutBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
-      <div class="cta"><a class="p" href="${esc(links.protocol(it))}" target="_blank" rel="noopener noreferrer">Open ${esc(it.name)} ↗</a></div>
+      ${ctaHTML(it, `Open ${it.name}`, links.protocol(it))}
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live TVL, volume and fees from DeFiLlama.'} Not financial advice.</div>
     </div>`;
   }
@@ -895,7 +1005,7 @@ function sheetHTML(it) {
       ${aboutBox(it)}
       ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
       ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
-      <div class="cta"><a class="p" href="${esc(links.chain(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
+      ${ctaHTML(it, 'Open on DeFiLlama', links.chain(it))}
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live chain TVL from DeFiLlama.'} Not financial advice.</div>
     </div>`;
   }
@@ -910,8 +1020,7 @@ function sheetHTML(it) {
       <div class="big">${esc(k.n1(it))}</div>
       <div class="chgline"><span class="mute">${esc(k.tail?.(it) || '')}</span></div>
       ${chartBox(it)}${aboutBox(it)}
-      <div class="cta"><a class="p" href="${esc((links[it.kind] || links.asset)(it))}"
-        target="_blank" rel="noopener noreferrer">Open ↗</a></div>
+      ${ctaHTML(it, 'Open', (links[it.kind] || links.asset)(it))}
     </div>`;
   }
 
@@ -936,7 +1045,7 @@ function sheetHTML(it) {
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
-    <div class="cta"><a class="p" href="${esc(links.pool(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
+    ${ctaHTML(it, 'Open on DeFiLlama', links.pool(it))}
     <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live yields from DeFiLlama.'} Not financial advice.</div>
   </div>`;
 }
@@ -955,8 +1064,11 @@ const SHEET = {
     related: S.pools.filter(p => p.sym === it.sym).slice(0, 3), relatedTitle: `Lend ${it.sym} instead`,
     link: ['Open on DeFiLlama', links.yield(it)] }),
 
-  stablecoin: it => ({ big: usd(it.price), caption: `peg — ${it.circulating ? '$' + compact(it.circulating) + ' circulating' : ''}`,
-    sub: [it.sym, it.mech, `${it.chains.length} chains`].filter(Boolean).join(' · '),
+  /* The chart plots circulating supply, and a chart owns the headline it sits
+     under — so the headline is the supply too. The peg is a stat, where a
+     four-decimal number belongs anyway. */
+  stablecoin: it => ({ big: '$' + compact(it.circulating), caption: 'in circulation',
+    sub: [it.sym, it.mech, `${usd(it.price)} peg`].filter(Boolean).join(' · '),
     stats: [['Circulating', '$' + compact(it.circulating)], ['Price', usd(it.price)],
       ['Mechanism', it.mech || '—'], ['Networks', String(it.chains.length)]],
     related: S.pools.filter(p => p.sym === it.sym).slice(0, 4), relatedTitle: `Lend or borrow ${it.sym}`,
@@ -1002,7 +1114,8 @@ const SHEET = {
     sub: [it.sym, it.quote ? `paired with ${it.quote}` : '', it.dex, it.net].filter(Boolean).join(' · '),
     stats: [['Liquidity', '$' + compact(it.liq)], ['24h volume', '$' + compact(it.vol24)],
       ['FDV', it.fdv ? '$' + compact(it.fdv) : '—'], ['Network', it.net || '—'],
-      it.addr ? ['Token address', it.addr.slice(0, 10) + '…' + it.addr.slice(-6)] : null],
+      it.addr ? ['Token address', shortAddr(it.addr)] : null,
+      isReal(it) ? ['Listed by', isReal(it)] : null],
     link: ['Open on DexScreener', links.pair(it)] }),
 
   hack: it => ({ big: '$' + compact(it.amount), cls: 'down', caption: `lost · ${when(it.date)}`,
@@ -1013,6 +1126,9 @@ const SHEET = {
     link: [it.source ? 'Read the post-mortem' : 'Hacks on DeFiLlama', links.hack(it)] }),
 };
 const title2 = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+// 0x… + …0x is not an elision, it is the same six characters twice
+const shortAddr = a => String(a).length > 20
+  ? a.slice(0, 10) + '\u2026' + a.slice(-6) : String(a);
 
 function miniHTML(it) {
   const c = CH[it.chain];
@@ -1100,6 +1216,16 @@ function paintChart(box, it, s, days) {
     }
     return out;
   };
+  /* The axis says what the high and the low were; it does not say when. Two
+     marks on the line do. They are positioned in percentages rather than drawn
+     into the svg, which is stretched by preserveAspectRatio="none" and would
+     squash a circle into an ellipse. */
+  const mark = (i, cls) => n < 4 || i < 0 ? ''
+    : `<i class="pin ${cls}" style="left:${(i / (n - 1) * 100).toFixed(2)}%;` +
+      `top:${(Y(pts[i]) / CH2 * 100).toFixed(2)}%;background:${stroke}"></i>`;
+  const marks = max === min ? ''
+    : mark(pts.indexOf(max), 'pk') + mark(pts.indexOf(min), 'tr');
+
   const vb = vol ? buckets(vol, 64) : null;
   const vmax = vb ? Math.max(...vb) || 1 : 1;
   const bw = vb ? Math.max(1.2, CW / vb.length - 1) : 0;
@@ -1122,11 +1248,12 @@ function paintChart(box, it, s, days) {
         stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
       ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
     </svg>
+    ${marks}
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
     <div class="tip"><b></b><span></span></div>
     <div class="ax hi"></div><div class="ax lo"></div>
     <div class="ax t0"></div><div class="ax t1"></div>
-    ${vol ? '<div class="ax vk">volume</div>' : ''}
+    ${vol ? `<div class="ax vk">volume · peak ${esc(money(Math.max(...vol)))}</div>` : ''}
     ${live ? '' : '<div class="nohist">No history from any source — showing the current value</div>'}`;
 
   // scale read off the axis labels, so the tooltip is an enhancement not a gate
@@ -1198,6 +1325,8 @@ function open(id, { push = true } = {}) {
   const hash = '#' + id.replace(':', '/');
   if (push) history.pushState({ id, depth: ++depth }, '', hash);
   else depth = history.state?.depth ?? 0;
+  S.seen = [it.id, ...S.seen.filter(x => x !== it.id)].slice(0, 12);
+  store.set('atlas:seen', JSON.stringify(S.seen));
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
   const c = KIND[it.kind].chart;
@@ -1328,7 +1457,7 @@ function paintFilters() {
 function paintCounts() {
   document.querySelectorAll('[data-tab] .ct').forEach(el => {
     const n = countOf(el.parentElement.dataset.tab);
-    el.textContent = n ? compact(n) : '';
+    el.textContent = n ? count(n) : '';
   });
 }
 function paintTools() {
@@ -1340,7 +1469,10 @@ function paintTools() {
 }
 
 /* ---------- events ---------- */
-el.q.addEventListener('input', e => { S.q = e.target.value; S.sel = 0; render(); askDex(); scrollToResults(); syncUrl(); });
+el.q.addEventListener('input', e => {
+  S.q = e.target.value; S.sel = 0; S.limit = 40;
+  render(); askDex(); scrollToResults(); syncUrl();
+});
 el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#refresh').addEventListener('click', () => load({ force: true }));
@@ -1383,11 +1515,13 @@ el.sortbar.addEventListener('click', onSort);
 
 // facets: a chip is a question about the rows, and they narrow together
 function onFacet(e) {
+  const j = e.target.closest('[data-jump]');
+  if (j) return goTab(tabOf(j.dataset.jump));
   const b = e.target.closest('[data-facet]'); if (!b) return;
   const id = b.dataset.facet;
   if (!id) S.facets.clear();
   else S.facets.has(id) ? S.facets.delete(id) : S.facets.add(id);
-  S.sel = 0; reindex(); render(); syncUrl(true);
+  S.sel = 0; S.limit = 40; reindex(); render(); syncUrl(true);
 }
 el.facetbar.addEventListener('click', onFacet);
 el.res.addEventListener('click', onFacet);
@@ -1413,16 +1547,20 @@ const endDrag = e => {
 el.sheet.addEventListener('pointerup', endDrag);
 el.sheet.addEventListener('pointercancel', endDrag);
 
+function goTab(tab) {
+  if (!tab || tab === S.tab || !TABS.some(([t]) => t === tab)) return;
+  if (S.tab !== 'stocks') lastTab = S.tab;
+  S.tab = tab; S.sel = 0; S.sort = null; S.facets.clear(); S.limit = 40;
+  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
+}
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
-  if (S.tab !== 'stocks') lastTab = S.tab;
-  S.tab = b.dataset.tab; S.sel = 0; S.sort = null; S.facets.clear();
-  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
+  goTab(b.dataset.tab);
 });
 let chainSeq = 0;
 async function pickChain(id) {
   const seq = ++chainSeq;
-  S.chain = id || null; S.sel = 0; paintFilters();
+  S.chain = id || null; S.sel = 0; S.limit = 40; paintFilters();
   reindex(); render(); scrollToResults(); syncUrl(true);
   if (!S.chain) { S.chainTokens = []; nodes.clear(); reindex(); render(); return; }
   el.res.classList.add('stale');
@@ -1458,6 +1596,12 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
+  if (e.target.closest('[data-more]')) {
+    S.limit += PAGE;
+    const at = scrollY;
+    render(); scrollTo({ top: at });        // the page grows, it does not jump
+    return;
+  }
   if (e.target.closest('[data-retry]')) return load({ force: true });
   if (e.target.closest('[data-allchains]')) return $('#chains .chip.all').click();
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
@@ -1495,6 +1639,12 @@ addEventListener('keydown', e => {
   if (el.sheet.classList.contains('open')) return;
   if ((e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) && document.activeElement !== el.q) {
     e.preventDefault(); el.q.focus(); el.q.select(); return;
+  }
+  // a bracket typed into the search box is a search, not a category change
+  if ((e.key === '[' || e.key === ']') && document.activeElement !== el.q) {
+    const i = TABS.findIndex(([t]) => t === S.tab);
+    e.preventDefault();
+    return goTab(TABS[(i + (e.key === ']' ? 1 : -1) + TABS.length) % TABS.length][0]);
   }
   if (!S.list.length) return;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {

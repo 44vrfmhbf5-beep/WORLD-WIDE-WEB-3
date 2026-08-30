@@ -30,6 +30,10 @@ const BINANCE = 'https://api.binance.com/api/v3';
 const NFT = 'https://nft.llama.fi';
 const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
+// verification and coverage, all keyless and CORS-open like the rest
+const UNI = 'https://tokens.uniswap.org';
+const JUP = 'https://lite-api.jup.ag';
+const MORPHO = 'https://api.morpho.org/graphql';
 
 // id, label, colour, DeFiLlama chain name
 export const CHAINS = [
@@ -113,19 +117,40 @@ function sampleFor(url) {
     return { prices: S.priceSeries(u.pathname.split('/')[4], +u.searchParams.get('days') || 1) };
   if (u.pathname.endsWith('/pools')) return { status: 'success', data: S.pools };
   if (u.pathname.endsWith('/lendBorrow')) return [];
-  if (u.pathname.includes('/chart/') && u.host.startsWith('nft')) return S.nftChart();
-  if (u.pathname.includes('/chart/')) return { data: S.apySeries(u.pathname.split('/').pop(), 180) };
+  if (u.pathname.includes('/chart/') && u.host.startsWith('nft')) {
+    const cid = u.pathname.split('/').pop();
+    return S.nftChart(S.nfts.find(n => n.collectionId === cid)?.floorPriceUSD);
+  }
+  if (u.pathname.includes('/chart/')) {
+    const id = u.pathname.split('/').pop();
+    return { data: S.apySeries(id, 180, S.pools.find(p => p.pool === id)?.apy) };
+  }
   if (u.pathname.endsWith('/protocols')) return S.protocols;
   if (u.pathname.includes('/overview/dexs')) return { protocols: S.dexs };
   if (u.pathname.includes('/overview/fees')) return { protocols: S.fees };
   if (u.pathname.endsWith('/v2/chains')) return S.chains;
-  if (u.pathname.includes('/historicalChainTvl/'))
-    return S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, tvl: v }));
-  if (u.pathname.includes('/stablecoincharts/'))
-    return S.tvlSeries('s' + (u.searchParams.get('stablecoin') || ''))
-      .map((v, i) => ({ date: i, totalCirculating: { peggedUSD: v * 40 } }));
-  if (u.pathname.includes('/protocol/'))
-    return { tvl: S.tvlSeries(u.pathname.split('/').pop()).map((v, i) => ({ date: i, totalLiquidityUSD: v })) };
+  if (u.pathname.includes('/historicalChainTvl/')) {
+    const name = decodeURIComponent(u.pathname.split('/').pop());
+    return S.tvlSeries(name, S.chainTvl(name)).map((v, i) => ({ date: i, tvl: v }));
+  }
+  if (u.pathname.includes('/bridgevolume/'))
+    return S.bridgeSeries(u.searchParams.get('id') || '0')
+      .map((v, i) => ({ date: i, depositUSD: v / 2, withdrawUSD: v / 2 }));
+  if (u.host === 'tokens.uniswap.org')
+    return { tokens: S.uniTokens.map(([symbol, address, chainId]) =>
+      ({ chainId, address, symbol, name: symbol })) };
+  if (u.host.includes('jup.ag'))
+    return S.jupTokens.map(([symbol, id]) => ({ id, symbol, name: symbol, isVerified: true }));
+  if (u.pathname.includes('/stablecoincharts/')) {
+    const sid = u.searchParams.get('stablecoin') || '0';
+    const now = S.stables.find(x => x.id === sid)?.circulating?.peggedUSD || 4e10;
+    return S.tvlSeries('s' + sid, now).map((v, i) => ({ date: i, totalCirculating: { peggedUSD: v } }));
+  }
+  if (u.pathname.includes('/protocol/')) {
+    const slug = u.pathname.split('/').pop();
+    const now = S.protocols.find(p => p.slug === slug)?.tvl || 1e9;
+    return { tvl: S.tvlSeries(slug, now).map((v, i) => ({ date: i, totalLiquidityUSD: v })) };
+  }
   if (u.pathname.endsWith('/stablecoins')) return { peggedAssets: S.stables };
   if (u.pathname.endsWith('/bridges')) return { bridges: S.bridges };
   if (u.pathname.endsWith('/raises')) return { raises: S.raises };
@@ -152,11 +177,15 @@ async function get(url, opts) {
   }
 }
 
-async function fetchJson(url, { tries = 2, timeout = 25000 } = {}) {
+async function fetchJson(url, { tries = 2, timeout = 25000, post = null } = {}) {
+  // one source speaks GraphQL; everything else is a plain GET
+  const init = post
+    ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(post) }
+    : {};
   for (let i = 0; ; i++) {
     let r;
     try {
-      r = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+      r = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
     } catch (e) {
       if (i >= tries - 1) throw new ApiError(reachMessage(url, e));
       await sleep(600 * 2 ** i); continue;
@@ -566,6 +595,121 @@ export function loadProtocols() {
   });
 }
 
+/* ---------- verification ----------
+   The duplicate-ticker heuristic can only guess which SOL/USDC/PEPE is the real
+   one. Two registries answer it outright: the Uniswap token list is the EVM
+   side's curated set, and Jupiter publishes a verified tag for Solana. Both are
+   static, keyless and CORS-open. Neither is required — when they do not answer
+   the heuristic stands on its own, exactly as before. */
+
+// EVM chain ids, for the token list's `chainId` field
+const EVM = { 1: 'eth', 10: 'op', 56: 'bnb', 137: 'poly', 8453: 'base', 42161: 'arb',
+  43114: 'avax', 324: 'zks', 59144: 'linea', 534352: 'scrl', 81457: 'blast', 5000: 'mnt',
+  130: 'uni', 57073: 'ink', 146: 'sonic', 80094: 'bera', 1329: 'sei', 2741: 'abs' };
+
+const addSym = (set, sym, chain) => sym && set.add(`${String(sym).toUpperCase()}@${chain}`);
+
+async function uniswapList() {
+  const j = await get(UNI, { tries: 1, timeout: 20000 }).catch(() => null);
+  const out = { syms: new Set(), addrs: new Set() };
+  for (const t of j?.tokens || []) {
+    const chain = EVM[t.chainId];
+    if (chain) addSym(out.syms, t.symbol, chain);
+    if (t.address) out.addrs.add(String(t.address).toLowerCase());
+  }
+  return out;
+}
+
+async function jupiterList() {
+  const j = await get(`${JUP}/tokens/v2/tag?query=verified`, { tries: 1, timeout: 20000 })
+    .catch(() => null);
+  const out = { syms: new Set(), addrs: new Set() };
+  // the field carrying the mint has moved between versions; accept any of them
+  for (const t of Array.isArray(j) ? j : j?.tokens || []) {
+    addSym(out.syms, t.symbol, 'sol');
+    const mint = t.id || t.address || t.mint;
+    if (mint) out.addrs.add(String(mint).toLowerCase());
+  }
+  return out;
+}
+
+/* Two registries, kept apart so a row can name the one that vouched for it —
+   "listed by Jupiter" says more than "listed". Sets are not JSON, so this one
+   is memory-only. */
+let verified = null;
+export function loadVerified() {
+  if (verified) return verified;
+  verified = Promise.all([uniswapList(), jupiterList()]).then(([a, b]) => ({
+    by: [['Uniswap', a], ['Jupiter', b]],
+    count: a.syms.size + b.syms.size,
+  })).catch(() => ({ by: [], count: 0 }));
+  return verified;
+}
+
+/* ---------- Morpho ----------
+   Morpho Blue is thousands of isolated lending markets, each its own pair of a
+   collateral and a loan asset. DeFiLlama indexes the largest of them and stops;
+   the protocol publishes all of them over a keyless GraphQL endpoint. Rows that
+   arrive here join the lending category alongside everything else, deduped
+   against what DeFiLlama already returned. */
+const MORPHO_Q = `{ markets(first: 200, orderBy: SupplyAssetsUsd, orderDirection: Desc,
+  where: { whitelisted: true }) { items {
+    uniqueKey lltv
+    loanAsset { symbol } collateralAsset { symbol }
+    morphoBlue { chain { id } }
+    state { supplyApy borrowApy supplyAssetsUsd borrowAssetsUsd utilization } } } }`;
+
+function morphoMarket(m) {
+  const chain = EVM[m?.morphoBlue?.chain?.id];
+  const sym = (m?.loanAsset?.symbol || '?').toUpperCase();
+  const supplyUsd = num(m?.state?.supplyAssetsUsd);
+  const borrowUsd = num(m?.state?.borrowAssetsUsd);
+  // wstETH and cbBTC are not WSTETH and CBBTC; the collateral is prose here, not
+  // a key, so it keeps the casing its issuer gave it
+  const coll = m?.collateralAsset?.symbol ? String(m.collateralAsset.symbol) : '';
+  return {
+    kind: 'pool', id: `p:morpho:${m.uniqueKey}`, pool: m.uniqueKey, proto: 'Morpho',
+    slug: 'morpho-blue', sym, chain,
+    // the API reports rates as fractions, the rest of the app in percent
+    sup: num(m?.state?.supplyApy) * 100, supBase: num(m?.state?.supplyApy) * 100, supReward: 0,
+    bor: num(m?.state?.borrowApy) * 100, borBase: num(m?.state?.borrowApy) * 100, borReward: 0,
+    tvl: supplyUsd, supplyUsd, borrowUsd,
+    util: supplyUsd > 0 ? Math.min(100, borrowUsd / supplyUsd * 100) : 0,
+    free: Math.max(0, supplyUsd - borrowUsd),
+    mean30: 0, stable: false,
+    // lltv arrives as an 18-decimal fixed-point integer
+    ltv: m?.lltv ? Number(m.lltv) / 1e18 : 0,
+    meta: coll ? `${coll} collateral` : '', color: colorOf(sym), source: 'Morpho',
+    key: `morpho ${sym} ${coll} ${CH[chain]?.name || ''} lending lend borrow supply market isolated`,
+  };
+}
+
+/** Whitelisted Morpho markets. Optional: a failure leaves lending as it was. */
+export function loadMorpho() {
+  return cache('morpho', TTL, async () => {
+    const j = await get(MORPHO, { tries: 1, timeout: 25000, post: { query: MORPHO_Q } })
+      .catch(() => null);
+    return (j?.data?.markets?.items || [])
+      .map(morphoMarket)
+      .filter(m => m.chain && m.supplyUsd >= 1e6)
+      .sort((a, b) => b.supplyUsd - a.supplyUsd)
+      .slice(0, 300);
+  });
+}
+
+/** Daily bridge volume — the last kind with history and no chart. */
+export function loadBridgeChart(b, days) {
+  return cache(`bchart:${b.bid}`, TTL, async () => {
+    const j = await get(`${BRIDGES}/bridgevolume/all?id=${encodeURIComponent(b.bid)}`,
+      { tries: 1, timeout: 25000 }).catch(() => null);
+    const pts = (Array.isArray(j) ? j : [])
+      .map(r => num(r.depositUSD) + num(r.withdrawUSD))
+      .filter(v => v > 0);
+    return pts.length > 1 ? { pts } : null;
+  }).then(s => s ? { pts: s.pts.slice(-days), live: true }
+    : { pts: [b.vol24, b.vol24], live: false });
+}
+
 /** The supported chains, carrying their live TVL. */
 export function loadChains() {
   return cache('chains', TTL, async () => {
@@ -611,7 +755,7 @@ export function loadBridges() {
         const chains = (b.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         const name = b.displayName || b.name || '?';
         return {
-          kind: 'bridge', id: `b:${b.id ?? slugOf(name)}`, name,
+          kind: 'bridge', id: `b:${b.id ?? slugOf(name)}`, name, bid: b.id ?? '',
           vol24: num(b.lastDailyVolume ?? b.volumePrevDay), volPrev: num(b.volumePrev2Day),
           chains, chain: chains[0] || null, color: colorOf(name),
           key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
@@ -928,3 +1072,33 @@ export const links = {
   pair: p => safeUrl(p.url, `https://dexscreener.com/search?q=${encodeURIComponent(p.addr || p.sym)}`),
   chain: c => `https://defillama.com/chain/${encodeURIComponent(CH[c.chain]?.llama || c.name)}`,
 };
+
+/* ---------- where to act on it ----------
+   Atlas indexes and explains; it never holds a key, a wallet or a quote. What it
+   can do is hand you off to the venue that does, with the token already
+   resolved — which is the whole value of having found it here. Every link below
+   is a public URL with no account, no SDK and no embedded credential. */
+
+// Matcha's own path segment per network
+const MATCHA_NET = { eth: 'ethereum', base: 'base', arb: 'arbitrum', op: 'optimism',
+  poly: 'polygon', bnb: 'bsc', avax: 'avalanche', linea: 'linea', scrl: 'scroll',
+  blast: 'blast', mnt: 'mantle', uni: 'unichain' };
+const netIdOf = i => i.chain
+  || Object.entries(CH).find(([, c]) => c.name.toLowerCase() === String(i.net || '').toLowerCase())?.[0];
+
+export function actions(i) {
+  const out = [];
+  const net = netIdOf(i);
+  if ((i.kind === 'pair' || i.kind === 'asset') && i.addr) {
+    if (net === 'sol') out.push(['Swap on Jupiter', `https://jup.ag/tokens/${encodeURIComponent(i.addr)}`]);
+    else if (MATCHA_NET[net])
+      out.push(['Trade on Matcha', `https://matcha.xyz/tokens/${MATCHA_NET[net]}/${encodeURIComponent(i.addr)}`]);
+  }
+  // MoonPay prices by ticker, and only for what it actually lists — offering it
+  // on a long-tail token would send people to an error page
+  if ((i.kind === 'asset' || i.kind === 'stock') && i.rank && i.rank <= 60)
+    out.push(['Buy with MoonPay', `https://buy.moonpay.com?defaultCurrencyCode=${encodeURIComponent(String(i.sym).toLowerCase())}`]);
+  if (i.kind === 'pool' || i.kind === 'yield')
+    out.push([`Open ${i.proto}`, safeUrl(i.protocol?.url, `https://defillama.com/protocol/${encodeURIComponent(i.slug)}`)]);
+  return out;
+}

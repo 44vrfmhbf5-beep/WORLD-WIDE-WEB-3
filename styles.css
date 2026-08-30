@@ -199,8 +199,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .mini .body .t1{font-size:13.5px}
 .mini .body .t2{font-size:12px}
 .mini .num .n1{font-size:13.5px}
-.cta{display:flex;gap:9px;margin-top:24px}
-.cta button{flex:1;padding:13px;border-radius:14px;font-size:14px;font-weight:600;transition:.16s var(--ease)}
+.cta{display:flex;flex-wrap:wrap;gap:9px;margin-top:24px}
+.cta button,.cta a{flex:1 1 45%;padding:13px;border-radius:14px;font-size:14px;font-weight:600;
+  transition:.16s var(--ease);text-align:center}
+.cta .p{flex-basis:100%}
 .cta .p{background:var(--accent);color:#17121f;box-shadow:0 8px 24px -10px var(--accent)}
 .cta .p:hover{background:#bcb1f6;transform:translateY(-1px)}
 .cta .s{background:var(--surface);border:1px solid var(--line2);color:var(--text)}
@@ -268,10 +270,19 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.about .src{margin-top:9px;padding-left:11px;border-left:2px solid var(--line2);color:var(--faint)}
 .cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
-.cta.one button{flex:0 0 auto;padding:11px 22px}
+.cta.one button,.cta.one a{flex:0 0 auto;padding:11px 22px}
 .rangebar span{cursor:pointer}
 .rangebar span:hover{color:var(--dim)}
 .empty .cta{max-width:220px;margin-inline:auto}
+/* a category holds far more than a screen; this is the way to the rest of it */
+.more{display:block;width:100%;margin-top:10px;padding:13px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--line);color:var(--dim);
+  font-size:13px;font-weight:600;transition:.14s var(--ease)}
+.more:hover{background:var(--surface2);color:var(--text);border-color:var(--line2)}
+/* the thing you most often want next is the thing you just looked at */
+.seen{margin-top:22px;text-align:left}
+.seen h3{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:8px}
 
 /* ---- fluidity + focus ---- */
 .results{transition:opacity .18s var(--ease)}
@@ -301,6 +312,12 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 /* the high/low envelope behind the close line, and a hairline at the range's
    opening value so the move is visible against something */
 .chart-svg .band{opacity:0;animation:fadein .5s .35s var(--ease) forwards}
+/* period high and low: where, not just how much */
+.pin{position:absolute;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);
+  box-shadow:0 0 0 2.5px var(--bg);opacity:0;animation:fadein .4s .6s var(--ease) forwards;
+  pointer-events:none}
+.pin.tr{opacity:0;animation:fadedim .4s .6s var(--ease) forwards}
+@keyframes fadedim{to{opacity:.5}}
 .chart-svg .base{stroke:var(--line2);stroke-width:1}
 .chart-svg .vol rect{transform-box:fill-box;transform-origin:bottom;
   animation:rise .5s var(--ease) both}
@@ -315,7 +332,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .ax.t0{bottom:1px;left:8px}
 .ax.t1{bottom:1px;right:8px}
 /* out of the bars' way: the panel is labelled above them, not across them */
-.ax.vk{top:92px;left:8px;opacity:.75;font-size:9px;text-transform:uppercase;letter-spacing:.09em}
+.ax.vk{top:84px;left:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
+  padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--bg) 76%,transparent)}
 .chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
@@ -470,6 +488,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .bar{flex-wrap:nowrap;gap:10px;align-items:center}
   .bar .meta{padding:10px 2px;flex:1;min-width:0}
   .kbd-hint{display:none}
+  /* the chain button beside this line already says which network is on */
+  .mnet{display:none}
   .viewtools{align-self:center}
   .sortbar:not(:empty){padding-bottom:8px}
   .sortbar button{padding:6px 11px}
@@ -538,6 +558,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .facetbar button:disabled{opacity:.38;cursor:default}
 .facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
 .facetbar button.on .fn{color:var(--accent)}
+/* the same row on All, where it reports the shape of a mixed result set */
+.facetbar [data-jump]{border-style:dashed}
+.facetbar [data-jump]:hover{border-style:solid}
 .facetbar .clr{background:none;border-color:transparent;color:var(--faint)}
 .facetbar .clr:hover{color:var(--text)}
 

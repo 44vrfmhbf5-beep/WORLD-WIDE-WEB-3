@@ -83,8 +83,31 @@ Live, keyless, straight from the browser — no backend, no wallet.
 | `nft.llama.fi` | NFT collections, floor price and floor history | `/collections`, `/chart/{collectionId}` |
 | `api-mainnet.magiceden.dev` | Solana and Ordinals collections | `/v2/marketplace/popular_collections` |
 | `api.geckoterminal.com` | trending pools, per-chain tokens, pair OHLCV, second DEX search | `/networks/trending_pools`, `/networks/{net}/pools`, `/networks/{net}/pools/{addr}/ohlcv/{tf}`, `/search/pools` |
+| `tokens.uniswap.org` | which EVM tokens are real | the Uniswap Labs default token list |
+| `lite-api.jup.ag` | which Solana tokens are real | `/tokens/v2/tag?query=verified` |
+| `api.morpho.org` | isolated lending markets the aggregator only samples | `/graphql` |
 
-Thirty endpoints across eleven hosts, all keyless and CORS-open.
+Thirty-four endpoints across fourteen hosts, all keyless and CORS-open.
+
+### Where the venues are, and where they are not
+
+Atlas indexes and explains. It holds no key, no wallet and no quote, and it is
+not going to start. What it can do is hand you off with the token already
+resolved, which is most of the value of having found it here — so a sheet
+carries the venue that can act on it: **Jupiter** for a Solana token,
+**Matcha** for an EVM one, **MoonPay** for a listed asset. All three are public
+URLs with no account, no SDK and no embedded credential.
+
+Two more were asked for and are not wired, for the same reason each way:
+
+- **Privy** is wallet authentication. It needs an app id and a signed-in user,
+  and this app is deliberately wallet-free — there is nothing here to log into.
+- **Crossmint** checkout needs a collection id issued from their console. There
+  is no way to derive one from a floor price, so a "buy this NFT" button would
+  be a link to an error page.
+
+**0x / Matcha's Swap API** needs an `0x-api-key` header, so quotes are out; the
+token deep link does not, so that is what is used.
 
 ### More from the same bytes
 
@@ -297,6 +320,35 @@ four questions people actually arrive with. The grouping is one table; a kind
 added to `KIND` but left out of a group would silently vanish from the rail, so
 anything unplaced is collected into a **More** group rather than lost.
 
+### A category is bigger than a screen
+
+Browsing a category showed its top forty rows and offered no way past them.
+Worse, the cut happened *before* the sort, so a column sort re-ranked the page
+rather than the category: asking Lending for its highest supply APY answered
+with the highest APY **among the forty largest markets** — 7.18%, when the
+category held 11.46%. The cut is now the last thing that happens, the results
+line says `40 of 1,224`, and the rest is one button away.
+
+Counts are printed exactly rather than through the money formatter. `1K of 1K`
+hid the difference between 1,029 and 1,224, which is the entire thing the
+number was there to say.
+
+### Which token is the real one
+
+Three rules used to guess: a ticker repeated on one network is probably copies,
+a pair wearing a top-100 ticker without the liquidity to be it is an
+impersonator, and anything with no volume is dead. Guesses are all they were.
+
+Two registries answer it outright. The **Uniswap** token list is the curated EVM
+set; **Jupiter** publishes a verified tag for Solana. Both are static, keyless
+and CORS-open, and neither is required — where they do not answer, the
+heuristics stand exactly as they did.
+
+**Only the contract counts.** Matching on the ticker would have handed every
+impersonator the reputation of the thing it imitates: a fake USDC on Ethereum
+satisfies `USDC@eth` exactly as well as the real one. The ticker is consulted
+only for rows that carry no address to check.
+
 ### Filters that ask a question
 
 Sorting answers *which is biggest*. It does not answer *which of these can I
@@ -403,6 +455,7 @@ both where the record is read and where the link is built.
 | `app.js` | Search index, renderers, detail sheets, keyboard nav, URL state |
 | `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
 | `test/` | Fixture server + end-to-end suite |
+| `tools/` | Three audits that print what renders, so it can be looked at |
 
 Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
 still nothing to install or build. It gives typo tolerance — `kamnio` finds
@@ -411,10 +464,13 @@ Kamino — and its scores are re-ranked afterwards so an exact ticker always win
 ## Interactions
 
 - **`/` or `⌘K`** focus search · **`↑` `↓`** browse · **`↵`** open · **`esc`** back out
+- **`[` `]`** walk the categories — unless you are typing, where a bracket is a bracket
 - Multi-token search — `usdc lending` ranks USDC markets above the USDC asset
 - Filter by category, by network, and by the chips each category defines
 - Detail sheets cross-link both ways; charts are real history with working ranges
-- **Saved** stars anything to `localStorage`, and survives a reload offline
+- A search across kinds says what it is made of, and one click narrows to any of them
+- **Saved** stars anything to `localStorage`, survives a reload offline, and
+  lists what you looked at most recently while it is empty
 - Query, filters and the open sheet all live in the URL, so views are shareable
   and the browser back button does what you expect
 
@@ -448,6 +504,18 @@ percentage params, `/coins/{id}/market_chart?days=N`, `/pools`, `/lendBorrow`,
 shaped payloads back and checks they render. It runs twice: once against the
 source, once against the bundled `demo.html`.
 
+**`tools/`** is not a suite — it is three scripts that print what actually
+renders, because the bugs that survive longest are the ones nothing asserts.
+`audit-entities.mjs` walks every kind and dumps its columns, facets, headline,
+stats and About line. `audit-filters.mjs` turns every chip on in turn and
+reports how much it leaves, which is how five filters that could only ever match
+everything were found. `audit-artifact.mjs` serves the built artifact with every
+host blocked. What each one surfaced is now an assertion in the suites above —
+including the one that holds every sheet's headline to the row it came from,
+since the chart rewrites that headline with its own last point and a loader
+keyed on the wrong entity would otherwise show one thing's price under another
+thing's name without throwing.
+
 It also asserts that a hostile token name from an API is rendered as text.
 Onchain token names and symbols are attacker-controlled strings; every
 interpolated value goes through `esc()` in `app.js`, and that fixture exists to
@@ -470,6 +538,21 @@ What that does and does not leave unverified:
   renamed field or slug would surface on the first live run and nowhere else —
   which is why an empty chain tab names the slug it asked for, and why the
   borrow join accepts the fields from either `/pools` or `/lendBorrow`.
+- **Least verified.** The three newest sources. The Uniswap token list follows
+  the standard Token Lists schema and is the safest of them; Jupiter's verified
+  tag and Morpho's GraphQL schema are written from their docs alone, and
+  Jupiter has moved the field carrying the mint between versions — the loader
+  accepts `id`, `address` or `mint` for that reason. All three are optional
+  enrichment by construction: each is caught, each has a null result, and the
+  app is the same app when none of them answers. Nothing about correctness rests
+  on them being right, only coverage.
+
+A recurring lesson, and the reason `tools/` exists: **a mock always answers.**
+Every feature here has at some point passed its tests while doing nothing,
+because the fixture agreed with the code instead of testing it. Fixtures now
+carry deliberate junk, deliberate variation, and history that lands on the value
+the row shows — the last of which is what makes a chart keyed on the wrong
+entity fail rather than merely look volatile.
 
 ## Roadmap
 

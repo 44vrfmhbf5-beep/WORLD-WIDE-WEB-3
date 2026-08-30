@@ -55,9 +55,24 @@ const ECO = { 'solana-ecosystem':['sol','usdc','jup','jto','pyth','bonk','wif','
   'avalanche-ecosystem':['avax'], 'sui-ecosystem':['sui','deep'], 'aptos-ecosystem':['apt'],
   'bitcoin-ecosystem':['btc','wbtc'], 'hyperliquid-ecosystem':['hype'] };
 
+// equities issued onchain, so the Stocks category is not blank offline
+const EQ = [['tesla-xstock','TSLAx','Tesla xStock',412.6,8.4e8,1.42],
+  ['nvidia-xstock','NVDAx','NVIDIA xStock',182.3,6.1e8,-0.84],
+  ['sp500-xstock','SPYx','S&P 500 xStock',612.7,9.6e8,0.31],
+  ['apple-xstock','AAPLx','Apple xStock',241.9,5.2e8,-1.16],
+  ['msft-xstock','MSFTx','Microsoft xStock',508.1,4.4e8,0.68],
+  ['coinbase-xstock','COINx','Coinbase xStock',312.4,2.8e8,2.94],
+  ['googl-xstock','GOOGLx','Alphabet xStock',196.4,2.1e8,-0.42],
+  ['amzn-xstock','AMZNx','Amazon xStock',228.7,1.9e8,1.08]];
+
 const walk = (seed, n, base) => { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const o = []; let v = base; for (let i = 0; i < n; i++) { h = (h * 1664525 + 1013904223) >>> 0;
     v *= 1 + ((h / 4294967296) - 0.49) * 0.035; o.push(v); } return o; };
+/* Rescaled to end at `base`: history ends now, and a sheet reads its headline
+   off the last point, so a series that wanders shows one number under a row
+   that shows another. */
+const walkTo = (seed, n, base) => { const o = walk(seed, n, base); const k = base / o[n - 1];
+  return o.map(v => v * k); };
 
 const market = ([id, sym, name, price, chg, mcap, vol], i) => ({
   id, symbol: sym, name, image: null, current_price: price, market_cap: mcap,
@@ -116,7 +131,19 @@ window.__ATLAS_SAMPLE__ = {
   ].map(([symbol,name,circ,price,mech],i)=>({ id:String(i), symbol, name,
     circulating:{ peggedUSD: circ }, price, pegMechanism: mech,
     chains: ['Ethereum','Solana','Base','Arbitrum'].slice(0, 2 + (i % 3)) })),
-  tvlSeries: s => walk('tvl' + s, 300, 1e9),
+  tvlSeries: (s, now = 1e9) => walkTo('tvl' + s, 300, now),
+  chainTvl: name => CHAIN_TVL[name] || 1e9,
+  bridgeSeries(id) {
+    const b = this.bridges.find(x => String(x.id) === String(id));
+    return walkTo('bv' + id, 200, (b?.lastDailyVolume || 2e8));
+  },
+  /* The two registries, so the artifact shows what a vouched token looks like.
+     The addresses are the ones the sample pairs actually carry — matching is by
+     contract, so a made-up address would vouch for nothing. */
+  uniTokens: [['MOG', 'addrMOG', 1], ['MOG', 'taddrMOG', 1], ['PEPE', 'taddrPEPE', 1],
+    ['BRETT', 'addrBRETT', 8453], ['BRETT', 'taddrBRETT', 8453], ['TOSHI', 'addrTOSHI', 8453]],
+  jupTokens: [['CASHCAT', 'addrCASHCAT'], ['WIF', 'addrWIF'], ['WIF', 'taddrWIF'],
+    ['POPCAT', 'addrPOPCAT'], ['POPCAT', 'taddrPOPCAT'], ['BONK', 'taddrBONK']],
   pairs(q) {
     const rows = [['CashCat','CASHCAT','solana','raydium',0.00042,31.4,9.1e5,4.2e6],
       ['dogwifhat','WIF','solana','raydium',1.72,-5.3,2.4e7,1.9e8],
@@ -152,9 +179,22 @@ window.__ATLAS_SAMPLE__ = {
     ['Okay Bears','okay_bears',12],['Tensorians','tensorians',9]]
     .map(([name,symbol,sol],i)=>({ symbol, name, image:null,
       floorPrice:sol*1e9, volumeAll:(9e11)/(i+1) })),
-  nftChart() { return walk('nftfloor', 200, 40000).map((v,i)=>({ timestamp:i, floorPriceUSD:v })); },
+  nftChart(now = 41200) { return walkTo('nftfloor', 200, now).map((v,i)=>({ timestamp:i, floorPriceUSD:v })); },
   klines(sym, n) { return walk('k' + sym, n, 100).map(v => [0, 0, 0, 0, String(v), 0]); },
-  ohlcv(addr, n) { return walk('o' + addr, n, 1).map((v, i) => [i, 0, 0, 0, v, 0]); },
+  /* The candles have to end at the price the row shows: a sheet takes its
+     headline from the last point, so a series that lands anywhere else puts one
+     token's price under another token's name. */
+  priceAt(addr) {
+    const all = [...this.trending, ...this.chainPools('solana'), ...this.gtSearch('')];
+    const m = all.find(r => addr.includes(r.attributes.address));
+    return m ? Number(m.attributes.base_token_price_usd) : 1;
+  },
+  ohlcv(addr, n) {
+    // GeckoTerminal returns candles newest first, and the loader reverses them;
+    // emitting them the other way round put the oldest point under the headline
+    return walkTo('o' + addr, n, this.priceAt(addr))
+      .map((v, i) => [i, v, v, v, v, 0]).reverse();
+  },
   chainPools(net) {
     return this.trending.slice(0, 8).map((r, i) => ({ ...r, id: net + '_c' + i,
       attributes: { ...r.attributes, address: net + 'addr' + i } }));
@@ -198,9 +238,19 @@ window.__ATLAS_SAMPLE__ = {
     .map(([name,amount,technique],i)=>({ date: Math.floor(Date.now()/1000)-(i*97+120)*86400,
       name, amount, technique, chains:['Ethereum'], source:'' })),
   markets(cat) {
+    if (/tokenized-stock|xstocks/.test(cat || ''))
+      // the two categories overlap upstream, and the loader dedupes them
+      return (cat === 'xstocks-ecosystem' ? EQ.slice(2) : EQ)
+        .map(([id, symbol, name, price, mcap, chg], i) => ({
+          id, symbol: symbol.toLowerCase(), name, image: null, current_price: price,
+          market_cap: mcap, market_cap_rank: i + 1, total_volume: mcap / 38,
+          price_change_percentage_24h: chg, price_change_percentage_7d_in_currency: chg * 2.4,
+          ath: price * 1.24, ath_change_percentage: -(4 + i * 3), circulating_supply: mcap / price,
+          sparkline_in_7d: { price: walkTo(id, 168, price) } }));
     const rows = cat ? A.filter(a => (ECO[cat] || []).includes(a[1])) : A;
     return rows.map((a, i) => market(a, A.indexOf(a)));
   },
+  stockPrice: id => (EQ.find(e => e[0] === id) || [, , , 0])[3],
   pools: [
     ['lido','Ethereum','STETH',2.94,1.94e10],['ether.fi','Ethereum','WEETH',3.42,6.8e9],
     ['jito','Solana','JITOSOL',7.81,2.9e9],['marinade','Solana','MSOL',7.24,1.3e9],
@@ -218,7 +268,9 @@ window.__ATLAS_SAMPLE__ = {
     apyBaseBorrow: bor, apyRewardBorrow: 0,
     totalSupplyUsd: supplied, totalBorrowUsd: supplied * util / 100, ltv,
   }))),
-  priceSeries: (id, days) => walk(id + days, days >= 365 ? 180 : days <= 1 ? 48 : days * 2,
-    (A.find(a => a[0] === id) || [, , , 100])[3]).map((v, i) => [i, v]),
-  apySeries: (pool, days) => walk(pool, Math.min(days, 180), 6).map((v, i) => ({ timestamp: i, apy: v })),
+  // an equity has no row in the asset table, so its price lives in EQ
+  priceSeries: (id, days) => walkTo(id + days, days >= 365 ? 180 : days <= 1 ? 48 : days * 2,
+    (EQ.find(e => e[0] === id) || [, , , null])[3]
+      ?? (A.find(a => a[0] === id) || [, , , 100])[3]).map((v, i) => [i, v]),
+  apySeries: (pool, days, now = 6) => walkTo(pool, Math.min(days, 180), now).map((v, i) => ({ timestamp: i, apy: v })),
 };

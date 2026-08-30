@@ -26,6 +26,14 @@ const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fai
 // ---- payloads in the documented response shapes ----
 const walk = (seed, n, base) => { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const o = []; let v = base; for (let i = 0; i < n; i++) { h = (h * 1664525 + 1013904223) >>> 0; v *= 1 + ((h / 4294967296) - .5) * .02; o.push(v); } return o; };
+/* Same walk, rescaled to finish exactly at `base`. History ends now, and the
+   sheet takes its headline from the last point — a series that wanders away
+   from the row's own number makes a chart keyed on the wrong entity look
+   identical to one that is simply volatile. */
+const walkTo = (seed, n, base) => { const o = walk(seed, n, base); const k = base / o[n - 1];
+  return o.map(v => v * k); };
+const PRICE_OF = { bitcoin: 96240, ethereum: 3412.8, 'usd-coin': 0.9999, ghostcoin: 0.5,
+  'tesla-xstock': 412.6, 'apple-xstock': 241.9, 'dead-xstock': 1 };
 
 const markets = [
   { id: 'bitcoin', symbol: 'btc', name: 'Bitcoin', image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
@@ -51,6 +59,22 @@ const markets = [
   { id: 'ghostcoin', symbol: 'ghost', name: 'Ghostcoin', current_price: 0.5,
     market_cap: 9e6, market_cap_rank: 900, total_volume: 0 },
 ];
+/* A category has to be bigger than one page, or nothing about paging or about
+   sorting the whole category rather than the page of it is exercised at all.
+   The rates deliberately peak in the middle of the set, where a sort that only
+   ever saw the first page would never reach. */
+const bulk = Array.from({ length: 140 }, (_, i) => ({
+  pool: `bulk-${i}`, chain: ['Ethereum', 'Solana', 'Base', 'Arbitrum'][i % 4],
+  project: ['aave-v3', 'compound-v3', 'spark', 'venus-core-pool'][i % 4],
+  symbol: ['USDC', 'WETH', 'WBTC', 'USDT'][i % 4],
+  tvlUsd: (4e9) / (i + 2), apyBase: 1 + (i % 5), apy: 1 + (i % 5),
+  // one market, deep in the tail, pays far more than anything on the first page
+  ...(i === 97 ? { apyBase: 24.5, apy: 24.5 } : {}),
+  apyBaseBorrow: 2 + (i % 6), apyRewardBorrow: 0,
+  totalSupplyUsd: (4e9) / (i + 2), totalBorrowUsd: (4e9) / (i + 2) * (0.2 + (i % 7) / 12),
+  ltv: 0.5 + (i % 40) / 100, stablecoin: i % 4 === 0 || i % 4 === 3,
+}));
+
 // borrow fields carried on the pool itself; /lendBorrow is failed below on purpose
 const llamaPools = { status: 'success', data: [
   { pool: 'aa11', chain: 'Ethereum', project: 'aave-v3', symbol: 'USDC', tvlUsd: 2.9e9, apyBase: 6.72, apyReward: 0, apy: 6.72,
@@ -80,6 +104,7 @@ const llamaPools = { status: 'success', data: [
     apy: 96, apyBase: 96, apyMean30d: 12, apyPct30D: 700 },
   { pool: 'ii99', chain: 'Ethereum', project: 'outlier-fi', symbol: 'OUTLIER', tvlUsd: 8e6,
     apy: 41, apyBase: 41, apyMean30d: 39, outlier: true },
+  ...bulk,
 ] };
 
 const protocols = [
@@ -103,9 +128,12 @@ const R = (glob, fn) => routes.push([glob, fn]);
 R('https://api.coingecko.com/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.includes('/market_chart')) {
+    const cid = u.split('/coins/')[1].split('/')[0];
+    const base = PRICE_OF[cid] ?? 1;
+    const days = +(new URL(u).searchParams.get('days') || 1);
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
-      prices: walk('c', 100, 3400).map((v, i) => [Date.now() - i * 36e5, v]),
-      total_volumes: walk('v', 100, 2e9).map((v, i) => [Date.now() - i * 36e5, v]) }) });
+      prices: walkTo(cid + days, 100, base).map((v, i, a) => [Date.now() - (a.length - 1 - i) * 36e5, v]),
+      total_volumes: walk('v' + cid, 100, 2e9).map((v, i, a) => [Date.now() - (a.length - 1 - i) * 36e5, v]) }) });
   }
   // /coins/{id}? — not /coins/markets?, which this matched and broke everything
   if (/\/coins\/(?!markets\b)[^/?]+\?/.test(u) && !u.includes('market_chart')) {
@@ -134,8 +162,13 @@ R('https://yields.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
   if (u.endsWith('/pools')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify(llamaPools) });
   if (u.endsWith('/lendBorrow')) return r.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
-  if (u.includes('/chart/')) return r.fulfill({ contentType: 'application/json',
-    body: JSON.stringify({ data: walk('p', 120, 6).map((v, i) => ({ timestamp: i, apy: v, tvlUsd: 1e8 })) }) });
+  if (u.includes('/chart/')) {
+    const id = u.split('/chart/')[1];
+    const row = llamaPools.data.find(x => x.pool === id) || bulk.find(x => x.pool === id);
+    const now = row ? (row.apy ?? row.apyBase ?? 6) : 6;
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      data: walkTo('p' + id, 120, now).map((v, i) => ({ timestamp: i, apy: v, tvlUsd: 1e8 })) }) });
+  }
   r.fulfill({ status: 404, body: '{}' });
 });
 R('https://api.llama.fi/**', r => {
@@ -144,11 +177,17 @@ R('https://api.llama.fi/**', r => {
   if (u.includes('/overview/dexs')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.2e9 }] });
   if (u.includes('/overview/fees')) return J({ protocols: [{ name: 'Aave V3', total24h: 3.4e6, revenue24h: 9.1e5 }] });
   if (u.includes('/v2/chains')) return J([{ name: 'Ethereum', tvl: 6.2e10 }, { name: 'Solana', tvl: 9.4e9 }]);
-  if (u.includes('/v2/historicalChainTvl/'))
-    return J(Array.from({ length: 200 }, (_, i) => ({ date: i, tvl: 5e10 + i * 1e8 })));
-  if (u.includes('/protocol/')) return J({
-    description: `<p>${u.split('/protocol/')[1]} is described by its own source.</p>`,
-    tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
+  if (u.includes('/v2/historicalChainTvl/')) {
+    const name = decodeURIComponent(u.split('/historicalChainTvl/')[1]);
+    const now = { Ethereum: 6.2e10, Solana: 9.4e9 }[name] ?? 5e10;
+    return J(walkTo('ch' + name, 200, now).map((v, i) => ({ date: i, tvl: v })));
+  }
+  if (u.includes('/protocol/')) {
+    const slug = u.split('/protocol/')[1];
+    const now = protocols.find(x => x.slug === slug)?.tvl ?? 1e9;
+    return J({ description: `<p>${slug} is described by its own source.</p>`,
+      tvl: walkTo('pr' + slug, 200, now).map((v, i) => ({ date: i, totalLiquidityUSD: v })) });
+  }
   if (u.endsWith('/protocols')) return J(protocols);
   if (u.includes('/overview/derivatives')) return J({ protocols: [{ name: 'Aave V3', total24h: 4.2e8 }] });
   if (u.includes('/overview/options')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.1e7 }] });
@@ -164,15 +203,21 @@ R('https://stablecoins.llama.fi/**', r => {
   seen.push(r.request().url());
   if (r.request().url().includes('/stablecoincharts/'))
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify(
-      Array.from({ length: 200 }, (_, i) => ({ date: i, totalCirculating: { peggedUSD: 4e10 + i * 1e7 } }))) });
+      walkTo('sc', 200, 4.1e10).map((v, i) => ({ date: i, totalCirculating: { peggedUSD: v } }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ peggedAssets: [
     { id: '1', symbol: 'USDC', name: 'USD Coin', circulating: { peggedUSD: 4.1e10 },
       price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] }] }) });
 });
 R('https://bridges.llama.fi/**', r => {
-  seen.push(r.request().url());
-  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ bridges: [
-    { id: 1, displayName: 'Across', chains: ['Ethereum', 'Base'], lastDailyVolume: 4.2e8, volumePrev2Day: 3.9e8 }] }) });
+  const u = r.request().url(); seen.push(u);
+  const J = o => r.fulfill({ contentType: 'application/json', body: JSON.stringify(o) });
+  // deposits and withdrawals are summed, and the series has to land on the
+  // reported day so the sheet's headline agrees with the row it came from
+  if (u.includes('/bridgevolume/')) return J(walk('bv', 200, 2.1e8)
+    .map((v, i, a) => ({ date: i, depositUSD: v * (2.1e8 / a[a.length - 1]),
+      withdrawUSD: v * (2.1e8 / a[a.length - 1]) })));
+  J({ bridges: [
+    { id: 1, displayName: 'Across', chains: ['Ethereum', 'Base'], lastDailyVolume: 4.2e8, volumePrev2Day: 3.9e8 }] });
 });
 R('https://api.dexscreener.com/**', r => {
   seen.push(r.request().url());
@@ -195,6 +240,13 @@ R('https://api.dexscreener.com/**', r => {
     chainId: 'solana', dexId: 'raydium', pairAddress: 'TWINSHALLOW',
     baseToken: { address: 'tw2', name: 'TwinCat', symbol: 'TWINCAT' },
     priceUsd: '1', liquidity: { usd: 9e3 }, volume: { h24: 4e3 } }, {
+    // the depth rule would drop this one too, but its contract is on a registry
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'VOUCHEDSHALLOW',
+    baseToken: { address: 'vouched2', name: 'Vouched', symbol: 'VOUCHED' },
+    priceUsd: '1', liquidity: { usd: 7e3 }, volume: { h24: 3e3 } }, {
+    chainId: 'solana', dexId: 'raydium', pairAddress: 'VOUCHEDDEEP',
+    baseToken: { address: 'vouched1', name: 'Vouched', symbol: 'VOUCHED' },
+    priceUsd: '1', liquidity: { usd: 9e5 }, volume: { h24: 2e6 } }, {
     // wearing a listed ticker without the liquidity to be it
     chainId: 'solana', dexId: 'raydium', pairAddress: 'FAKEBTC',
     baseToken: { address: 'fk', name: 'Bitcoin', symbol: 'BTC' },
@@ -219,12 +271,53 @@ R('https://api.geckoterminal.com/**', r => {
   r.fulfill({ contentType: 'application/json',
     body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')] }) });
 });
+/* The two registries that say which token is real, Morpho's own markets, and
+   daily bridge volume. Shapes are from each provider's published docs; this
+   sandbox cannot reach any of them to confirm, so every one of these is optional
+   enrichment in the app and a failure here must change nothing. */
+R('https://tokens.uniswap.org', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ name: 'Uniswap Labs Default', tokens: [
+    { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+    { chainId: 8453, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+  ] }) });
+});
+R('https://lite-api.jup.ag/**', r => {
+  seen.push(r.request().url());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify([
+    { id: 'So11111111111111111111111111111111111111112', symbol: 'SOL', name: 'Wrapped SOL', isVerified: true },
+    // the shallow half of a duplicated ticker, named by its contract: a registry
+    // answer has to beat the depth heuristic that would otherwise drop it
+    { id: 'vouched2', symbol: 'VOUCHED', name: 'Vouched', isVerified: true },
+    // the ticker of something the long tail impersonates. Matching on this
+    // would have waved a fake BTC straight past the rule meant to catch it.
+    { id: 'RealBTCmint', symbol: 'BTC', name: 'Bitcoin (Portal)', isVerified: true },
+  ]) });
+});
+R('https://api.morpho.org/**', r => {
+  seen.push(r.request().url() + '|' + (r.request().method()));
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { markets: { items: [
+    { uniqueKey: '0xmorphoA', lltv: '860000000000000000',
+      loanAsset: { symbol: 'USDC' }, collateralAsset: { symbol: 'wstETH' },
+      morphoBlue: { chain: { id: 1 } },
+      state: { supplyApy: 0.0512, borrowApy: 0.0734, supplyAssetsUsd: 7.4e8, borrowAssetsUsd: 5.1e8, utilization: 0.69 } },
+    { uniqueKey: '0xmorphoB', lltv: '770000000000000000',
+      loanAsset: { symbol: 'WETH' }, collateralAsset: { symbol: 'cbBTC' },
+      morphoBlue: { chain: { id: 8453 } },
+      state: { supplyApy: 0.0288, borrowApy: 0.0455, supplyAssetsUsd: 2.2e8, borrowAssetsUsd: 1.4e8, utilization: 0.63 } },
+    // below the ingest floor, and on a chain the app does not carry
+    { uniqueKey: '0xmorphoC', lltv: '0', loanAsset: { symbol: 'TINY' },
+      morphoBlue: { chain: { id: 999999 } },
+      state: { supplyApy: 0.9, borrowApy: 1, supplyAssetsUsd: 100, borrowAssetsUsd: 0 } },
+  ] } } }) });
+});
+
 R('https://nft.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
   // reported live: this endpoint answers for some collections and not others
   if (u.includes('/chart/')) return r.fulfill({ contentType: 'application/json',
     body: JSON.stringify(/0xpoly/.test(u) ? []
-      : Array.from({ length: 120 }, (_, i) => ({ timestamp: i, floorPriceUSD: 90000 + i * 40 }))) });
+      : walkTo('nf', 120, 42300).map((v, i) => ({ timestamp: i, floorPriceUSD: v }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify([
     { collectionId: '0xbayc', name: 'Bored Ape Yacht Club', symbol: 'BAYC', chain: 'Ethereum',
       image: null, floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
@@ -563,6 +656,172 @@ console.log('\n# an empty category says which one');
   ok(await p.locator('[data-allchains]').count() === 1, 'and offers the way out of the filter');
   await p.click('[data-allchains]'); await p.waitForTimeout(700);
   ok(await p.locator('.row').count() > 0, 'which clears the chain filter');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a sheet is about the row you opened, all the way down');
+{
+  /* The chart owns the headline — it rewrites it with the series' last point,
+     which is what makes the hover readout work. So a loader keyed on the wrong
+     entity does not throw, it quietly shows another thing's number under this
+     thing's name. Walk every kind and hold the headline to the row. */
+  const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
+  let checked = 0, wrong = [];
+  for (const t of tabs) {
+    if (t === 'saved') continue;
+    await p.click(`[data-tab="${t}"]`); await p.waitForTimeout(700);
+    if (!await p.locator('#results .row:not(.sk)').count()) continue;
+    const rowNum = (await p.locator('#results .row:not(.sk)').first()
+      .locator('.n1, .cell').first().textContent()).trim();
+    await p.locator('#results .row:not(.sk)').first().click();
+    await p.waitForTimeout(1500);
+    const kind = await p.locator('.sheet-in').getAttribute('data-kind');
+    const big = (await p.locator('.sheet-in .big').textContent()).trim();
+    checked++;
+    if (big !== rowNum) wrong.push(`${kind}: row ${rowNum} vs sheet ${big}`);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(450);
+  }
+  ok(checked >= 12, `every kind opens a sheet (${checked})`);
+  ok(!wrong.length, `and its headline is the row's own number${wrong.length ? ' — ' + wrong.join('; ') : ''}`);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a column sort sees the whole category, not the page of it');
+{
+  await p.click('[data-tab=lending]'); await p.waitForTimeout(1200);
+  const meta = await p.locator('#meta').textContent();
+  ok(/\d+ of [\d,]+/.test(meta), `the list says what it is showing out of what it found (${meta.trim().slice(0, 34)})`);
+  // "1K of 1K" hid the difference between 1,029 and 1,224
+  ok(!/\bof \d+(\.\d+)?[KMB]\b/.test(meta), 'and counts a category exactly rather than rounding it');
+
+  await p.locator('.thead button[data-sort=sup]').click(); await p.waitForTimeout(800);
+  const top = await p.locator('#results .row .cell').first().textContent();
+  // sorting the page instead of the category answered a different question:
+  // "highest APY" meant "highest APY among the forty biggest"
+  const best = await p.evaluate(() => {
+    const cells = [...document.querySelectorAll('#results .row')].map(r =>
+      parseFloat(r.querySelector('.cell').textContent));
+    return Math.max(...cells);
+  });
+  ok(parseFloat(top) === best, `the top row is the highest on screen (${top.trim()})`);
+  // bulk-97 pays 24.5% and sits a hundred rows past the first page
+  ok(parseFloat(top) > 20, `and it is the category's own maximum, not the page's (${top.trim()})`);
+
+  const first = await p.locator('#results .row').count();
+  ok(await p.locator('[data-more]').count() === 1, 'a category too big for one screen offers the rest');
+  await p.click('[data-more]'); await p.waitForTimeout(700);
+  ok(await p.locator('#results .row').count() > first,
+    `and showing more grows the list (${first} to ${await p.locator('#results .row').count()})`);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# two registries settle what a heuristic can only guess');
+{
+  ok(hit(/^https:\/\/tokens\.uniswap\.org/), 'the Uniswap token list is fetched');
+  ok(hit(/lite-api\.jup\.ag\/tokens\/v2\/tag/), 'and Jupiter\'s verified tag');
+  const shown = async q => { await p.fill('#q', q); await p.waitForTimeout(1600);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id)); };
+  // the depth rule alone drops the shallow half; a registry naming its contract
+  // outranks the guess
+  ok((await shown('vouched')).includes('d:VOUCHEDSHALLOW'),
+    'a contract a registry names survives the duplicate rule');
+  // and the ticker alone must never do that, or every impersonator inherits the
+  // reputation of what it is imitating
+  ok(!(await shown('bitcoin')).includes('d:FAKEBTC'),
+    'while sharing a listed ticker with a registry entry rescues nothing');
+  ok(!(await shown('twincat')).includes('d:TWINSHALLOW'),
+    'and an unlisted shallow copy is still dropped');
+  await p.fill('#q', ''); await p.waitForTimeout(700);
+
+  await p.click('[data-tab=dex]'); await p.waitForTimeout(900);
+  ok(await p.locator('[data-facet=real]').count() === 1, 'and it becomes a filter of its own');
+  await p.locator('#results .row[data-id="d:PAIR1"], #results .row').first().click();
+  await p.waitForTimeout(1200);
+  const sheet = await p.locator('.sheet-in').textContent();
+  ok(/Listed by/.test(sheet) || /Jupiter|Uniswap/.test(sheet),
+    'a verified row names the registry that vouched for it');
+  // Atlas holds no wallet and quotes no price; it hands off with the token resolved
+  ok(await p.locator('.cta a').count() >= 1, 'and offers somewhere to act on it');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# the isolated markets an aggregator only samples');
+{
+  ok(hit(/api\.morpho\.org/), 'Morpho is asked for its own markets');
+  ok(seen.some(u => /api\.morpho\.org.*\|POST/.test(u)), 'over POST, since it speaks GraphQL');
+  await p.fill('#q', 'morpho'); await p.waitForTimeout(1600);
+  const rows = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .map(r => r.dataset.id).filter(x => x.startsWith('p:morpho:')));
+  ok(rows.length >= 2, `its markets join the lending category (${rows.length})`);
+  await p.locator(`.row[data-id="${rows[0]}"]`).click(); await p.waitForTimeout(1300);
+  const t = await p.locator('.sheet-in').textContent();
+  // the API reports rates as fractions and lltv as an 18-decimal integer
+  ok(/5\.12%/.test(t), 'with its rates converted out of fractions');
+  ok(/86%/.test(t), 'and its LLTV out of 18-decimal fixed point');
+  ok(/wstETH collateral/.test(t), 'and the collateral it is actually against');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  await p.fill('#q', ''); await p.waitForTimeout(700);
+}
+
+console.log('\n# a mixed result set says what it is made of');
+{
+  await p.fill('#q', 'usdc'); await p.waitForTimeout(1700);
+  const chips = await p.locator('#facetbar [data-jump]').evaluateAll(bs =>
+    bs.map(b => ({ k: b.dataset.jump, t: b.textContent.trim() })));
+  ok(chips.length >= 2, `a search across kinds offers a way into each (${chips.map(c => c.t).join(' · ')})`);
+  await p.click(`[data-jump="${chips[0].k}"]`); await p.waitForTimeout(900);
+  const only = await p.evaluate(() => new Set([...document.querySelectorAll('#results .row')]
+    .map(r => r.dataset.id.split(':')[0])).size);
+  ok(only === 1, 'and clicking one narrows to that kind alone');
+  ok(await p.locator('#q').inputValue() === 'usdc', 'keeping the query');
+  await p.fill('#q', ''); await p.waitForTimeout(700);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+  ok(await p.locator('#facetbar [data-jump]').count() === 0,
+    'with nothing typed the rail already names the categories, so the row stays out of the way');
+}
+
+console.log('\n# categories are walkable from the keyboard');
+{
+  const before = await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab');
+  await p.locator('body').click({ position: { x: 5, y: 400 } });
+  await p.keyboard.press(']'); await p.waitForTimeout(600);
+  const after = await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab');
+  ok(before !== after, `] moves to the next category (${before} to ${after})`);
+  await p.keyboard.press('['); await p.waitForTimeout(600);
+  ok(await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab') === before, '[ moves back');
+  // a bracket belongs to whatever you are typing
+  await p.click('#q'); await p.fill('#q', 'a['); await p.waitForTimeout(700);
+  ok(await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab') === before,
+    'and a bracket typed into the search box is a search, not a category change');
+  await p.fill('#q', ''); await p.waitForTimeout(600);
+}
+
+console.log('\n# the chart says where, not only how much');
+{
+  await p.click('[data-tab=assets]'); await p.waitForTimeout(800);
+  await p.locator('#results .row').first().click();
+  await p.waitForSelector('.chart svg .line', { timeout: 15000 });
+  await p.waitForTimeout(900);
+  ok(await p.locator('.chart .pin.pk').count() === 1, 'the period high is marked on the line');
+  ok(await p.locator('.chart .pin.tr').count() === 1, 'and so is the low');
+  const pins = await p.locator('.chart .pin').evaluateAll(ns => ns.map(n => n.style.left));
+  ok(pins.every(l => /%$/.test(l) && parseFloat(l) >= 0 && parseFloat(l) <= 100),
+    `positioned in the plot, not drawn into a stretched svg (${pins.join(' ')})`);
+  const vk = await p.locator('.chart .vk').textContent().catch(() => '');
+  ok(/peak \$/.test(vk), `the volume strip carries its own scale (${vk})`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+}
+
+console.log('\n# bridges have history too');
+{
+  await p.click('[data-tab=bridges]'); await p.waitForTimeout(900);
+  await p.locator('#results .row').first().click();
+  await p.waitForSelector('.chart svg .line', { timeout: 15000 });
+  await p.waitForTimeout(800);
+  ok(hit(/bridges\.llama\.fi\/bridgevolume/), 'a bridge asks for its own daily volume');
+  ok(await p.locator('.nohist').count() === 0, 'and draws it rather than a flat line');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
 
