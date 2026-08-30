@@ -49,7 +49,16 @@ const markets = (cat) => NAMES.map(([id,sym,name],i)=>({
 // tokenized equities: the ticker plus an x, issued onchain
 const EQ=[['tesla-xstock','TSLAX','Tesla xStock',412.6,8.4e8],['nvidia-xstock','NVDAX','NVIDIA xStock',182.3,6.1e8],
   ['apple-xstock','AAPLX','Apple xStock',241.9,5.2e8],['msft-xstock','MSFTX','Microsoft xStock',508.1,4.4e8],
-  ['coinbase-xstock','COINX','Coinbase xStock',312.4,2.8e8],['sp500-xstock','SPYX','S&P 500 xStock',612.7,9.6e8]];
+  ['sp500-xstock','SPYX','S&P 500 xStock',612.7,9.6e8],
+  // one per issuer naming convention: Dinari prefixes a d, Robinhood and
+  // Coinbase issue under the plain ticker
+  ['dinari-tesla','DTSLA','Dinari Tesla dShare',411.2,4.1e7],
+  ['robinhood-nvda','NVDA','Robinhood Tokenized NVIDIA',181.8,9.2e7],
+  ['coinbase-aapl','AAPL','Coinbase Tokenized Apple Stock',241.1,1.4e8],
+  ['swarm-msft','MSFT','Swarm Microsoft Stock Token',507.4,3.1e7],
+  // in the category and not an equity: the loader must drop both
+  ['ondo-treasury','OUSG','Ondo Short-Term US Treasuries',108.4,6.2e8],
+  ['paxos-gold','PAXG','Pax Gold',2640.5,7.1e8]];
 const STOCKS=(cat)=>EQ.map(([id,sym,name,price,mcap],i)=>({
   id, symbol:sym.toLowerCase(), name, image:'https://img.invalid/eq/'+id+'.png',
   current_price:price, market_cap:mcap,
@@ -94,8 +103,13 @@ pools.push({pool:'outlierfarm',chain:'Ethereum',project:'outlier-fi',symbol:'OUT
   apy:41,apyBase:41,apyMean30d:39,outlier:true});
 
 // /dl/protocols hands out (5e10)/(i+2); the slug carries that index back
-const PROTO_TVL = path => { const m=/-(\d+)$/.exec(path); return (5e10)/((m?+m[1]:0)+2); };
-const CHAIN_TVL = Object.fromEntries(CHAINS.map((c,i)=>[c,(9e10)/(i+1)]));
+const PROTO_SLUG = i => i<PROJECTS.length ? PROJECTS[i] : PROJECTS[i%PROJECTS.length]+'-'+i;
+const PROTO_TVL_BY = Object.fromEntries(Array.from({length:120},(_,i)=>[PROTO_SLUG(i),(5e10)/(i+2)]));
+const PROTO_TVL = path => PROTO_TVL_BY[decodeURIComponent(path.split('/').pop())] ?? 1e9;
+const ALL_CHAINS=['Ethereum','Solana','Base','Arbitrum','BSC','Hyperliquid','Optimism','Polygon',
+  'Avalanche','Sui','Aptos','Tron','TON','Bitcoin','Berachain','Sonic','Mantle','Blast','Scroll',
+  'Linea','zkSync Era','Sei','Unichain','Ink','Abstract','Plume','Story','Monad','Celo'];
+const CHAIN_TVL = Object.fromEntries(ALL_CHAINS.map((c,i)=>[c,(9e10)/((i+1)**1.9)]));
 const STABLE_SUP = { 1: 4.1e10, 2: 1.18e11, 3: 5.3e9, 4: 6.4e8, 5: 3.1e8 };
 const BRIDGE_VOL = Object.fromEntries(Array.from({length:14},(_,i)=>[String(i),(4e8)/((i+1)**2)]));
 const MIME={'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript'};
@@ -128,8 +142,7 @@ http.createServer(async (req,res)=>{
       total_volumes:walk('v'+id+days,n,3e9).map((v,i)=>[Date.now()-i*36e5,v])});
   }
   if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
-    id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i,
-    slug: i<PROJECTS.length ? PROJECTS[i] : PROJECTS[i%PROJECTS.length]+'-'+i,
+    id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, slug:PROTO_SLUG(i),
     category:['Lending','Dexes','Liquid Staking','CDP','Yield'][i%5],
     chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
@@ -139,7 +152,10 @@ http.createServer(async (req,res)=>{
     name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, ...f(i)})).filter((_,i)=>i%3!==2)});
   if(p==='/dl/overview/dexs') return json(overview(i=>({total24h:(1.2e9)/(i+1)})));
   if(p==='/dl/overview/fees') return json(overview(i=>({total24h:(3.4e6)/(i+1),revenue24h:(9.1e5)/(i+1)})));
-  if(p==='/dl/v2/chains') return json(CHAINS.map((c,i)=>({name:c,tvl:(9e10)/(i+1),tokenSymbol:c.slice(0,3).toUpperCase()})));
+  // the app carries thirty networks; a fixture that prices ten of them cannot
+  // tell a threshold that separates from one that matches whatever is left
+  if(p==='/dl/v2/chains') return json(ALL_CHAINS.map((c,i)=>({
+    name:c, tvl:(9e10)/((i+1)**1.9), tokenSymbol:c.slice(0,3).toUpperCase()})));
   if(p.startsWith('/dl/protocol/')) return json({
     description:`<p>${p.split('/').pop()} is a protocol described by its own source.</p>`,
     tvl:walkTo(p,400,PROTO_TVL(p)).map((v,i)=>({date:i,totalLiquidityUSD:v}))});
@@ -172,7 +188,8 @@ http.createServer(async (req,res)=>{
       dexId:['raydium','aerodrome','uniswap'][i%3],
       pairAddress:'pair'+n, url:'https://dexscreener.com/x/'+n,
       baseToken:{address:'0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
-      quoteToken:{symbol:'SOL'},
+      // TinyCoin keeps a moving quote on purpose: a price in SOL is not a price
+      quoteToken:{symbol: n==='TinyCoin' ? 'SOL' : 'USDC'},
       // DexScreener returns a token logo with the pair, and one hostile scheme
       info: i%4===3 ? undefined
         : { imageUrl: i===1 ? 'javascript:alert(1)' : 'https://img.invalid/tok/'+n+'.png' },
@@ -186,6 +203,16 @@ http.createServer(async (req,res)=>{
     symbol:'COL'+i, image:'https://img.invalid/'+i+'.png', chain:['Ethereum','Base','Polygon'][i%3],
     floorPrice:(30)/(i+1), floorPriceUSD:(9e4)/(i+1), floorPricePctChange1Day:((i%7)-3)*2.4,
     floorPricePctChange7Day:((i%5)-2)*5.1, dailyVolumeUSD:(4e6)/(i+1), totalSupply:10000-i*100 })));
+  // what is actually listed inside a collection — keyless on Magic Eden
+  if(/^\/me\/collections\/[^/]+\/listings$/.test(p)){
+    const sym=p.split('/')[3];
+    return json(Array.from({length:12},(_,i)=>({
+      pdaAddress:'pda'+i, tokenMint:sym+'-mint-'+i, price:(4.2)/(i+1),
+      token:{ mintAddress:sym+'-mint-'+i, name:sym.toUpperCase()+' #'+(1000+i),
+        image:'https://img.invalid/nft/'+sym+'/'+i+'.png',
+        attributes:[{trait_type:'Background',value:['Blue','Gold','Rust'][i%3]},
+          {trait_type:'Eyes',value:['Laser','Sleepy'][i%2]}] }})));
+  }
   if(p==='/me/marketplace/popular_collections') return json(Array.from({length:12},(_,i)=>({
     symbol:'mad_lads'+i, name:['Mad Lads','Claynosaurz','Famous Fox Federation','SMB Gen2','Okay Bears'][i%5]+(i>4?' '+i:''),
     image:'https://img.invalid/me'+i+'.png', floorPrice:(120e9)/(i+1), volumeAll:(9e11)/(i+1) })));
@@ -203,15 +230,20 @@ http.createServer(async (req,res)=>{
   if(/^\/gt\/networks\/[^/]+\/pools$/.test(p)){
     const rows=[]; for(let i=0;i<10;i++) rows.push({id:'net_p'+i,type:'pool',
       relationships:{ base_token:{ data:{ id:'ctok'+i, type:'token' } } },
-      attributes:{name:'CHAINTOK'+i+' / SOL',address:'ct'+i,base_token_price_usd:String(0.5*(i+1)),
+      attributes:{name:'CHAINTOK'+i+(i%4?' / USDC':' / WETH'),address:'ct'+i,base_token_price_usd:String(0.5*(i+1)),
         price_change_percentage:{h24:'3.2'},reserve_in_usd:String(2e6/(i+1)),
         volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}});
     const included=Array.from({length:10},(_,i)=>({ id:'ctok'+i, type:'token',
       attributes:{ image_url:'https://img.invalid/ct/'+i+'.png' }}));
     return json({data:rows,included});
   }
-  if(/ohlcv/.test(p)) return json({data:{attributes:{ohlcv_list:
-    walk('ohlcv'+p,60,1).map((v,i)=>[i,0,0,0,v,0])}}});
+  if(/ohlcv/.test(p)){
+    // trending pool i is priced at 0.02*(i+1); the series has to land there or
+    // the sheet shows one token's price under another token's name
+    const m=/addr(\d+)/.exec(p), price = m ? 0.02*(+m[1]+1) : 1;
+    return json({data:{attributes:{ohlcv_list:
+      walkTo('ohlcv'+p,60,price).map((v,i)=>[i,v,v,v,v,0]).reverse()}}});
+  }
   if(p==='/gt/search/pools'){
     const q=(u.searchParams.get('query')||'').toLowerCase();
     const rows=[];
@@ -226,7 +258,7 @@ http.createServer(async (req,res)=>{
     for(let i=0;i<12;i++) rows.push({
       id:['solana','base','eth'][i%3]+'_pool'+i, type:'pool',
       relationships:{ base_token:{ data:{ id:'tok'+i, type:'token' } } },
-      attributes:{ name:'TREND'+i+' / SOL', address:'addr'+i,
+      attributes:{ name:'TREND'+i+(i%3?' / USDC':' / SOL'), address:'addr'+i,
         base_token_price_usd:String(0.02*(i+1)),
         price_change_percentage:{h24:String(((i%6)-3)*5.1)},
         // half of them trade less than their own liquidity in a day

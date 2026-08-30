@@ -54,6 +54,16 @@ export const config = {
     hyperliquid: { read: true, trade: false },
   },
 
+  /* An OpenAI-compatible chat endpoint, which is what every open-source runner
+     speaks: Ollama (http://localhost:11434/v1), llama.cpp, LM Studio, vLLM, and
+     the hosted gateways too. It reads a question like "cat meme coin on base up
+     50% in 24h" into the same controls the local parser sets, so its answer is
+     always visible in the UI and always undoable.
+
+     Leave the endpoint empty and the local parser does the whole job — it needs
+     no network, no key and no model, and it is what runs first either way. */
+  ai: { endpoint: '', model: 'llama3.1', apiKey: '', timeout: 12000 },
+
   /* Solana RPC used to broadcast a signed swap. The public endpoint is heavily
      rate-limited — put your own (Helius, Triton, QuickNode) here for anything
      real. */

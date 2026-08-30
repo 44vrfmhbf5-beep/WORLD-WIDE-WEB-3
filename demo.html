@@ -6,21 +6,23 @@
 <!-- Single-file build. Source: https://github.com/44vrfmhbf5-beep/WORLD-WIDE-WEB-3 -->
 <title>Atlas Onchain Search</title>
 <meta name="description" content="One search bar for every chain. Assets, NFTs, yields, lending markets, protocols, stablecoins, bridges, funding rounds and exploits.">
-<meta name="theme-color" content="#16161d">
+<meta name="theme-color" content="#12121a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Non-blocking: a pending stylesheet blocks script execution, so a slow or
      unreachable font host would leave the shell rendered and the app dead. -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23ab9ff2'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23006fcf'/></svg>">
 <style>
-/* Atlas — Phantom-flavoured onchain search */
+/* Atlas — onchain search */
 :root{
   --bg:#12121a; --bg2:#16161f; --surface:#1c1c27; --surface2:#22222f;
   --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
   --text:#f4f3f8; --dim:#9a99ac; --faint:#67667a;
-  --accent:#ab9ff2; --accent-dim:#8b7fe0;
+  /* American Express blue. It is darker than the violet it replaces, so
+     anything sitting on it takes white rather than near-black. */
+  --accent:#006fcf; --accent-dim:#3b8fdd; --on-accent:#fff;
   --up:#4ade80; --down:#ff6b81;
   --r:16px; --r-lg:22px;
   --ease:cubic-bezier(.22,.61,.36,1);
@@ -57,7 +59,7 @@ button{background:none;border:0;cursor:pointer}
 .brand{display:flex;align-items:center;gap:9px;color:var(--text);text-decoration:none;
   font-weight:700;font-size:16px;letter-spacing:-.03em}
 .mark{width:20px;height:20px;border-radius:7px;
-  background:conic-gradient(from 200deg,#ab9ff2,#61d6d6,#ff6b81,#ab9ff2);
+  background:conic-gradient(from 200deg,#006fcf,#3fb6f5,#00d4b8,#006fcf);
   box-shadow:0 0 18px rgba(171,159,242,.5)}
 .top-nav{display:flex;align-items:center;gap:12px}
 .net{color:var(--faint);font-size:12.5px;font-weight:500}
@@ -76,7 +78,7 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border-radius:5px;background:rgb
 /* hero */
 .hero{text-align:center;padding:56px 0 26px;transition:.35s var(--ease)}
 .hero h1{font-size:clamp(30px,6vw,44px);font-weight:700;letter-spacing:-.035em;line-height:1.08}
-.hero em{font-style:normal;background:linear-gradient(100deg,#ab9ff2,#61d6d6);
+.hero em{font-style:normal;background:linear-gradient(100deg,#3b8fdd,#3fd0e8);
   -webkit-background-clip:text;background-clip:text;color:transparent}
 .hero .sub{margin-top:12px;color:var(--dim);font-size:15px}
 .hero .sub span{color:var(--accent)}
@@ -117,7 +119,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .chip[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--c) 55%,transparent);
   background:color-mix(in srgb,var(--c) 14%,var(--surface))}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none;box-shadow:0 0 8px var(--c)}
-.chip.all .dot{background:linear-gradient(120deg,#ab9ff2,#61d6d6)}
+.chip.all .dot{background:linear-gradient(120deg,#006fcf,#3fd0e8)}
 
 .meta{padding:14px 2px 10px;color:var(--faint);font-size:12.5px;font-weight:500;letter-spacing:.01em}
 
@@ -201,7 +203,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .stat .v{margin-top:5px;font-size:16px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .stat.wide{grid-column:1/-1}
 .util{margin-top:9px;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
-.util i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#61d6d6);
+.util i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#3fd0e8);
   animation:grow .5s var(--ease) both}
 @keyframes grow{from{width:0!important}}
 
@@ -220,8 +222,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .cta button,.cta a{flex:1 1 45%;padding:13px;border-radius:14px;font-size:14px;font-weight:600;
   transition:.16s var(--ease);text-align:center}
 .cta .p{flex-basis:100%}
-.cta .p{background:var(--accent);color:#17121f;box-shadow:0 8px 24px -10px var(--accent)}
-.cta .p:hover{background:#bcb1f6;transform:translateY(-1px)}
+.cta .p{background:var(--accent);color:var(--on-accent);box-shadow:0 8px 24px -10px var(--accent)}
+.cta .p:hover{background:#1a86e8;transform:translateY(-1px)}
 .cta .s{background:var(--surface);border:1px solid var(--line2);color:var(--text)}
 .cta .s:hover{background:var(--surface2)}
 .note{margin-top:14px;text-align:center;color:var(--faint);font-size:11.5px}
@@ -315,8 +317,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .wrow input:focus{outline:none;border-color:var(--accent-dim)}
 .wrow button{flex:0 0 auto;padding:12px 16px;border-radius:12px;font-size:13.5px;font-weight:600;
   transition:.14s var(--ease)}
-.wrow .p{background:var(--accent);color:#17121f}
-.wrow .p:hover:not(:disabled){background:#bcb1f6}
+.wrow .p{background:var(--accent);color:var(--on-accent)}
+.wrow .p:hover:not(:disabled){background:#1a86e8}
 .wrow .p:disabled{opacity:.6}
 .wrow .s{flex:1 1 auto;background:var(--surface);border:1px solid var(--line2);color:var(--text)}
 .wrow .s:hover{background:var(--surface2)}
@@ -329,6 +331,22 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   font-size:12.5px;color:var(--dim)}
 .waddr .copy{flex:none;font-size:11.5px;font-weight:600;color:var(--accent)}
 .note.err{color:#ff8a8a;border-left:2px solid #ff8a8a;padding-left:11px;text-align:left;margin-top:14px}
+
+/* what is actually for sale inside a collection */
+.sec.items .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.sec.items .item{display:block;border-radius:12px;overflow:hidden;background:var(--surface);
+  border:1px solid var(--line);text-decoration:none;transition:.14s var(--ease)}
+.sec.items .item:hover{border-color:var(--line2);transform:translateY(-1px)}
+.sec.items .ph{position:relative;aspect-ratio:1;background:var(--surface2)}
+.sec.items .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .25s var(--ease)}
+.sec.items .in{padding:7px 8px 6px}
+.sec.items .t{font-size:11.5px;font-weight:600;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec.items .p{font-size:11.5px;font-weight:600;color:var(--accent-dim);
+  font-variant-numeric:tabular-nums;margin-top:1px}
+.sec.items .tr{padding:0 8px 7px;font-size:10.5px;color:var(--faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* a quote is live data, so it reads like the numbers elsewhere, not like chrome */
 .sec.trade .quote{padding:12px 14px;border-radius:13px;background:var(--surface);
@@ -622,6 +640,12 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .facetbar button:disabled{opacity:.38;cursor:default}
 .facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
 .facetbar button.on .fn{color:var(--accent)}
+/* what a sentence was read as: stated, not applied silently */
+.facetbar .rd{display:inline-flex;align-items:center;flex:none;padding:6px 11px;border-radius:999px;
+  background:color-mix(in srgb,var(--accent) 13%,var(--surface));border:1px solid var(--accent-dim);
+  color:var(--text);font-size:12.5px;font-weight:600;white-space:nowrap}
+.searchbar #q.read{font-style:italic}
+
 /* the same row on All, where it reports the shape of a mixed result set */
 .facetbar [data-jump]{border-style:dashed}
 .facetbar [data-jump]:hover{border-style:solid}
@@ -769,7 +793,7 @@ const Fuse = (() => {
  */
 function e(e){return Array.isArray?Array.isArray(e):u(e)===`[object Array]`}function t(e){if(typeof e==`string`)return e;if(typeof e==`bigint`)return e.toString();let t=e+``;return t==`0`&&1/e==-1/0?`-0`:t}function n(e){return e==null?``:t(e)}function r(e){return typeof e==`string`}function i(e){return typeof e==`number`}function a(e){return e===!0||e===!1||s(e)&&u(e)==`[object Boolean]`}function o(e){return typeof e==`object`}function s(e){return o(e)&&e!==null}function c(e){return e!=null}function l(e){return!e.trim().length}function u(e){return e==null?e===void 0?`[object Undefined]`:`[object Null]`:Object.prototype.toString.call(e)}const d=`Invalid doc index: must be a non-negative integer within the bounds of the docs array`,f=e=>`Pattern length exceeds max of ${e}.`,p=e=>`Missing ${e} property in key`,m=e=>`Property 'weight' in key '${e}' must be a positive integer`,h=Object.prototype.hasOwnProperty;var g=class{constructor(e){this._keys=[],this._keyMap={};let t=0;e.forEach(e=>{let n=_(e);this._keys.push(n),this._keyMap[n.id]=n,t+=n.weight}),this._keys.forEach(e=>{e.weight/=t})}get(e){return this._keyMap[e]}keys(){return this._keys}toJSON(){return JSON.stringify(this._keys)}};function _(t){let n=null,i=null,a=null,o=1,s=null;if(r(t)||e(t))a=t,n=v(t),i=y(t);else{if(!h.call(t,`name`))throw Error(p(`name`));let e=t.name;if(a=e,h.call(t,`weight`)&&t.weight!==void 0&&(o=t.weight,o<=0))throw Error(m(y(e)));n=v(e),i=y(e),s=t.getFn??null}return{path:n,id:i,weight:o,src:a,getFn:s}}function v(t){return e(t)?t:t.split(`.`)}function y(t){return e(t)?t.join(`.`):t}function b(t,o){let s=[],l=!1,u=(t,o,d,f)=>{if(c(t))if(!o[d])s.push(f===void 0?t:{v:t,i:f});else{let p=t[o[d]];if(!c(p))return;if(d===o.length-1&&(r(p)||i(p)||a(p)||typeof p==`bigint`))s.push(f===void 0?n(p):{v:n(p),i:f});else if(e(p)){l=!0;for(let e=0,t=p.length;e<t;e+=1)u(p[e],o,d+1,e)}else o.length&&u(p,o,d+1,f)}};return u(t,r(o)?o.split(`.`):o,0),l?s:s[0]}const x={includeMatches:!1,findAllMatches:!1,minMatchCharLength:1},S={isCaseSensitive:!1,ignoreDiacritics:!1,includeScore:!1,keys:[],shouldSort:!0,sortFn:(e,t)=>e.score===t.score?e.idx<t.idx?-1:1:e.score<t.score?-1:1},C={location:0,threshold:.6,distance:100},w={useExtendedSearch:!1,useTokenSearch:!1,tokenize:void 0,tokenMatch:`any`,getFn:b,ignoreLocation:!1,ignoreFieldNorm:!1,fieldNormWeight:1},T=Object.freeze({...S,...x,...C,...w});function E(e){return e>=9&&e<=13||e===32||e===160}function D(e=1,t=3){let n=new Map,r=10**t;return{get(t){let i=0,a=!1;for(let e=0;e<t.length;e++)E(t.charCodeAt(e))?a=!1:a||(i++,a=!0);if(i===0&&(i=1),n.has(i))return n.get(i);let o=Math.round(r/i**(.5*e))/r;return n.set(i,o),o},clear(){n.clear()}}}var O=class{constructor({getFn:e=T.getFn,fieldNormWeight:t=T.fieldNormWeight}={}){this.norm=D(t,3),this.getFn=e,this.isCreated=!1,this.docs=[],this.keys=[],this._keysMap={},this.setIndexRecords()}setSources(e=[]){this.docs=e}setIndexRecords(e=[]){this.records=e}setKeys(e=[]){this.keys=e,this._keysMap={},e.forEach((e,t)=>{this._keysMap[e.id]=t})}create(){if(this.isCreated||!this.docs.length)return;this.isCreated=!0;let e=this.docs.length;this.records=Array(e);let t=0;if(r(this.docs[0]))for(let n=0;n<e;n++){let e=this._createStringRecord(this.docs[n],n);e&&(this.records[t++]=e)}else for(let n=0;n<e;n++)this.records[t++]=this._createObjectRecord(this.docs[n],n);this.records.length=t,this.norm.clear()}add(e,t){if(!Number.isInteger(t)||t<0)throw Error(d);if(r(e)){let n=this._createStringRecord(e,t);return n&&this.records.push(n),n}let n=this._createObjectRecord(e,t);return this.records.push(n),n}removeAt(e){if(!Number.isInteger(e)||e<0)throw Error(d);for(let t=0,n=this.records.length;t<n;t+=1)if(this.records[t].i===e){this.records.splice(t,1);break}for(let t=0,n=this.records.length;t<n;t+=1)this.records[t].i>e&&--this.records[t].i}removeAll(e){let t=new Set;for(let n of e)Number.isInteger(n)&&n>=0&&t.add(n);if(t.size===0)return;this.records=this.records.filter(e=>!t.has(e.i));let n=Array.from(t).sort((e,t)=>e-t);for(let e of this.records){let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e.i?t=i+1:r=i}e.i-=t}}getValueForItemAtKeyId(e,t){return e[this._keysMap[t]]}size(){return this.records.length}_createStringRecord(e,t){return!c(e)||l(e)?null:{v:e,i:t,n:this.norm.get(e)}}_createObjectRecord(t,i){let a={i,$:{}};for(let i=0,o=this.keys.length;i<o;i++){let o=this.keys[i],s=o.getFn?o.getFn(t):this.getFn(t,o.path);if(c(s)){if(e(s)){let e=[];for(let t=0,i=s.length;t<i;t+=1){let i=s[t];if(c(i)){if(r(i)){if(!l(i)){let n={v:i,i:t,n:this.norm.get(i)};e.push(n)}}else if(c(i.v)){let t=r(i.v)?i.v:n(i.v);if(!l(t)){let n={v:t,i:i.i,n:this.norm.get(t)};e.push(n)}}}}a.$[i]=e}else if(r(s)&&!l(s)){let e={v:s,n:this.norm.get(s)};a.$[i]=e}}}return a}toJSON(){return{keys:this.keys.map(({getFn:e,...t})=>t),records:this.records}}};function k(e,t,{getFn:n=T.getFn,fieldNormWeight:r=T.fieldNormWeight}={}){let i=new O({getFn:n,fieldNormWeight:r});return i.setKeys(e.map(_)),i.setSources(t),i.create(),i}function A(e,{getFn:t=T.getFn,fieldNormWeight:n=T.fieldNormWeight}={}){let{keys:r,records:i}=e,a=new O({getFn:t,fieldNormWeight:n});return a.setKeys(r),a.setIndexRecords(i),a}function j(e=[],t=T.minMatchCharLength){let n=[],r=-1,i=-1,a=0;for(let o=e.length;a<o;a+=1){let o=e[a];o&&r===-1?r=a:!o&&r!==-1&&(i=a-1,i-r+1>=t&&n.push([r,i]),r=-1)}return e[a-1]&&a-r>=t&&n.push([r,a-1]),n}function M(e,t,n,{location:r=T.location,distance:i=T.distance,threshold:a=T.threshold,findAllMatches:o=T.findAllMatches,minMatchCharLength:s=T.minMatchCharLength,includeMatches:c=T.includeMatches,ignoreLocation:l=T.ignoreLocation}={}){if(t.length>32)throw Error(f(32));let u=t.length,d=e.length,p=Math.max(0,Math.min(r,d)),m=a,h=p,g=(e,t)=>{let n=e/u;if(l)return n;let r=Math.abs(p-t);return i?n+r/i:r?1:n},_=s>1||c,v=_?Array(d):[],y;for(;(y=e.indexOf(t,h))>-1;){let e=g(0,y);if(m=Math.min(e,m),h=y+u,_){let e=0;for(;e<u;)v[y+e]=1,e+=1}}h=-1;let b=[],x=1,S=0,C=u+d,w=1<<u-1;for(let t=0;t<u;t+=1){let r=0,i=C;for(;r<i;)g(t,p+i)<=m?r=i:C=i,i=Math.floor((C-r)/2+r);C=i;let a=Math.max(1,p-i+1),s=o?d:Math.min(p+i,d)+u,c=Array(s+2);c[s+1]=(1<<t)-1;for(let r=s;r>=a;--r){let i=r-1,o=n[e[i]];if(c[r]=(c[r+1]<<1|1)&o,t&&(c[r]|=(b[r+1]|b[r])<<1|1|b[r+1]),c[r]&w&&(x=g(t,i),x<=m)){if(m=x,h=i,S=t,h<=p)break;a=Math.max(1,2*p-h)}}if(g(t+1,p)>m)break;b=c}if(_&&h>=0){let t=Math.min(d-1,h+u-1+S);for(let r=h;r<=t;r+=1)n[e[r]]&&(v[r]=1)}let E={isMatch:h>=0,score:Math.max(.001,x)};if(_){let e=j(v,s);e.length?c&&(E.indices=e):E.isMatch=!1}return E}function N(e){let t={};for(let n=0,r=e.length;n<r;n+=1){let i=e.charAt(n);t[i]=(t[i]||0)|1<<r-n-1}return t}function P(e){if(e.length<=1)return e;e.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let t=[e[0]];for(let n=1,r=e.length;n<r;n+=1){let r=t[t.length-1],i=e[n];i[0]<=r[1]+1?r[1]=Math.max(r[1],i[1]):t.push(i)}return t}const F={ł:`l`,Ł:`L`,đ:`d`,Đ:`D`,ø:`o`,Ø:`O`,ħ:`h`,Ħ:`H`,ŧ:`t`,Ŧ:`T`,ı:`i`,ß:`ss`},I=RegExp(`[`+Object.keys(F).join(``)+`]`,`g`),L=typeof String.prototype.normalize==`function`?e=>e.normalize(`NFD`).replace(/[\u0300-\u036F\u0483-\u0489\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0711\u0730-\u074A\u07A6-\u07B0\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u08D3-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A70\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B62\u0B63\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0C00-\u0C04\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D82\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0EB1\u0EB4-\u0EB9\u0EBB\u0EBC\u0EC8-\u0ECD\u0F18\u0F19\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F\u109A-\u109D\u135D-\u135F\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u180B-\u180D\u1885\u1886\u18A9\u1920-\u192B\u1930-\u193B\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F\u1AB0-\u1ABE\u1B00-\u1B04\u1B34-\u1B44\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BE6-\u1BF3\u1C24-\u1C37\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF2-\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DF9\u1DFB-\u1DFF\u20D0-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\uA66F-\uA672\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA880\uA881\uA8B4-\uA8C5\uA8E0-\uA8F1\uA8FF\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9E5\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F]/g,``).replace(I,e=>F[e]):e=>e;var R=class{constructor(e,{location:t=T.location,threshold:n=T.threshold,distance:r=T.distance,includeMatches:i=T.includeMatches,findAllMatches:a=T.findAllMatches,minMatchCharLength:o=T.minMatchCharLength,isCaseSensitive:s=T.isCaseSensitive,ignoreDiacritics:c=T.ignoreDiacritics,ignoreLocation:l=T.ignoreLocation}={}){if(this.options={location:t,threshold:n,distance:r,includeMatches:i,findAllMatches:a,minMatchCharLength:o,isCaseSensitive:s,ignoreDiacritics:c,ignoreLocation:l},e=s?e:e.toLowerCase(),e=c?L(e):e,this.pattern=e,this.chunks=[],!this.pattern.length)return;let u=(e,t)=>{this.chunks.push({pattern:e,alphabet:N(e),startIndex:t})},d=this.pattern.length;if(d>32){let e=0,t=d%32,n=d-t;for(;e<n;)u(this.pattern.substr(e,32),e),e+=32;if(t){let e=d-32;u(this.pattern.substr(e),e)}}else u(this.pattern,0)}searchIn(e){let{isCaseSensitive:t,ignoreDiacritics:n,includeMatches:r}=this.options;if(e=t?e:e.toLowerCase(),e=n?L(e):e,this.pattern===e){if(e.length<this.options.minMatchCharLength)return{isMatch:!1,score:1};let t={isMatch:!0,score:0};return r&&(t.indices=[[0,e.length-1]]),t}let{location:i,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,ignoreLocation:l}=this.options,u=[],d=0,f=!1;this.chunks.forEach(({pattern:t,alphabet:n,startIndex:p})=>{let{isMatch:m,score:h,indices:g}=M(e,t,n,{location:i+p,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,includeMatches:r,ignoreLocation:l});m&&(f=!0),d+=h,m&&g&&u.push(...g)});let p={isMatch:f,score:f?d/this.chunks.length:1};return f&&r&&(p.indices=P(u)),p}};const z=[];function B(...e){z.push(...e)}function V(e,t){for(let n=0,r=z.length;n<r;n+=1){let r=z[n];if(r.condition(e,t))return new r(e,t)}return new R(e,t)}function H(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){let n=1;return e.forEach(({key:e,norm:r,score:i})=>{let a=e?e.weight:null;n*=(i===0&&a?2**-52:i)**+((a||1)*(t?1:r))}),n}function U(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){e.forEach(e=>{e.score=H(e.matches,{ignoreFieldNorm:t})})}var W=class{constructor(e,t){this.limit=e,this.heap=[],this.comparator=t}get size(){return this.heap.length}insert(e){this.size<this.limit?(this.heap.push(e),this._bubbleUp(this.size-1)):this.comparator(e,this.heap[0])<0&&(this.heap[0]=e,this._sinkDown(0))}extractSorted(){return this.heap.sort(this.comparator)}_bubbleUp(e){let t=this.heap;for(;e>0;){let n=e-1>>1;if(this.comparator(t[e],t[n])<=0)break;let r=t[e];t[e]=t[n],t[n]=r,e=n}}_sinkDown(e){let t=this.heap,n=t.length,r=e;do{e=r;let i=2*e+1,a=2*e+2;if(i<n&&this.comparator(t[i],t[r])>0&&(r=i),a<n&&this.comparator(t[a],t[r])>0&&(r=a),r!==e){let n=t[e];t[e]=t[r],t[r]=n}}while(r!==e)}};function G(e){let t=[];return e.matches.forEach(e=>{if(!c(e.indices)||!e.indices.length)return;let n={indices:e.indices,value:e.value};e.key&&(n.key=e.key.id),e.idx>-1&&(n.refIndex=e.idx),t.push(n)}),t}function K(e,t,{includeMatches:n=T.includeMatches,includeScore:r=T.includeScore}={}){return e.map(e=>{let{idx:i}=e,a={item:t[i],refIndex:i};return n&&(a.matches=G(e)),r&&(a.score=e.score),a})}const q=/[\p{L}\p{M}\p{N}_]+/gu;function J(e){return typeof e==`function`?t=>e(t):e instanceof RegExp?(e.global,t=>t.match(e)||[]):e=>e.match(q)||[]}function Y({isCaseSensitive:e=!1,ignoreDiacritics:t=!1,tokenize:n}={}){let r=J(n);return{tokenize(n){return e||(n=n.toLowerCase()),t&&(n=L(n)),r(n)}}}function X(e,t,n,r){let i=r.tokenize(t);if(!i.length)return;e.fieldCount++,e.docFieldCount.set(n,(e.docFieldCount.get(n)||0)+1);let a=new Set(i),o=e.docTermFieldHits.get(n);o||(o=new Map,e.docTermFieldHits.set(n,o));for(let t of a)o.set(t,(o.get(t)||0)+1),e.df.set(t,(e.df.get(t)||0)+1)}function Z(e,t,n,r){let{i,v:a,$:o}=t;if(a!==void 0){X(e,a,i,r);return}if(o)for(let t=0;t<n;t++){let n=o[t];if(n)if(Array.isArray(n))for(let t of n)X(e,t.v,i,r);else X(e,n.v,i,r)}}function ee(e,t,n){let r={fieldCount:0,df:new Map,docFieldCount:new Map,docTermFieldHits:new Map};for(let i of e)Z(r,i,t,n);return r}function te(e,t,n,r){Z(e,t,n,r)}function ne(e,t){let n=e.docFieldCount.get(t);if(n===void 0)return;e.fieldCount-=n,e.docFieldCount.delete(t);let r=e.docTermFieldHits.get(t);if(r){for(let[t,n]of r){let r=(e.df.get(t)||0)-n;r<=0?e.df.delete(t):e.df.set(t,r)}e.docTermFieldHits.delete(t)}}function Q(e,t){if(t.length===0)return;let n=Array.from(new Set(t)).sort((e,t)=>e-t);for(let t of n)ne(e,t);let r=e=>{let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e?t=i+1:r=i}return e-t},i=n[0],a=new Map;for(let[t,n]of e.docFieldCount)a.set(t>i?r(t):t,n);e.docFieldCount=a;let o=new Map;for(let[t,n]of e.docTermFieldHits)o.set(t>i?r(t):t,n);e.docTermFieldHits=o}var $=class{constructor(e,t,n){if(this.options={...T,...t},this.options.useExtendedSearch)throw Error(`Extended search is not available`);if(this.options.useTokenSearch)throw Error(`Token search is not available`);this._keyStore=new g(this.options.keys),this._docs=e,this._myIndex=null,this._invertedIndex=null,this.setCollection(e,n),this._lastQuery=null,this._lastSearcher=null}_getSearcher(e){if(this._lastQuery===e)return this._lastSearcher;let t=V(e,this._invertedIndex?{...this.options,_invertedIndex:this._invertedIndex}:this.options);return this._lastQuery=e,this._lastSearcher=t,t}setCollection(e,t){if(this._docs=e,t&&!(t instanceof O))throw Error(`Incorrect 'index' type`);if(this._myIndex=t||k(this.options.keys,this._docs,{getFn:this.options.getFn,fieldNormWeight:this.options.fieldNormWeight}),this.options.useTokenSearch){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});this._invertedIndex=ee(this._myIndex.records,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}add(e){if(!c(e))return;this._docs.push(e);let t=this._myIndex.add(e,this._docs.length-1);if(this._invertedIndex&&t){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});te(this._invertedIndex,t,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}remove(e=()=>!1){let t=[],n=[];for(let r=0,i=this._docs.length;r<i;r+=1)e(this._docs[r],r)&&(t.push(this._docs[r]),n.push(r));if(n.length){this._invertedIndex&&Q(this._invertedIndex,n);let e=new Set(n);this._docs=this._docs.filter((t,n)=>!e.has(n)),this._myIndex.removeAll(n),this._invalidateSearcherCache()}return t}removeAt(e){if(!Number.isInteger(e)||e<0||e>=this._docs.length)throw Error(d);this._invertedIndex&&Q(this._invertedIndex,[e]);let t=this._docs.splice(e,1)[0];return this._myIndex.removeAt(e),this._invalidateSearcherCache(),t}_invalidateSearcherCache(){this._lastQuery=null,this._lastSearcher=null}getIndex(){return this._myIndex}_normalizedKeys(){return this._myIndex.keys.map(e=>this._keyStore.get(e.id)||e)}search(e,t){let{limit:n=-1}=t||{},{includeMatches:a,includeScore:o,shouldSort:s,sortFn:c,ignoreFieldNorm:l}=this.options;if(r(e)&&!e.trim()){let e=this._docs.map((e,t)=>({item:e,refIndex:t}));return i(n)&&n>-1&&(e=e.slice(0,n)),e}let u=s&&i(n)&&n>0&&r(e),d=c,f=(e,t)=>d(e,t)||e.idx-t.idx,p;if(u){let t=new W(n,f);r(this._docs[0])?this._searchStringList(e,{heap:t,ignoreFieldNorm:l}):this._searchObjectList(e,{heap:t,ignoreFieldNorm:l}),p=t.extractSorted()}else p=r(e)?r(this._docs[0])?this._searchStringList(e):this._searchObjectList(e):this._searchLogical(e),U(p,{ignoreFieldNorm:l}),s&&p.sort(r(e)?f:d),i(n)&&n>-1&&(p=p.slice(0,n));return K(p,this._docs,{includeMatches:a,includeScore:o})}_searchStringList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=t?null:[];return a.forEach(({v:e,i:a,n:s})=>{if(!c(e))return;let l=r.searchIn(e);if(l.isMatch){let r={score:l.score,value:e,norm:s,indices:l.indices};i&&(r.matchedMask=l.matchedMask,r.matchedTerms=l.matchedTerms,r.termCount=l.termCount);let c=[r];if(!i||this._coversAllTokens(c)){let r={item:e,idx:a,matches:c};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):o.push(r)}}}),o}_searchLogical(e){throw Error(`Logical search is not available`)}_searchObjectList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=this._normalizedKeys(),s=t?null:[];return a.forEach(({$:e,i:a})=>{if(!c(e))return;let l=[],u=!1,d=!1;if(o.forEach((t,n)=>{let i=this._findMatches({key:t,value:e[n],searcher:r});i.length?(l.push(...i),i[0].hasInverse&&(d=!0)):u=!0}),!(d&&u)&&l.length&&(!i||this._coversAllTokens(l))){let r={idx:a,item:e,matches:l};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):s.push(r)}}),s}_findMatches({key:t,value:n,searcher:r}){if(!c(n))return[];let i=[];if(e(n))n.forEach(({v:e,i:n,n:a})=>{if(!c(e))return;let o=r.searchIn(e);if(o.isMatch){let r={score:o.score,key:t,value:e,idx:n,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(r.matchedMask=o.matchedMask,r.matchedTerms=o.matchedTerms,r.termCount=o.termCount),i.push(r)}});else{let{v:e,n:a}=n,o=r.searchIn(e);if(o.isMatch){let n={score:o.score,key:t,value:e,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(n.matchedMask=o.matchedMask,n.matchedTerms=o.matchedTerms,n.termCount=o.termCount),i.push(n)}}return i}_coversAllTokens(e){let t=e.length?e[0].termCount:void 0;if(t===void 0)return!0;if(t<=31){let n=0;for(let t=0;t<e.length;t++)n|=e[t].matchedMask||0;return n===2**t-1}let n=new Set;for(let t=0;t<e.length;t++){let r=e[t].matchedTerms;if(r)for(let e of r)n.add(e)}return n.size===t}};$.version=`7.5.0`,$.createIndex=k,$.parseIndex=A,$.config=T,$.match=function(e,t,n){if(n&&n.useTokenSearch)throw Error(`Fuse.match does not support useTokenSearch: token search requires corpus-level statistics (df, fieldCount) that a one-off string comparison does not have. Use new Fuse(...).search(...) instead.`);return V(e,{...T,...n}).searchIn(t)},$.use=function(...e){e.forEach(e=>B(e))};var re=$;return re;
 })();
-const { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNFTs, loadNftChart, loadAbout, links, actions } = (() => {
+const { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, loadNftChart, loadAbout, links, actions } = (() => {
 /* data.js — live data, no API keys and no backend: every source below allows
    direct browser calls.
 
@@ -949,11 +973,11 @@ async function get(url, opts) {
   }
 }
 
-async function fetchJson(url, { tries = 2, timeout = 25000, post = null } = {}) {
+async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
   // one source speaks GraphQL; everything else is a plain GET
   const init = post
-    ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(post) }
-    : {};
+    ? { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(post) }
+    : (headers ? { headers } : {});
   for (let i = 0; ; i++) {
     let r;
     try {
@@ -1112,14 +1136,51 @@ function loadAssets() {
    their own switch. Two stock-specific CoinGecko categories are merged; if one
    slug drifts the other still answers, and neither pulls in the wider RWA bucket
    of treasuries and gold, which are not stocks. */
-const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem'];
+/* Every issuer names its tokens differently, and the app only recognised one of
+   them. Backed suffixes an x (TSLAx), Dinari prefixes a d (dTSLA), Robinhood
+   and Coinbase issue under their own names, and Ondo, Swarm and Securitize each
+   do something else again. Recognising the issuer is what makes the rest of the
+   row honest: a share tokenized by Robinhood and one tokenized by Backed are
+   different instruments with different redemption, and the sheet should say
+   which one it is holding rather than calling both "tokenized". */
+const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem', 'tokenized-equity',
+  'stock-tokens', 'ondo-ecosystem', 'dinari-ecosystem', 'robinhood-chain-ecosystem'];
 
-/** "TSLAx" tracks TSLA. Only strip a trailing x, and only when what is left
-    still looks like a ticker — guessing harder than that invents provenance. */
+const ISSUERS = [
+  [/backed|xstock/i, 'Backed'],
+  [/robinhood/i, 'Robinhood'],
+  [/coinbase/i, 'Coinbase'],
+  [/kraken/i, 'Kraken'],
+  [/dinari|dshare/i, 'Dinari'],
+  [/\bondo\b/i, 'Ondo'],
+  [/swarm/i, 'Swarm'],
+  [/securitize/i, 'Securitize'],
+  [/sologenic/i, 'Sologenic'],
+];
+const issuerOf = name => (ISSUERS.find(([re]) => re.test(name || '')) || [, ''])[1];
+
+// enough of a signal to say this is an equity and not a coin that shares a name
+const EQUITYISH = /x ?stock|tokenized|token[iy]sed|equit|\bshare|\bstock\b|dshare|backed|robinhood|coinbase|dinari|ondo|swarm|securitize/i;
+
+/* Casting wider for issuers also catches what those issuers tokenize that is
+   not a share. Ondo's name matches on every one of its products, and OUSG is
+   short-term treasuries — a fund, priced daily, redeemed differently, and not a
+   stock however it is wrapped. */
+const NOT_EQUITY = /treasur|t-bill|\bbill\b|\bbond|\bgold\b|\bsilver\b|money market|\bfund\b|\bnote\b|reserve|yield|staked|savings/i;
+
+/** The ticker a token tracks. Every rule below is a naming convention an issuer
+    actually publishes; anything else returns null rather than inventing one. */
 function underlying(sym, name) {
-  const m = /^([A-Z0-9]{1,5})X$/.exec(sym);
-  if (m && /x ?stock|tokenized|backed|ondo|dinari/i.test(name || '')) return m[1];
-  return /^[A-Z0-9]{1,5}$/.test(sym) && /x ?stock|tokenized/i.test(name || '') ? sym : null;
+  if (!EQUITYISH.test(name || '') || NOT_EQUITY.test(name || '')) return null;
+  const S = String(sym || '').toUpperCase();
+  // Backed and Kraken: TSLAX -> TSLA
+  let m = /^([A-Z0-9]{1,5})X$/.exec(S);
+  if (m) return m[1];
+  // Dinari: DTSLA or TSLA.D -> TSLA
+  m = /^D([A-Z]{1,5})$/.exec(S) || /^([A-Z0-9]{1,5})\.D$/.exec(S);
+  if (m) return m[1];
+  // Robinhood, Coinbase and the rest issue under the plain ticker
+  return /^[A-Z0-9]{1,5}$/.test(S) ? S : null;
 }
 
 function loadStocks() {
@@ -1134,9 +1195,14 @@ function loadStocks() {
         if (!c?.id || seen.has(c.id)) continue;
         seen.add(c.id);
         const a = asset(c, null);
-        out.push({ ...a, kind: 'stock', id: `t:${c.id}`,
-          under: underlying(a.sym, a.name),
-          key: `${a.sym} ${a.name} tokenized stock equity share rwa` });
+        // a broader net catches more issuers and also more things that are not
+        // equities at all — treasuries, gold, a fund. Keep only what names one.
+        const under = underlying(a.sym, a.name);
+        if (!under) continue;
+        const issuer = issuerOf(a.name);
+        seen.add(c.id);
+        out.push({ ...a, kind: 'stock', id: `t:${c.id}`, under, issuer,
+          key: `${a.sym} ${a.name} ${under} ${issuer} tokenized stock equity share rwa` });
       }
     }
     return out.sort((x, y) => y.mcap - x.mcap);
@@ -1406,7 +1472,7 @@ function loadProtocols() {
     const index = l => Object.fromEntries((l?.protocols || []).map(x => [slugOf(x.name), x]));
     const dv = index(dex), fv = index(fees), pv = index(perps), ov = index(opts);
     return (Array.isArray(ps) ? ps : [])
-      .filter(p => num(p.tvl) > 1e6)
+      .filter(p => num(p.tvl) > 0 || num(dv[slugOf(p.name)]?.total24h) > 0)
       .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)], pv[slugOf(p.name)], ov[slugOf(p.name)]))
       .sort((a, b) => b.tvl - a.tvl)
       .slice(0, 500);
@@ -1579,7 +1645,7 @@ function loadBridges() {
           key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
         };
       })
-      .filter(b => b.vol24 > 0)
+      .filter(b => b.name && b.name !== '?')
       .sort((a, b) => b.vol24 - a.vol24)
       .slice(0, 120);
   });
@@ -1590,7 +1656,7 @@ function loadRaises() {
   return cache('raises', TTL, async () => {
     const j = await get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null);
     return (j?.raises || [])
-      .filter(r => num(r.amount) > 0 && r.name)
+      .filter(r => r.name)
       .map(r => {
         const investors = [...(r.leadInvestors || []), ...(r.otherInvestors || [])];
         const chains = (r.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
@@ -1796,10 +1862,66 @@ function meNft(c) {
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
     img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
     floorUsd: 0, floor: sol, unit: 'SOL',
-    chg1d: 0, chg7d: 0, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
-    supply: 0,
+    // Magic Eden's popular_collections carries neither a change nor a supply.
+    // Zero is a claim; null is the truth, and the row reads as "—" instead of
+    // "0.00%" and stays out of a filter that asks about movement.
+    chg1d: null, chg7d: null, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
+    supply: num(c.totalItems ?? c.supply) || null,
     key: `${name} ${c.symbol || ''} nft collection solana magic eden pfp art collectible`,
   };
+}
+
+/* ---------- inside a collection ----------
+   A collection is a row with one number on it — the floor — and that is the
+   least interesting thing about it. What is actually for sale, at what price,
+   with what traits, is the question anyone opening one is asking.
+
+   Magic Eden answers it without a key, so Solana collections list their real
+   listings. OpenSea's item endpoint needs one, so EVM collections list theirs
+   only where a key is configured, and say so plainly where it is not. */
+
+function meItem(l) {
+  const t = l.token || l;
+  const price = num(l.price);      // already in SOL on this endpoint
+  return {
+    id: t.mintAddress || t.mint || l.tokenMint || '',
+    name: t.name || '#?',
+    img: safeUrl(t.image) || null,
+    price, unit: 'SOL',
+    traits: (t.attributes || []).slice(0, 3)
+      .map(a => `${a.trait_type}: ${a.value}`).filter(x => !/undefined/.test(x)),
+    url: t.mintAddress ? `https://magiceden.io/item-details/${encodeURIComponent(t.mintAddress)}` : '',
+  };
+}
+
+function osItem(n, slug) {
+  return {
+    id: n.identifier || '',
+    name: n.name || `#${n.identifier}`,
+    img: safeUrl(n.display_image_url || n.image_url) || null,
+    price: 0, unit: '',
+    traits: [],
+    url: safeUrl(n.opensea_url)
+      || `https://opensea.io/assets/${encodeURIComponent(n.contract || slug)}/${encodeURIComponent(n.identifier || '')}`,
+  };
+}
+
+/** The items actually listed in a collection. Empty is an answer, not a failure. */
+function loadNftItems(n, { openseaKey } = {}) {
+  if (!n?.cid) return Promise.resolve({ items: [], why: 'no collection id' });
+  return cache(`nftitems:${n.id}`, TTL, async () => {
+    if (n.market === 'Magic Eden') {
+      const j = await get(`${ME}/collections/${encodeURIComponent(n.cid)}/listings?offset=0&limit=24`,
+        { tries: 1, timeout: 15000 }).catch(() => null);
+      const items = (Array.isArray(j) ? j : []).map(meItem).filter(x => x.id);
+      return { items, why: items.length ? '' : 'nothing listed right now' };
+    }
+    if (!openseaKey) return { items: [], why: 'needs an OpenSea key' };
+    const j = await get(`https://api.opensea.io/api/v2/collection/${encodeURIComponent(n.cid)}/nfts?limit=24`,
+      { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
+    const items = (j?.nfts || []).map(x => osItem(x, n.cid)).filter(x => x.id);
+    return { items, why: items.length ? '' : 'no items returned' };
+  });
 }
 
 /** NFT collections. Two marketplaces, ranked within their own units. */
@@ -1810,11 +1932,11 @@ function loadNFTs() {
       get(`${ME}/marketplace/popular_collections`, { tries: 1, timeout: 15000 }),
     ]);
     const a = dl.status === 'fulfilled' && Array.isArray(dl.value)
-      ? dl.value.map(llamaNft).filter(n => n.floorUsd || n.floor)
+      ? dl.value.map(llamaNft)
         .sort((x, y) => (y.volUsd || y.floorUsd) - (x.volUsd || x.floorUsd)).slice(0, 300)
       : [];
     const b = me.status === 'fulfilled' && Array.isArray(me.value)
-      ? me.value.map(meNft).filter(n => n.floor)
+      ? me.value.map(meNft)
         .sort((x, y) => (y.volSol || 0) - (x.volSol || 0)).slice(0, 60)
       : [];
     if (!a.length && !b.length) throw dl.reason || me.reason || new ApiError('No NFT source answered.');
@@ -1837,7 +1959,14 @@ function floorFromMoves(n) {
 /** Floor price history for a collection. */
 function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
-    if (!n.cid) return [];
+    /* DeFiLlama's collection ids and Magic Eden's symbols are different id
+       spaces, and asking one for the other's key does not fail loudly — it
+       either returns nothing or, where the strings happen to collide, returns
+       somebody else's history. Worse, DeFiLlama's series is in dollars while a
+       Magic Eden row prices in SOL, so a wrong answer arrived wearing the right
+       row's unit: a 120 SOL floor under a 90,000 SOL headline.
+       A chart source has to match the row's source. */
+    if (!n.cid || n.market === 'Magic Eden') return [];
     const j = await get(`${NFT}/chart/${encodeURIComponent(n.cid)}`, { tries: 1, timeout: 20000 })
       .catch(() => null);
     // seen as a bare array, as {data:[...]}, and as rows keyed a few ways
@@ -1935,7 +2064,7 @@ function actions(i) {
   return out;
 }
 
-return { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNFTs, loadNftChart, loadAbout, links, actions };
+return { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, loadNftChart, loadAbout, links, actions };
 })();
 /* Atlas — search across chains. Live data via data.js; this file is UI only. */
 
@@ -2006,6 +2135,8 @@ const S = {
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
   sort: null, facets: new Set(), limit: 40,
+  // what was typed, what it was read as, and the numeric constraints it named
+  nl: null, where: [],
   watch: new Map(readWatch().map(i => [i.id, i])),
   seen: readSeen(),
 };
@@ -2097,6 +2228,20 @@ function joinLogos() {
   }
 }
 
+/* The box holds a sentence; the index is searched with the words left after it
+   has been read. Everywhere that used to mean "what was typed" now has to say
+   which of the two it means. */
+const term = () => (S.nl ? S.nl.text : S.q).trim();
+
+/* A numeric constraint a sentence named: ["chg", ">=", 50]. Kept beside the
+   facets rather than inside them, because a sentence can ask for a threshold no
+   chip offers. */
+const OPS = { '>=': (a, b) => a >= b, '<=': (a, b) => a <= b, '>': (a, b) => a > b, '<': (a, b) => a < b };
+const meets = i => S.where.every(([f, op, v]) => {
+  const x = Number(i[f]);
+  return Number.isFinite(x) && OPS[op](x, v);
+});
+
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 
 /* Where each kind's rows live. everything(), the category rail and the tab
@@ -2139,9 +2284,30 @@ function isReal(i) {
   return null;                                   // absence is not proof
 }
 
+/* A price is only a price if the other side of the pair holds still. CAT/SOL
+   quotes a memecoin in a memecoin: the number moves when either leg moves, and
+   two such pairs cannot be compared to each other at all. Quoting in something
+   pegged to a dollar makes the column mean one thing.
+
+   The peg list is the app's own stablecoin index rather than a hand-kept
+   constant, so a new stablecoin is recognised the day it is indexed; the fiat
+   codes and the wrapped forms of the same dollars are the part no index
+   returns. */
+const FIAT = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'BRL', 'TRY', 'SGD']);
+const stableQuotes = () => {
+  const set = new Set(FIAT);
+  for (const st of S.stables) if (st.sym) set.add(st.sym.toUpperCase());
+  // the same dollars under a bridged or wrapped ticker, which no list carries
+  for (const x of ['USDC.E', 'USDBC', 'USDB', 'AXLUSDC', 'USDT.E', 'USDCE', 'WUSDC',
+    'USD1', 'RLUSD', 'SUSD', 'CRVUSD', 'BUSD', 'TUSD', 'GUSD', 'LUSD', 'EURC', 'EURS'])
+    set.add(x);
+  return set;
+};
+
 function sift(rows) {
   if (!S.safe) return rows;
   const listed = new Set(S.assets.map(x => x.sym));
+  const pegged = stableQuotes();
   const deepest = new Map();                 // ticker on one network -> real pool
   for (const i of rows) {
     if (i.kind !== 'pair') continue;
@@ -2152,6 +2318,9 @@ function sift(rows) {
     const ok = KIND[i.kind].ok;
     if (ok && !ok(i)) return false;
     if (i.kind !== 'pair') return true;
+    // priced against something that moves: the number is not comparable to any
+    // other row, so it is not a price this table can show
+    if (i.quote && !pegged.has(i.quote)) return false;
     // a registry naming this exact token settles it; the guesses below do not apply
     if (isReal(i)) return true;
     // A ticker repeated on one network is usually copies of one token — but two
@@ -2182,7 +2351,7 @@ const facetPred = (skip) => {
 };
 function scope() {
   const all = rowsFor(S.tab).filter(onChain);
-  const keep = sift(all);
+  const keep = S.where.length ? sift(all).filter(meets) : sift(all);
   hidden = all.length - keep.length;         // never filter silently
   base = keep;
   const p = facetPred();
@@ -2227,7 +2396,7 @@ function trending() {
 }
 
 function compute() {
-  const q = S.q.trim();
+  const q = term();
   if (!q) return trending();
   if (!S.fuse) return [];
   const t = q.toLowerCase().replace(/^\$+/, '');       // people type $CASHCAT
@@ -2306,7 +2475,9 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
-    ok: i => i.vol > 0,
+    // nothing traded, nothing priced, or a market cap so thin the price is
+    // whatever the last trade said it was
+    ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
@@ -2316,18 +2487,19 @@ const KIND = {
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
-    chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
+    chart: [loadAssetChart, 1, R.price, usd],
+    ok: i => i.vol > 0 && i.price > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => (i.under || i.sym).slice(0, 4),
-    title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
-    meta: i => i.under ? `tracks ${i.under}` : 'tokenized',
+    title: i => i.name, sub: i => i.sym, tag: i => i.issuer || 'Equity',
+    meta: i => `tracks ${i.under}${i.issuer ? ` · issued by ${i.issuer}` : ''}`,
     tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
-    ok: i => i.supplyUsd >= 1e6,
+    ok: i => i.supplyUsd >= 1e6 && i.sup >= 0,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
       ['Borrow APY', i => i.bor == null ? '—' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
@@ -2353,6 +2525,8 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
+    // a protocol with no TVL and no volume is a listing, not a business
+    ok: i => i.tvl >= 1e6 || i.vol24 > 0 || i.fees24 > 0,
     cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
@@ -2365,7 +2539,11 @@ const KIND = {
     cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
-    ok: i => i.volUsd > 0 || i.floor > 0,
+    // a collection with no floor and no trading is a name in a list. An unknown
+    // supply is not the same as a supply of zero: Magic Eden's index does not
+    // report one, and dropping every Solana collection over that is the rule
+    // punishing the source rather than the row.
+    ok: i => (i.volUsd > 0 || i.volSol > 0 || i.floor > 0) && i.supply !== 0,
     cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
@@ -2392,6 +2570,9 @@ const KIND = {
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
+    // a coin claiming a dollar peg while trading at 40 cents is not a stablecoin
+    // any more, and one nobody holds was never one
+    ok: i => i.circulating >= 1e6 && i.price > 0.5 && i.price < 1.8,
     cols: [['Circulating', i => money(i.circulating), 'circulating'], ['Peg', i => usd(i.price), 'price'],
       ['Mechanism', i => i.mech || '—', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
@@ -2401,6 +2582,7 @@ const KIND = {
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
     chart: [loadBridgeChart, 90, R.long, money],
+    ok: i => i.vol24 > 0,
     cols: [['Volume 24h', i => money(i.vol24), 'vol24'],
       ['Previous day', i => i.volPrev ? money(i.volPrev) : '—', 'volPrev'],
       ['Change', i => i.volPrev ? pct((i.vol24 - i.volPrev) / i.volPrev * 100) : '—', null, 'sgn'],
@@ -2414,6 +2596,8 @@ const KIND = {
     cls: i => i.volPrev && i.vol24 >= i.volPrev ? 'up' : i.volPrev ? 'down' : 'mute' },
 
   raise: { group: 'Funding rounds', size: i => i.amount, sq: true,
+    // an undated or unpriced round is a row with nothing in it
+    ok: i => i.amount > 0 && i.date > 0,
     cols: [['Raised', i => money(i.amount), 'amount'], ['Round', i => i.round || '—', null, 'txt'],
       ['Valuation', i => i.valuation ? money(i.valuation) : '—', 'valuation'],
       ['Date', i => when(i.date), 'date', 'txt']],
@@ -2424,6 +2608,7 @@ const KIND = {
     n1: i => '$' + compact(i.amount), n2: i => when(i.date), cls: () => 'mute' },
 
   hack: { group: 'Exploits', size: i => i.amount, sq: true,
+    ok: i => i.amount > 0 && i.date > 0,
     cols: [['Lost', i => money(i.amount), 'amount', 'down'], ['Technique', i => i.technique, null, 'txt'],
       ['Date', i => when(i.date), 'date', 'txt']],
     label: () => '!!', title: i => i.name, tag: () => 'Exploit',
@@ -2431,6 +2616,8 @@ const KIND = {
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
 
   chain: { group: 'Networks', size: i => i.tvl, sq: true, chart: [loadChainChart, 90, R.long, money],
+    // a network with nothing indexed on it is a name, not a destination
+    ok: i => i.tvl > 0 || S.protocols.some(r => r.chains.includes(i.chain)),
     cols: [['TVL', i => money(i.tvl), 'tvl'],
       ['Protocols', i => String(S.protocols.filter(r => r.chains.includes(i.chain)).length), null],
       ['Lending markets', i => String(S.pools.filter(p => p.chain === i.chain).length), null]],
@@ -2452,7 +2639,9 @@ const FACET = {
     ['busy', 'Heavily traded', i => i.turn >= 10],
     ['dip', 'Far off high', i => i.athChg <= -50]],
   stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
-    ['big', '$500M+', i => i.mcap >= 5e8]],
+    ['big', '$500M+', i => i.mcap >= 5e8],
+    ['backed', 'Backed', i => i.issuer === 'Backed'],
+    ['other', 'Other issuers', i => !!i.issuer && i.issuer !== 'Backed']],
   pool: [['borrow', 'Borrowable', i => i.bor != null && i.free > 0],
     ['stable', 'Stablecoin', i => i.stable],
     ['deep', '$100M+', i => i.supplyUsd >= 1e8],
@@ -2633,7 +2822,21 @@ function paintSort() {
 /* On All and Saved there are no per-kind questions to ask, but a mixed result
    set has a shape worth showing: how much of it is which kind, and one click to
    see only that. Same row, so there is one place that says how to narrow. */
+function readingHTML() {
+  if (!S.nl) return '';
+  const bits = [
+    S.nl.tab && TABS.find(([t]) => t === S.nl.tab)?.[1],
+    S.nl.chain && CH[S.nl.chain]?.name,
+    ...(S.nl.where || []).map(whereWord),
+    S.nl.text && `matching “${S.nl.text}”`,
+  ].filter(Boolean);
+  return `<span class="sk">Reading</span>` +
+    bits.map(b => `<span class="rd">${esc(b)}</span>`).join('') +
+    `<button class="clr" data-unread title="${esc(S.nl.via)}">Undo</button>`;
+}
+
 function paintKinds() {
+  if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
   if (!S.q.trim()) return el.facetbar.replaceChildren();
   const counts = new Map();
   for (const i of S.list) counts.set(i.kind, (counts.get(i.kind) || 0) + 1);
@@ -2645,6 +2848,7 @@ function paintKinds() {
 }
 
 function paintFacets() {
+  if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
   const fs = facetsFor(S.tab);
   if (!fs.length) return paintKinds();
   const chip = f => {
@@ -2672,10 +2876,11 @@ const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" s
 
 function render() {
   document.body.classList.toggle('searching', !!S.q);
+  el.q.classList.toggle('read', !!S.nl);
   document.body.classList.toggle('browsing', S.tab !== 'all');
   el.clear.hidden = !S.q;
 
-  const dexErr = S.remote.q === S.q.trim() && S.remote.errors?.length ? S.remote.errors : null;
+  const dexErr = S.remote.q === term() && S.remote.errors?.length ? S.remote.errors : null;
   el.banner.innerHTML = flags.sample
     ? `<div class="sample"><b>Sample data.</b> This page can't reach CoinGecko or DeFiLlama, so every
         figure below is illustrative — explore the interface, don't trade on it.</div>`
@@ -2769,7 +2974,7 @@ function render() {
     so the group heading is never emitted twice. A category that pins a different
     kind does not take them: searching on Exploits should not return memecoins. */
 function withRemote(list) {
-  if (!S.remote.q || S.remote.q !== S.q.trim()) return list;
+  if (!S.remote.q || S.remote.q !== term()) return list;
   const k = TAB_KIND[S.tab];
   if (k && k !== 'pair') return list;
   const have = new Set(list.map(i => i.id));
@@ -2794,8 +2999,10 @@ const ABOUT = {
     + `, at ${usd(i.price)} with $${compact(i.vol)} traded in the last day`
     + `${i.chg7d ? `, ${pct(i.chg7d)} over the week` : ''}`
     + `${i.athChg ? `. It sits ${Math.abs(i.athChg).toFixed(0)}% below its ${usd(i.ath)} high` : ''}.`,
-  stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
-    + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
+  stock: i => `${i.name} is ${i.under} issued onchain${i.issuer ? ` by ${i.issuer}` : ''}`
+    + `, so the share can be held and traded in a wallet like any token.`
+    + ` It last changed hands at ${usd(i.price)}${i.chg7d == null ? '' : `, ${pct(i.chg7d)} over the week`}.`
+    + `${i.issuer ? ` Redemption and custody are ${i.issuer}'s, not the exchange's.` : ''}`,
   pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
     + `${i.bor == null ? '' : `, or post it as collateral and borrow at ${apy(i.bor)}`
       + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}`}. `
@@ -2846,6 +3053,38 @@ async function fillAbout(box, it) {
 }
 
 /* ---------- detail sheet ---------- */
+/* A collection's floor is one number about hundreds of things. This is the
+   things. */
+const itemsBox = it => it.kind !== 'nft' ? '' :
+  `<div class="sec items" data-items="${esc(it.id)}"><h3>In this collection</h3>
+    <div class="note l" data-iwhy>Loading listings…</div>
+    <div class="grid" data-igrid hidden></div></div>`;
+
+async function fillItems(box, it) {
+  const host = box.querySelector('[data-items]'); if (!host) return;
+  const why = host.querySelector('[data-iwhy]'), grid = host.querySelector('[data-igrid]');
+  let key = '';
+  try { key = (await import('./config.js')).config.venues?.opensea?.apiKey || ''; } catch {}
+  const { items, why: reason } = await loadNftItems(it, { openseaKey: key })
+    .catch(() => ({ items: [], why: 'listings unavailable' }));
+  if (!host.isConnected) return;
+  if (!items.length) {
+    why.textContent = reason === 'needs an OpenSea key'
+      ? 'Individual items for this marketplace need an OpenSea key in config.js. Magic Eden collections list theirs without one.'
+      : `No individual items to show — ${reason || 'none returned'}.`;
+    return;
+  }
+  why.hidden = true;
+  grid.innerHTML = items.map(x => `<a class="item" href="${esc(x.url)}" target="_blank"
+    rel="noopener noreferrer" title="${esc(x.name)}">
+    <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
+      referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
+    <div class="in"><div class="t">${esc(x.name)}</div>
+      ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
+    ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>`).join('');
+  grid.hidden = false;
+}
+
 function chartBox(it) {
   const c = KIND[it.kind].chart;
   if (!c) return '';
@@ -2894,7 +3133,7 @@ function sheetHTML(it) {
         ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
         ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -2914,7 +3153,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -2940,7 +3179,7 @@ function sheetHTML(it) {
         ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
         ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, `Open ${it.name}`, links.protocol(it))}
@@ -2962,7 +3201,7 @@ function sheetHTML(it) {
         <div class="stat wide"><div class="k">Explore</div><div class="v" style="font-size:13.5px;font-weight:500;color:var(--dim)">
           Filter the whole index to ${esc(it.name)} with the chip above the results.</div></div>
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
       ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, 'Open on DeFiLlama', links.chain(it))}
@@ -2979,7 +3218,7 @@ function sheetHTML(it) {
       ${head(k.title(it), [k.sub?.(it), k.meta?.(it)].filter(Boolean).join(' · '))}
       <div class="big">${esc(k.n1(it))}</div>
       <div class="chgline"><span class="mute">${esc(k.tail?.(it) || '')}</span></div>
-      ${chartBox(it)}${aboutBox(it)}${tradeBox(it)}
+      ${chartBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${ctaHTML(it, 'Open', (links[it.kind] || links.asset)(it))}
     </div>`;
   }
@@ -3001,7 +3240,7 @@ function sheetHTML(it) {
       <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
-    ${aboutBox(it)}${tradeBox(it)}
+    ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
@@ -3070,7 +3309,8 @@ const SHEET = {
       it.ath ? ['All-time high', usd(it.ath)] : null,
       it.athChg == null ? null : ['Off its high', pct(it.athChg)],
       it.supply ? ['Tokens issued', compact(it.supply)] : null,
-      it.under ? ['Underlying', it.under] : null],
+      it.under ? ['Underlying', it.under] : null,
+      it.issuer ? ['Issued by', it.issuer] : null],
     link: ['View on CoinGecko', links.stock(it)] }),
 
   pair: it => ({ big: it.price ? usd(it.price) : '—',
@@ -3295,6 +3535,7 @@ function open(id, { push = true } = {}) {
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
   fillTrade(el.sheet, it);
+  fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
 }
@@ -3329,7 +3570,7 @@ function close() {
 let dexT, dexSeq = 0;
 function askDex() {
   clearTimeout(dexT);
-  const q = S.q.trim();
+  const q = term();
   if (q.length < 2) { S.remote = { q: '', rows: [], busy: false, errors: [] }; return; }
   if (S.remote.q === q) return;
   dexT = setTimeout(async () => {
@@ -3339,7 +3580,7 @@ function askDex() {
     let res = { rows: [], errors: [] };
     try { res = await searchPairs(q); }
     catch (e) { res = { rows: [], errors: [e.message || 'DEX search failed'] }; }
-    if (seq !== dexSeq || S.q.trim() !== q) return;      // a newer query won
+    if (seq !== dexSeq || term() !== q) return;          // a newer query won
     const known = new Set(S.list.map(i => i.id));
     S.remote = { q, rows: res.rows.filter(r => !known.has(r.id)), busy: false, errors: res.errors };
     render();
@@ -3435,11 +3676,26 @@ function paintTools() {
 }
 
 /* ---------- events ---------- */
+let readT;
 el.q.addEventListener('input', e => {
   S.q = e.target.value; S.sel = 0; S.limit = 40;
-  render(); askDex(); scrollToResults(); syncUrl();
+  // a reading is stale the moment the sentence changes, and so is everything
+  // it set — otherwise deleting the words leaves their filters behind
+  if (dropReading()) paintFilters();
+  reindex(); render(); askDex(); scrollToResults(); syncUrl();
+  clearTimeout(readT);
+  readT = setTimeout(async () => {
+    const q = S.q;
+    const r = await readQuery(q).catch(() => null);
+    if (q !== S.q || !r) return;                        // they kept typing
+    applyReading(r);
+    paintFilters(); reindex(); render(); askDex(); syncUrl(true);
+  }, 420);
 });
-el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
+el.clear.addEventListener('click', () => {
+  S.q = el.q.value = ''; S.sel = 0; dropReading();
+  paintFilters(); reindex(); render(); syncUrl(true); el.q.focus();
+});
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#connect').addEventListener('click', openWallet);
 $('#refresh').addEventListener('click', () => load({ force: true }));
@@ -3482,6 +3738,7 @@ el.sortbar.addEventListener('click', onSort);
 
 // facets: a chip is a question about the rows, and they narrow together
 function onFacet(e) {
+  if (e.target.closest('[data-unread]')) return clearReading();
   const j = e.target.closest('[data-jump]');
   if (j) return goTab(tabOf(j.dataset.jump));
   const b = e.target.closest('[data-facet]'); if (!b) return;
@@ -3515,7 +3772,9 @@ el.sheet.addEventListener('pointerup', endDrag);
 el.sheet.addEventListener('pointercancel', endDrag);
 
 function goTab(tab) {
-  if (!tab || tab === S.tab || !TABS.some(([t]) => t === tab)) return;
+  if (!tab || !TABS.some(([t]) => t === tab)) return;
+  if (S.nl) { dropReading(); S.q = el.q.value = ''; }
+  if (tab === S.tab) { paintFilters(); reindex(); render(); return; }
   if (S.tab !== 'stocks') lastTab = S.tab;
   S.tab = tab; S.sel = 0; S.sort = null; S.facets.clear(); S.limit = 40;
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
@@ -3622,6 +3881,97 @@ addEventListener('keydown', e => {
     paintSel(true);
   } else if (e.key === 'Enter' && S.list[S.sel]) open(S.list[S.sel].id);
 });
+
+/* ---------- reading a sentence ----------
+   A question names things Atlas already has controls for. Reading it means
+   setting those controls — visibly, so the answer is never a hidden ranking and
+   is always one click from being undone.
+
+   The parser is local and always runs. An AI endpoint, where one is configured,
+   runs after it and may disagree; anything it says that does not map onto a
+   control that exists is dropped. */
+let NL = null;
+const loadNL = () => (NL ||= import('./nl.js'));
+
+/* A short query is a name, not a sentence. "bitcoin" is a thing to find, and
+   reading it as "the Bitcoin network, nothing to search for" answers a question
+   nobody asked; "usd coin" is a stablecoin, not a request for the Assets tab.
+
+   So a reading only applies when the sentence says something a search box
+   cannot: a threshold, a network, or a category word that means exactly one
+   thing. A bare "coin" or "token" is what things are called, not a filter. */
+const worthReading = r => !!(r && (
+  r.where.length                        // a threshold: nothing else can express it
+  || (r.tab && r.specific)              // a word that names exactly one category
+  || (r.chain && (r.tab || r.text))));  // a network, plus something to filter
+
+async function readQuery(q) {
+  const words = q.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const { parse, askAI, sanitise } = await loadNL();
+  let r = parse(q);
+  if (!worthReading(r)) return null;
+
+  let via = 'read locally';
+  try {
+    const { config } = await import('./config.js');
+    if (config.ai?.endpoint) {
+      const raw = await askAI(q, config.ai);
+      const clean = sanitise(raw, {
+        tabs: TABS.map(([t]) => t), chainIds: CHAINS.map(([id]) => id),
+        fields: ['chg', 'chg7d', 'chg30d', 'chg1y', 'mcap', 'vol', 'liq', 'vol24', 'tvl',
+          'apy', 'sup', 'supplyUsd', 'circulating', 'amount', 'volUsd', 'floorUsd', 'fdv'],
+      });
+      // the model only wins where it actually said something usable
+      if (worthReading(clean)) {
+        r = { ...clean, used: [...(clean.where || []).map(w => w.join(' ')), clean.tab, clean.chain].filter(Boolean) };
+        via = `read by ${config.ai.model || 'the model'}`;
+      }
+    }
+  } catch (e) { via = 'read locally — the AI endpoint did not answer'; }
+  return { ...r, via, original: q };
+}
+
+/* Every reading starts from the state the box was in before any reading, not
+   from the last one. Otherwise the network named in one sentence silently
+   survives into the next, and the answer is filtered by a word the user has
+   already deleted. */
+let before = null;
+
+function applyReading(r) {
+  before ||= { tab: S.tab, chain: S.chain, sort: S.sort };
+  S.tab = before.tab; S.chain = before.chain; S.sort = before.sort;
+  S.nl = r;
+  S.where = r?.where || [];
+  if (r?.tab && TABS.some(([t]) => t === r.tab)) S.tab = r.tab;
+  if (r?.chain && CH[r.chain]) S.chain = r.chain;
+  if (r?.sort && SORTABLE.has(r.sort.key)) S.sort = r.sort;
+}
+
+/** Drops the reading and puts every control back where it was. */
+function dropReading() {
+  if (!S.nl && !before) return false;
+  if (before) { S.tab = before.tab; S.chain = before.chain; S.sort = before.sort; before = null; }
+  S.nl = null; S.where = [];
+  return true;
+}
+
+function clearReading() {
+  const text = S.nl?.text || '';
+  if (!dropReading()) return;
+  S.q = el.q.value = text;                    // keep the words, drop the reading
+  S.limit = 40; S.sel = 0;
+  paintFilters(); reindex(); render(); askDex(); syncUrl(true);
+}
+
+const OPWORD = { '>=': 'at least', '<=': 'at most', '>': 'over', '<': 'under' };
+const FIELDWORD = { chg: '24h', chg7d: '7d', chg30d: '30d', chg1y: '1y', mcap: 'market cap',
+  liq: 'liquidity', tvl: 'TVL', vol: 'volume', vol24: '24h volume', apy: 'APY',
+  supplyUsd: 'supplied', circulating: 'circulating', amount: 'amount', volUsd: 'volume',
+  floorUsd: 'floor', fdv: 'FDV', sup: 'supply APY' };
+const isPct = f => /^chg/.test(f) || f === 'apy' || f === 'sup';
+const whereWord = ([f, op, v]) =>
+  `${FIELDWORD[f] || f} ${OPWORD[op]} ${isPct(f) ? pct(v) : '$' + compact(v)}`;
 
 /* ---------- wallet ----------
    Atlas is a search engine that can hold a wallet, not a wallet that can
@@ -3833,7 +4183,7 @@ paintConnect();
 // an OAuth redirect lands back here with a one-time code in the query string
 if (/privy_oauth_code/.test(location.search))
   loadWallet().then(m => m.resumeOAuth()).catch(() => {});
-if (S.q.trim().length >= 2) askDex();
+if (term().length >= 2) askDex();
 load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');
   if (id && find(id)) { history.replaceState({ id, depth: 0 }, '', location.href); open(id, { push: false }); }

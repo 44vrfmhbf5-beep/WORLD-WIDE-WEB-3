@@ -118,6 +118,8 @@ const protocols = [
     // an upstream string that ends up in a src, like every other one
     logo: 'javascript:alert(document.domain)' },
   { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },  // below the floor
+  // listed, and doing nothing: no value locked, no volume, no fees
+  { id: '5', name: 'Dormant Labs', slug: 'dormant', category: 'Yield', chains: ['Ethereum'], tvl: 0 },
 ];
 const seen = [];
 const b = await chromium.launch();
@@ -198,11 +200,17 @@ R('https://api.llama.fi/**', r => {
   if (u.endsWith('/protocols')) return J(protocols);
   if (u.includes('/overview/derivatives')) return J({ protocols: [{ name: 'Aave V3', total24h: 4.2e8 }] });
   if (u.includes('/overview/options')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.1e7 }] });
-  if (u.endsWith('/raises')) return J({ raises: [{ date: Math.floor(Date.now() / 1000) - 86400,
+  if (u.endsWith('/raises')) return J({ raises: [
+    // a row with no amount and no date is a row with nothing in it
+    { name: 'Undisclosed Co', round: 'Seed', amount: 0, chains: [], sector: 'DeFi',
+      leadInvestors: [], otherInvestors: [] },
+    { date: Math.floor(Date.now() / 1000) - 86400,
     name: 'Ondo Finance', round: 'Series A', amount: 20, chains: ['Ethereum'], sector: 'RWA',
     leadInvestors: ['Pantera'], otherInvestors: ['Coinbase Ventures'], valuation: 4e9,
     source: 'https://example.invalid' }] });
-  if (u.endsWith('/hacks')) return J([{ date: Math.floor(Date.now() / 1000) - 86400 * 5,
+  if (u.endsWith('/hacks')) return J([
+    { name: 'Unquantified incident', amount: 0, classification: 'Other', chains: [] },
+    { date: Math.floor(Date.now() / 1000) - 86400 * 5,
     name: 'Curve Finance exploit', amount: 6.1e7, technique: 'Reentrancy', chains: ['Ethereum'] }]);
   r.fulfill({ status: 404, body: '[]' });
 });
@@ -213,7 +221,10 @@ R('https://stablecoins.llama.fi/**', r => {
       walkTo('sc', 200, 4.1e10).map((v, i) => ({ date: i, totalCirculating: { peggedUSD: v } }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ peggedAssets: [
     { id: '1', symbol: 'USDC', name: 'USD Coin', circulating: { peggedUSD: 4.1e10 },
-      price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] }] }) });
+      price: 1.0001, pegMechanism: 'fiat-backed', chains: ['Ethereum'] },
+    // it still calls itself a dollar; it has not been one for a while
+    { id: '9', symbol: 'DEADUSD', name: 'Collapsed Dollar', circulating: { peggedUSD: 2.4e7 },
+      price: 0.118, pegMechanism: 'algorithmic', chains: ['Ethereum'] }] }) });
 });
 R('https://bridges.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
@@ -230,15 +241,15 @@ R('https://api.dexscreener.com/**', r => {
   seen.push(r.request().url());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ pairs: [{
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR1', url: 'https://dexscreener.com/solana/PAIR1',
-    baseToken: { address: 'CATaddr', name: 'CashCat', symbol: 'CASHCAT' }, quoteToken: { symbol: 'SOL' },
+    baseToken: { address: 'CATaddr', name: 'CashCat', symbol: 'CASHCAT' }, quoteToken: { symbol: 'USDC' },
     info: { imageUrl: 'https://img.example/cashcat.png' },
     priceUsd: '0.00000042', priceChange: { h24: 31.4 }, liquidity: { usd: 9.1e5 },
     volume: { h24: 4.2e6 }, fdv: 2.1e7 }, {
     chainId: 'berachain', dexId: 'kodiak', pairAddress: 'BERAPAIR',
-    baseToken: { address: 'bera1', name: 'BeraToken', symbol: 'BERATOK' },
+    baseToken: { address: 'bera1', name: 'BeraToken', symbol: 'BERATOK' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '2', liquidity: { usd: 8e5 }, volume: { h24: 9e5 } }, {
     chainId: 'fantom', dexId: 'spooky', pairAddress: 'PAIR2',
-    baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' },
+    baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' }, quoteToken: { symbol: 'USDC' },
     // it trades: this row is about chain coverage, not about being filtered
     priceUsd: '1', liquidity: { usd: 9e5 }, volume: { h24: 5e4 } }, {
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR3',
@@ -246,21 +257,21 @@ R('https://api.dexscreener.com/**', r => {
     priceUsd: '1', liquidity: { usd: 100 } }, {
     // the same ticker twice on one network: one token, one copy
     chainId: 'solana', dexId: 'raydium', pairAddress: 'TWINDEEP',
-    baseToken: { address: 'tw1', name: 'TwinCat', symbol: 'TWINCAT' },
+    baseToken: { address: 'tw1', name: 'TwinCat', symbol: 'TWINCAT' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '1', liquidity: { usd: 8e5 }, volume: { h24: 2e6 } }, {
     chainId: 'solana', dexId: 'raydium', pairAddress: 'TWINSHALLOW',
-    baseToken: { address: 'tw2', name: 'TwinCat', symbol: 'TWINCAT' },
+    baseToken: { address: 'tw2', name: 'TwinCat', symbol: 'TWINCAT' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '1', liquidity: { usd: 9e3 }, volume: { h24: 4e3 } }, {
     // the depth rule would drop this one too, but its contract is on a registry
     chainId: 'solana', dexId: 'raydium', pairAddress: 'VOUCHEDSHALLOW',
-    baseToken: { address: 'vouched2', name: 'Vouched', symbol: 'VOUCHED' },
+    baseToken: { address: 'vouched2', name: 'Vouched', symbol: 'VOUCHED' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '1', liquidity: { usd: 7e3 }, volume: { h24: 3e3 } }, {
     chainId: 'solana', dexId: 'raydium', pairAddress: 'VOUCHEDDEEP',
-    baseToken: { address: 'vouched1', name: 'Vouched', symbol: 'VOUCHED' },
+    baseToken: { address: 'vouched1', name: 'Vouched', symbol: 'VOUCHED' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '1', liquidity: { usd: 9e5 }, volume: { h24: 2e6 } }, {
     // wearing a listed ticker without the liquidity to be it
     chainId: 'solana', dexId: 'raydium', pairAddress: 'FAKEBTC',
-    baseToken: { address: 'fk', name: 'Bitcoin', symbol: 'BTC' },
+    baseToken: { address: 'fk', name: 'Bitcoin', symbol: 'BTC' }, quoteToken: { symbol: 'USDC' },
     priceUsd: '0.004', liquidity: { usd: 9e3 }, volume: { h24: 5e3 } }] }) });
 });
 R('https://api.geckoterminal.com/**', r => {
@@ -273,7 +284,7 @@ R('https://api.geckoterminal.com/**', r => {
   if (u.includes('/search/pools')) {
     const q = new URL(u).searchParams.get('query') || '';
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
-      data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / SOL', 'GTCASHaddr')] : [],
+      data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / USDC', 'GTCASHaddr')] : [],
       // JSON:API keeps the token, and its logo, beside the pool
       included: [{ id: 'tkGTCASH', type: 'token',
         attributes: { image_url: 'https://img.example/gtcash.png' } }] }) });
@@ -281,13 +292,15 @@ R('https://api.geckoterminal.com/**', r => {
   if (/\/networks\/[^/]+\/pools/.test(u)) {          // that chain's own tokens
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
       data: Array.from({ length: 8 }, (_, i) =>
-        pool(`solana_C${i}`, `CHAINTOK${i} / SOL`, `chainaddr${i}`)),
+        // one in four keeps a moving quote, so the rule that drops those is
+        // still being exercised rather than being switched off wholesale
+        pool(`solana_C${i}`, `CHAINTOK${i} / ${i % 4 === 3 ? 'SOL' : 'USDC'}`, `chainaddr${i}`)),
       included: Array.from({ length: 8 }, (_, i) => ({ id: `tkCHAINTOK${i}`, type: 'token',
         // one hostile scheme among them: an upstream string reaching a src
         attributes: { image_url: i === 3 ? 'javascript:alert(1)' : `https://img.example/c${i}.png` } })) }) });
   }
   r.fulfill({ contentType: 'application/json',
-    body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')],
+    body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / USDC', 'TRENDaddr')],
       included: [{ id: 'tkTRENDY', type: 'token',
         attributes: { image_url: 'https://img.example/trendy.png' } }] }) });
 });
@@ -343,6 +356,9 @@ R('https://nft.llama.fi/**', r => {
       image: 'https://img.example/bayc.png',
       floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
       floorPricePctChange7Day: 5.4, dailyVolumeUSD: 3.1e6, totalSupply: 10000 },
+    // never traded, no floor: a name in a list
+    { collectionId: '0xghost', name: 'Ghost Collection', symbol: 'GHOST', chain: 'Ethereum',
+      image: null, floorPrice: 0, floorPriceUSD: 0, dailyVolumeUSD: 0, totalSupply: 1000 },
     { collectionId: '0xpoly', name: 'Polygon Apes', symbol: 'PAPE', chain: 'Polygon',
       floorPrice: 240, floorPricePctChange1Day: 1.1, totalSupply: 5000 },
     { collectionId: '0xnofloor', name: 'No Floor Collection', symbol: 'NOPE', chain: 'Ethereum' }]) });
@@ -791,6 +807,72 @@ console.log('\n# a pair belongs to a network under either index\'s name');
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
 
+console.log('\n# a sentence is read into the controls, and can be taken back');
+{
+  const read = async q => {
+    await p.fill('#q', q); await p.waitForTimeout(2200);
+    return { tab: await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab'),
+      chips: (await p.locator('#facetbar').textContent()).replace(/\s+/g, ' ').trim(),
+      chain: new URL(p.url()).searchParams.get('chain') };
+  };
+  const r = await read('cat meme coin on base up 50% or more in the past 24 hours');
+  ok(r.tab === 'dex', `a memecoin question lands on DEX pairs, not Assets (${r.tab})`);
+  ok(r.chain === 'base', `the network in the sentence becomes the network filter (${r.chain})`);
+  ok(/50/.test(r.chips) && /24h/.test(r.chips), `and the threshold is stated, not applied silently (${r.chips.slice(0, 80)})`);
+  ok(/cat/.test(r.chips), 'with only the leftover words searched for');
+  const rows = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .map(x => x.dataset.id));
+  ok(rows.every(id => id.startsWith('d:')), `every row is the kind it asked for (${rows.length})`);
+
+  // a reading must not leak into the next question
+  const r2 = await read('exploits over $50m');
+  ok(r2.tab === 'hacks' && !r2.chain,
+    `the next sentence starts clean, not on the last one's network (${r2.tab}/${r2.chain})`);
+
+  // and a name is a name: reading "coin" as a category answers nothing asked
+  const r3 = await read('usd coin');
+  ok(!/Reading/.test(r3.chips), 'a two-word name is searched, not interpreted');
+
+  await p.fill('#q', 'nfts on solana'); await p.waitForTimeout(2200);
+  ok(await p.locator('[data-unread]').count() === 1, 'a reading offers to be undone');
+  await p.click('[data-unread]'); await p.waitForTimeout(900);
+  ok(await p.locator('[data-unread]').count() === 0, 'and undoing it puts the controls back');
+  await p.fill('#q', ''); await p.waitForTimeout(800);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
+}
+
+console.log('\n# a price is only a price if the other side holds still');
+{
+  const ids = async q => { await p.fill('#q', q); await p.waitForTimeout(1600);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id)); };
+  // CHAINTOK3 is quoted in SOL on purpose: the number moves when either leg moves
+  await p.click('[data-chain=sol]'); await p.waitForTimeout(1800);
+  const shown = await ids('chaintok');
+  ok(shown.includes('d:chainaddr0'), 'a pair quoted in a dollar stablecoin is kept');
+  ok(!shown.includes('d:chainaddr3'), 'and one quoted in a token that moves is not');
+  await p.click('#safe'); await p.waitForTimeout(1200);
+  ok((await ids('chaintok')).includes('d:chainaddr3'), 'turning the filter off shows it again');
+  await p.click('#safe'); await p.waitForTimeout(1000);
+  await p.click('[data-chain=""]'); await p.waitForTimeout(900);
+  await p.fill('#q', ''); await p.waitForTimeout(700);
+}
+
+console.log('\n# every kind says what junk means for it');
+{
+  // six kinds had no rule at all, so nothing could be junk in them
+  const kinds = await p.evaluate(() => window.__ATLAS_KINDS__ || null);
+  await p.click('#safe'); await p.waitForTimeout(1400);
+  const off = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab .ct')]
+    .map(e => ({ tab: e.parentElement.dataset.tab, n: e.textContent })));
+  await p.click('#safe'); await p.waitForTimeout(1400);
+  const on = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab .ct')]
+    .map(e => ({ tab: e.parentElement.dataset.tab, n: e.textContent })));
+  const num = v => Number(String(v).replace(/,/g, '')) || 0;
+  const filtered = on.filter((x, i) => num(x.n) < num(off[i].n)).map(x => x.tab);
+  ok(filtered.length >= 9,
+    `the filter reaches most categories, not a handful (${filtered.join(', ')})`);
+}
+
 console.log('\n# a sheet is about the row you opened, all the way down');
 {
   /* The chart owns the headline — it rewrites it with the series' last point,
@@ -1137,8 +1219,9 @@ console.log('\n# a tokenized stock opens like anything else');
   ok(/Underlying/.test(sheet) && /Market cap/.test(sheet), 'with the stats that belong to it');
   await p.waitForTimeout(1300);
   // this fixture's largest equity is Tesla; the line must name its own underlying
-  ok(/tracking TSLA/.test(await p.locator('[data-about]').textContent()),
-    'and an about line naming its own underlying');
+  const about = await p.locator('[data-about]').textContent();
+  ok(/\bTSLA\b/.test(about) && /Backed/.test(about),
+    `and an about line naming its own underlying and who issued it (${about.slice(0, 70)})`);
   ok(/^tesla-xstock is described here/.test(await p.locator('[data-src]').textContent()),
     'with prose fetched for that equity, not another');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);

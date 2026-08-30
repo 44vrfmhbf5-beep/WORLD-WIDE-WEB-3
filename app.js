@@ -4,7 +4,7 @@ import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStabl
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
   loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
-  loadVerified, loadMorpho, loadBridgeChart,
+  loadVerified, loadMorpho, loadBridgeChart, loadNftItems,
   links, actions, flags, clearCache } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -72,6 +72,8 @@ const S = {
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
   sort: null, facets: new Set(), limit: 40,
+  // what was typed, what it was read as, and the numeric constraints it named
+  nl: null, where: [],
   watch: new Map(readWatch().map(i => [i.id, i])),
   seen: readSeen(),
 };
@@ -163,6 +165,20 @@ function joinLogos() {
   }
 }
 
+/* The box holds a sentence; the index is searched with the words left after it
+   has been read. Everywhere that used to mean "what was typed" now has to say
+   which of the two it means. */
+const term = () => (S.nl ? S.nl.text : S.q).trim();
+
+/* A numeric constraint a sentence named: ["chg", ">=", 50]. Kept beside the
+   facets rather than inside them, because a sentence can ask for a threshold no
+   chip offers. */
+const OPS = { '>=': (a, b) => a >= b, '<=': (a, b) => a <= b, '>': (a, b) => a > b, '<': (a, b) => a < b };
+const meets = i => S.where.every(([f, op, v]) => {
+  const x = Number(i[f]);
+  return Number.isFinite(x) && OPS[op](x, v);
+});
+
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 
 /* Where each kind's rows live. everything(), the category rail and the tab
@@ -205,9 +221,30 @@ function isReal(i) {
   return null;                                   // absence is not proof
 }
 
+/* A price is only a price if the other side of the pair holds still. CAT/SOL
+   quotes a memecoin in a memecoin: the number moves when either leg moves, and
+   two such pairs cannot be compared to each other at all. Quoting in something
+   pegged to a dollar makes the column mean one thing.
+
+   The peg list is the app's own stablecoin index rather than a hand-kept
+   constant, so a new stablecoin is recognised the day it is indexed; the fiat
+   codes and the wrapped forms of the same dollars are the part no index
+   returns. */
+const FIAT = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'BRL', 'TRY', 'SGD']);
+const stableQuotes = () => {
+  const set = new Set(FIAT);
+  for (const st of S.stables) if (st.sym) set.add(st.sym.toUpperCase());
+  // the same dollars under a bridged or wrapped ticker, which no list carries
+  for (const x of ['USDC.E', 'USDBC', 'USDB', 'AXLUSDC', 'USDT.E', 'USDCE', 'WUSDC',
+    'USD1', 'RLUSD', 'SUSD', 'CRVUSD', 'BUSD', 'TUSD', 'GUSD', 'LUSD', 'EURC', 'EURS'])
+    set.add(x);
+  return set;
+};
+
 function sift(rows) {
   if (!S.safe) return rows;
   const listed = new Set(S.assets.map(x => x.sym));
+  const pegged = stableQuotes();
   const deepest = new Map();                 // ticker on one network -> real pool
   for (const i of rows) {
     if (i.kind !== 'pair') continue;
@@ -218,6 +255,9 @@ function sift(rows) {
     const ok = KIND[i.kind].ok;
     if (ok && !ok(i)) return false;
     if (i.kind !== 'pair') return true;
+    // priced against something that moves: the number is not comparable to any
+    // other row, so it is not a price this table can show
+    if (i.quote && !pegged.has(i.quote)) return false;
     // a registry naming this exact token settles it; the guesses below do not apply
     if (isReal(i)) return true;
     // A ticker repeated on one network is usually copies of one token — but two
@@ -248,7 +288,7 @@ const facetPred = (skip) => {
 };
 function scope() {
   const all = rowsFor(S.tab).filter(onChain);
-  const keep = sift(all);
+  const keep = S.where.length ? sift(all).filter(meets) : sift(all);
   hidden = all.length - keep.length;         // never filter silently
   base = keep;
   const p = facetPred();
@@ -293,7 +333,7 @@ function trending() {
 }
 
 function compute() {
-  const q = S.q.trim();
+  const q = term();
   if (!q) return trending();
   if (!S.fuse) return [];
   const t = q.toLowerCase().replace(/^\$+/, '');       // people type $CASHCAT
@@ -372,7 +412,9 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
-    ok: i => i.vol > 0,
+    // nothing traded, nothing priced, or a market cap so thin the price is
+    // whatever the last trade said it was
+    ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
@@ -382,18 +424,19 @@ const KIND = {
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
-    chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
+    chart: [loadAssetChart, 1, R.price, usd],
+    ok: i => i.vol > 0 && i.price > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => (i.under || i.sym).slice(0, 4),
-    title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
-    meta: i => i.under ? `tracks ${i.under}` : 'tokenized',
+    title: i => i.name, sub: i => i.sym, tag: i => i.issuer || 'Equity',
+    meta: i => `tracks ${i.under}${i.issuer ? ` · issued by ${i.issuer}` : ''}`,
     tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
-    ok: i => i.supplyUsd >= 1e6,
+    ok: i => i.supplyUsd >= 1e6 && i.sup >= 0,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
       ['Borrow APY', i => i.bor == null ? '—' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
@@ -419,6 +462,8 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
+    // a protocol with no TVL and no volume is a listing, not a business
+    ok: i => i.tvl >= 1e6 || i.vol24 > 0 || i.fees24 > 0,
     cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
@@ -431,7 +476,11 @@ const KIND = {
     cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
-    ok: i => i.volUsd > 0 || i.floor > 0,
+    // a collection with no floor and no trading is a name in a list. An unknown
+    // supply is not the same as a supply of zero: Magic Eden's index does not
+    // report one, and dropping every Solana collection over that is the rule
+    // punishing the source rather than the row.
+    ok: i => (i.volUsd > 0 || i.volSol > 0 || i.floor > 0) && i.supply !== 0,
     cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
@@ -458,6 +507,9 @@ const KIND = {
     cls: i => i.chg ? (i.chg >= 0 ? 'up' : 'down') : 'mute' },
 
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
+    // a coin claiming a dollar peg while trading at 40 cents is not a stablecoin
+    // any more, and one nobody holds was never one
+    ok: i => i.circulating >= 1e6 && i.price > 0.5 && i.price < 1.8,
     cols: [['Circulating', i => money(i.circulating), 'circulating'], ['Peg', i => usd(i.price), 'price'],
       ['Mechanism', i => i.mech || '—', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
@@ -467,6 +519,7 @@ const KIND = {
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
     chart: [loadBridgeChart, 90, R.long, money],
+    ok: i => i.vol24 > 0,
     cols: [['Volume 24h', i => money(i.vol24), 'vol24'],
       ['Previous day', i => i.volPrev ? money(i.volPrev) : '—', 'volPrev'],
       ['Change', i => i.volPrev ? pct((i.vol24 - i.volPrev) / i.volPrev * 100) : '—', null, 'sgn'],
@@ -480,6 +533,8 @@ const KIND = {
     cls: i => i.volPrev && i.vol24 >= i.volPrev ? 'up' : i.volPrev ? 'down' : 'mute' },
 
   raise: { group: 'Funding rounds', size: i => i.amount, sq: true,
+    // an undated or unpriced round is a row with nothing in it
+    ok: i => i.amount > 0 && i.date > 0,
     cols: [['Raised', i => money(i.amount), 'amount'], ['Round', i => i.round || '—', null, 'txt'],
       ['Valuation', i => i.valuation ? money(i.valuation) : '—', 'valuation'],
       ['Date', i => when(i.date), 'date', 'txt']],
@@ -490,6 +545,7 @@ const KIND = {
     n1: i => '$' + compact(i.amount), n2: i => when(i.date), cls: () => 'mute' },
 
   hack: { group: 'Exploits', size: i => i.amount, sq: true,
+    ok: i => i.amount > 0 && i.date > 0,
     cols: [['Lost', i => money(i.amount), 'amount', 'down'], ['Technique', i => i.technique, null, 'txt'],
       ['Date', i => when(i.date), 'date', 'txt']],
     label: () => '!!', title: i => i.name, tag: () => 'Exploit',
@@ -497,6 +553,8 @@ const KIND = {
     n1: i => '$' + compact(i.amount), n1cls: 'down', n2: () => 'lost', cls: () => 'mute' },
 
   chain: { group: 'Networks', size: i => i.tvl, sq: true, chart: [loadChainChart, 90, R.long, money],
+    // a network with nothing indexed on it is a name, not a destination
+    ok: i => i.tvl > 0 || S.protocols.some(r => r.chains.includes(i.chain)),
     cols: [['TVL', i => money(i.tvl), 'tvl'],
       ['Protocols', i => String(S.protocols.filter(r => r.chains.includes(i.chain)).length), null],
       ['Lending markets', i => String(S.pools.filter(p => p.chain === i.chain).length), null]],
@@ -518,7 +576,9 @@ const FACET = {
     ['busy', 'Heavily traded', i => i.turn >= 10],
     ['dip', 'Far off high', i => i.athChg <= -50]],
   stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
-    ['big', '$500M+', i => i.mcap >= 5e8]],
+    ['big', '$500M+', i => i.mcap >= 5e8],
+    ['backed', 'Backed', i => i.issuer === 'Backed'],
+    ['other', 'Other issuers', i => !!i.issuer && i.issuer !== 'Backed']],
   pool: [['borrow', 'Borrowable', i => i.bor != null && i.free > 0],
     ['stable', 'Stablecoin', i => i.stable],
     ['deep', '$100M+', i => i.supplyUsd >= 1e8],
@@ -699,7 +759,21 @@ function paintSort() {
 /* On All and Saved there are no per-kind questions to ask, but a mixed result
    set has a shape worth showing: how much of it is which kind, and one click to
    see only that. Same row, so there is one place that says how to narrow. */
+function readingHTML() {
+  if (!S.nl) return '';
+  const bits = [
+    S.nl.tab && TABS.find(([t]) => t === S.nl.tab)?.[1],
+    S.nl.chain && CH[S.nl.chain]?.name,
+    ...(S.nl.where || []).map(whereWord),
+    S.nl.text && `matching “${S.nl.text}”`,
+  ].filter(Boolean);
+  return `<span class="sk">Reading</span>` +
+    bits.map(b => `<span class="rd">${esc(b)}</span>`).join('') +
+    `<button class="clr" data-unread title="${esc(S.nl.via)}">Undo</button>`;
+}
+
 function paintKinds() {
+  if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
   if (!S.q.trim()) return el.facetbar.replaceChildren();
   const counts = new Map();
   for (const i of S.list) counts.set(i.kind, (counts.get(i.kind) || 0) + 1);
@@ -711,6 +785,7 @@ function paintKinds() {
 }
 
 function paintFacets() {
+  if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
   const fs = facetsFor(S.tab);
   if (!fs.length) return paintKinds();
   const chip = f => {
@@ -738,10 +813,11 @@ const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" s
 
 function render() {
   document.body.classList.toggle('searching', !!S.q);
+  el.q.classList.toggle('read', !!S.nl);
   document.body.classList.toggle('browsing', S.tab !== 'all');
   el.clear.hidden = !S.q;
 
-  const dexErr = S.remote.q === S.q.trim() && S.remote.errors?.length ? S.remote.errors : null;
+  const dexErr = S.remote.q === term() && S.remote.errors?.length ? S.remote.errors : null;
   el.banner.innerHTML = flags.sample
     ? `<div class="sample"><b>Sample data.</b> This page can't reach CoinGecko or DeFiLlama, so every
         figure below is illustrative — explore the interface, don't trade on it.</div>`
@@ -835,7 +911,7 @@ function render() {
     so the group heading is never emitted twice. A category that pins a different
     kind does not take them: searching on Exploits should not return memecoins. */
 function withRemote(list) {
-  if (!S.remote.q || S.remote.q !== S.q.trim()) return list;
+  if (!S.remote.q || S.remote.q !== term()) return list;
   const k = TAB_KIND[S.tab];
   if (k && k !== 'pair') return list;
   const have = new Set(list.map(i => i.id));
@@ -860,8 +936,10 @@ const ABOUT = {
     + `, at ${usd(i.price)} with $${compact(i.vol)} traded in the last day`
     + `${i.chg7d ? `, ${pct(i.chg7d)} over the week` : ''}`
     + `${i.athChg ? `. It sits ${Math.abs(i.athChg).toFixed(0)}% below its ${usd(i.ath)} high` : ''}.`,
-  stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
-    + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
+  stock: i => `${i.name} is ${i.under} issued onchain${i.issuer ? ` by ${i.issuer}` : ''}`
+    + `, so the share can be held and traded in a wallet like any token.`
+    + ` It last changed hands at ${usd(i.price)}${i.chg7d == null ? '' : `, ${pct(i.chg7d)} over the week`}.`
+    + `${i.issuer ? ` Redemption and custody are ${i.issuer}'s, not the exchange's.` : ''}`,
   pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
     + `${i.bor == null ? '' : `, or post it as collateral and borrow at ${apy(i.bor)}`
       + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}`}. `
@@ -912,6 +990,38 @@ async function fillAbout(box, it) {
 }
 
 /* ---------- detail sheet ---------- */
+/* A collection's floor is one number about hundreds of things. This is the
+   things. */
+const itemsBox = it => it.kind !== 'nft' ? '' :
+  `<div class="sec items" data-items="${esc(it.id)}"><h3>In this collection</h3>
+    <div class="note l" data-iwhy>Loading listings…</div>
+    <div class="grid" data-igrid hidden></div></div>`;
+
+async function fillItems(box, it) {
+  const host = box.querySelector('[data-items]'); if (!host) return;
+  const why = host.querySelector('[data-iwhy]'), grid = host.querySelector('[data-igrid]');
+  let key = '';
+  try { key = (await import('./config.js')).config.venues?.opensea?.apiKey || ''; } catch {}
+  const { items, why: reason } = await loadNftItems(it, { openseaKey: key })
+    .catch(() => ({ items: [], why: 'listings unavailable' }));
+  if (!host.isConnected) return;
+  if (!items.length) {
+    why.textContent = reason === 'needs an OpenSea key'
+      ? 'Individual items for this marketplace need an OpenSea key in config.js. Magic Eden collections list theirs without one.'
+      : `No individual items to show — ${reason || 'none returned'}.`;
+    return;
+  }
+  why.hidden = true;
+  grid.innerHTML = items.map(x => `<a class="item" href="${esc(x.url)}" target="_blank"
+    rel="noopener noreferrer" title="${esc(x.name)}">
+    <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
+      referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
+    <div class="in"><div class="t">${esc(x.name)}</div>
+      ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
+    ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>`).join('');
+  grid.hidden = false;
+}
+
 function chartBox(it) {
   const c = KIND[it.kind].chart;
   if (!c) return '';
@@ -960,7 +1070,7 @@ function sheetHTML(it) {
         ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
         ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -980,7 +1090,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -1006,7 +1116,7 @@ function sheetHTML(it) {
         ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
         ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, `Open ${it.name}`, links.protocol(it))}
@@ -1028,7 +1138,7 @@ function sheetHTML(it) {
         <div class="stat wide"><div class="k">Explore</div><div class="v" style="font-size:13.5px;font-weight:500;color:var(--dim)">
           Filter the whole index to ${esc(it.name)} with the chip above the results.</div></div>
       </div>
-      ${aboutBox(it)}${tradeBox(it)}
+      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
       ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, 'Open on DeFiLlama', links.chain(it))}
@@ -1045,7 +1155,7 @@ function sheetHTML(it) {
       ${head(k.title(it), [k.sub?.(it), k.meta?.(it)].filter(Boolean).join(' · '))}
       <div class="big">${esc(k.n1(it))}</div>
       <div class="chgline"><span class="mute">${esc(k.tail?.(it) || '')}</span></div>
-      ${chartBox(it)}${aboutBox(it)}${tradeBox(it)}
+      ${chartBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${ctaHTML(it, 'Open', (links[it.kind] || links.asset)(it))}
     </div>`;
   }
@@ -1067,7 +1177,7 @@ function sheetHTML(it) {
       <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
-    ${aboutBox(it)}${tradeBox(it)}
+    ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
@@ -1136,7 +1246,8 @@ const SHEET = {
       it.ath ? ['All-time high', usd(it.ath)] : null,
       it.athChg == null ? null : ['Off its high', pct(it.athChg)],
       it.supply ? ['Tokens issued', compact(it.supply)] : null,
-      it.under ? ['Underlying', it.under] : null],
+      it.under ? ['Underlying', it.under] : null,
+      it.issuer ? ['Issued by', it.issuer] : null],
     link: ['View on CoinGecko', links.stock(it)] }),
 
   pair: it => ({ big: it.price ? usd(it.price) : '—',
@@ -1361,6 +1472,7 @@ function open(id, { push = true } = {}) {
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
   fillTrade(el.sheet, it);
+  fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
 }
@@ -1395,7 +1507,7 @@ function close() {
 let dexT, dexSeq = 0;
 function askDex() {
   clearTimeout(dexT);
-  const q = S.q.trim();
+  const q = term();
   if (q.length < 2) { S.remote = { q: '', rows: [], busy: false, errors: [] }; return; }
   if (S.remote.q === q) return;
   dexT = setTimeout(async () => {
@@ -1405,7 +1517,7 @@ function askDex() {
     let res = { rows: [], errors: [] };
     try { res = await searchPairs(q); }
     catch (e) { res = { rows: [], errors: [e.message || 'DEX search failed'] }; }
-    if (seq !== dexSeq || S.q.trim() !== q) return;      // a newer query won
+    if (seq !== dexSeq || term() !== q) return;          // a newer query won
     const known = new Set(S.list.map(i => i.id));
     S.remote = { q, rows: res.rows.filter(r => !known.has(r.id)), busy: false, errors: res.errors };
     render();
@@ -1501,11 +1613,26 @@ function paintTools() {
 }
 
 /* ---------- events ---------- */
+let readT;
 el.q.addEventListener('input', e => {
   S.q = e.target.value; S.sel = 0; S.limit = 40;
-  render(); askDex(); scrollToResults(); syncUrl();
+  // a reading is stale the moment the sentence changes, and so is everything
+  // it set — otherwise deleting the words leaves their filters behind
+  if (dropReading()) paintFilters();
+  reindex(); render(); askDex(); scrollToResults(); syncUrl();
+  clearTimeout(readT);
+  readT = setTimeout(async () => {
+    const q = S.q;
+    const r = await readQuery(q).catch(() => null);
+    if (q !== S.q || !r) return;                        // they kept typing
+    applyReading(r);
+    paintFilters(); reindex(); render(); askDex(); syncUrl(true);
+  }, 420);
 });
-el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
+el.clear.addEventListener('click', () => {
+  S.q = el.q.value = ''; S.sel = 0; dropReading();
+  paintFilters(); reindex(); render(); syncUrl(true); el.q.focus();
+});
 $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#connect').addEventListener('click', openWallet);
 $('#refresh').addEventListener('click', () => load({ force: true }));
@@ -1548,6 +1675,7 @@ el.sortbar.addEventListener('click', onSort);
 
 // facets: a chip is a question about the rows, and they narrow together
 function onFacet(e) {
+  if (e.target.closest('[data-unread]')) return clearReading();
   const j = e.target.closest('[data-jump]');
   if (j) return goTab(tabOf(j.dataset.jump));
   const b = e.target.closest('[data-facet]'); if (!b) return;
@@ -1581,7 +1709,9 @@ el.sheet.addEventListener('pointerup', endDrag);
 el.sheet.addEventListener('pointercancel', endDrag);
 
 function goTab(tab) {
-  if (!tab || tab === S.tab || !TABS.some(([t]) => t === tab)) return;
+  if (!tab || !TABS.some(([t]) => t === tab)) return;
+  if (S.nl) { dropReading(); S.q = el.q.value = ''; }
+  if (tab === S.tab) { paintFilters(); reindex(); render(); return; }
   if (S.tab !== 'stocks') lastTab = S.tab;
   S.tab = tab; S.sel = 0; S.sort = null; S.facets.clear(); S.limit = 40;
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
@@ -1688,6 +1818,97 @@ addEventListener('keydown', e => {
     paintSel(true);
   } else if (e.key === 'Enter' && S.list[S.sel]) open(S.list[S.sel].id);
 });
+
+/* ---------- reading a sentence ----------
+   A question names things Atlas already has controls for. Reading it means
+   setting those controls — visibly, so the answer is never a hidden ranking and
+   is always one click from being undone.
+
+   The parser is local and always runs. An AI endpoint, where one is configured,
+   runs after it and may disagree; anything it says that does not map onto a
+   control that exists is dropped. */
+let NL = null;
+const loadNL = () => (NL ||= import('./nl.js'));
+
+/* A short query is a name, not a sentence. "bitcoin" is a thing to find, and
+   reading it as "the Bitcoin network, nothing to search for" answers a question
+   nobody asked; "usd coin" is a stablecoin, not a request for the Assets tab.
+
+   So a reading only applies when the sentence says something a search box
+   cannot: a threshold, a network, or a category word that means exactly one
+   thing. A bare "coin" or "token" is what things are called, not a filter. */
+const worthReading = r => !!(r && (
+  r.where.length                        // a threshold: nothing else can express it
+  || (r.tab && r.specific)              // a word that names exactly one category
+  || (r.chain && (r.tab || r.text))));  // a network, plus something to filter
+
+async function readQuery(q) {
+  const words = q.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const { parse, askAI, sanitise } = await loadNL();
+  let r = parse(q);
+  if (!worthReading(r)) return null;
+
+  let via = 'read locally';
+  try {
+    const { config } = await import('./config.js');
+    if (config.ai?.endpoint) {
+      const raw = await askAI(q, config.ai);
+      const clean = sanitise(raw, {
+        tabs: TABS.map(([t]) => t), chainIds: CHAINS.map(([id]) => id),
+        fields: ['chg', 'chg7d', 'chg30d', 'chg1y', 'mcap', 'vol', 'liq', 'vol24', 'tvl',
+          'apy', 'sup', 'supplyUsd', 'circulating', 'amount', 'volUsd', 'floorUsd', 'fdv'],
+      });
+      // the model only wins where it actually said something usable
+      if (worthReading(clean)) {
+        r = { ...clean, used: [...(clean.where || []).map(w => w.join(' ')), clean.tab, clean.chain].filter(Boolean) };
+        via = `read by ${config.ai.model || 'the model'}`;
+      }
+    }
+  } catch (e) { via = 'read locally — the AI endpoint did not answer'; }
+  return { ...r, via, original: q };
+}
+
+/* Every reading starts from the state the box was in before any reading, not
+   from the last one. Otherwise the network named in one sentence silently
+   survives into the next, and the answer is filtered by a word the user has
+   already deleted. */
+let before = null;
+
+function applyReading(r) {
+  before ||= { tab: S.tab, chain: S.chain, sort: S.sort };
+  S.tab = before.tab; S.chain = before.chain; S.sort = before.sort;
+  S.nl = r;
+  S.where = r?.where || [];
+  if (r?.tab && TABS.some(([t]) => t === r.tab)) S.tab = r.tab;
+  if (r?.chain && CH[r.chain]) S.chain = r.chain;
+  if (r?.sort && SORTABLE.has(r.sort.key)) S.sort = r.sort;
+}
+
+/** Drops the reading and puts every control back where it was. */
+function dropReading() {
+  if (!S.nl && !before) return false;
+  if (before) { S.tab = before.tab; S.chain = before.chain; S.sort = before.sort; before = null; }
+  S.nl = null; S.where = [];
+  return true;
+}
+
+function clearReading() {
+  const text = S.nl?.text || '';
+  if (!dropReading()) return;
+  S.q = el.q.value = text;                    // keep the words, drop the reading
+  S.limit = 40; S.sel = 0;
+  paintFilters(); reindex(); render(); askDex(); syncUrl(true);
+}
+
+const OPWORD = { '>=': 'at least', '<=': 'at most', '>': 'over', '<': 'under' };
+const FIELDWORD = { chg: '24h', chg7d: '7d', chg30d: '30d', chg1y: '1y', mcap: 'market cap',
+  liq: 'liquidity', tvl: 'TVL', vol: 'volume', vol24: '24h volume', apy: 'APY',
+  supplyUsd: 'supplied', circulating: 'circulating', amount: 'amount', volUsd: 'volume',
+  floorUsd: 'floor', fdv: 'FDV', sup: 'supply APY' };
+const isPct = f => /^chg/.test(f) || f === 'apy' || f === 'sup';
+const whereWord = ([f, op, v]) =>
+  `${FIELDWORD[f] || f} ${OPWORD[op]} ${isPct(f) ? pct(v) : '$' + compact(v)}`;
 
 /* ---------- wallet ----------
    Atlas is a search engine that can hold a wallet, not a wallet that can
@@ -1899,7 +2120,7 @@ paintConnect();
 // an OAuth redirect lands back here with a one-time code in the query string
 if (/privy_oauth_code/.test(location.search))
   loadWallet().then(m => m.resumeOAuth()).catch(() => {});
-if (S.q.trim().length >= 2) askDex();
+if (term().length >= 2) askDex();
 load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');
   if (id && find(id)) { history.replaceState({ id, depth: 0 }, '', location.href); open(id, { push: false }); }

@@ -177,11 +177,11 @@ async function get(url, opts) {
   }
 }
 
-async function fetchJson(url, { tries = 2, timeout = 25000, post = null } = {}) {
+async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
   // one source speaks GraphQL; everything else is a plain GET
   const init = post
-    ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(post) }
-    : {};
+    ? { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(post) }
+    : (headers ? { headers } : {});
   for (let i = 0; ; i++) {
     let r;
     try {
@@ -340,14 +340,51 @@ export function loadAssets() {
    their own switch. Two stock-specific CoinGecko categories are merged; if one
    slug drifts the other still answers, and neither pulls in the wider RWA bucket
    of treasuries and gold, which are not stocks. */
-const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem'];
+/* Every issuer names its tokens differently, and the app only recognised one of
+   them. Backed suffixes an x (TSLAx), Dinari prefixes a d (dTSLA), Robinhood
+   and Coinbase issue under their own names, and Ondo, Swarm and Securitize each
+   do something else again. Recognising the issuer is what makes the rest of the
+   row honest: a share tokenized by Robinhood and one tokenized by Backed are
+   different instruments with different redemption, and the sheet should say
+   which one it is holding rather than calling both "tokenized". */
+const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem', 'tokenized-equity',
+  'stock-tokens', 'ondo-ecosystem', 'dinari-ecosystem', 'robinhood-chain-ecosystem'];
 
-/** "TSLAx" tracks TSLA. Only strip a trailing x, and only when what is left
-    still looks like a ticker — guessing harder than that invents provenance. */
+const ISSUERS = [
+  [/backed|xstock/i, 'Backed'],
+  [/robinhood/i, 'Robinhood'],
+  [/coinbase/i, 'Coinbase'],
+  [/kraken/i, 'Kraken'],
+  [/dinari|dshare/i, 'Dinari'],
+  [/\bondo\b/i, 'Ondo'],
+  [/swarm/i, 'Swarm'],
+  [/securitize/i, 'Securitize'],
+  [/sologenic/i, 'Sologenic'],
+];
+const issuerOf = name => (ISSUERS.find(([re]) => re.test(name || '')) || [, ''])[1];
+
+// enough of a signal to say this is an equity and not a coin that shares a name
+const EQUITYISH = /x ?stock|tokenized|token[iy]sed|equit|\bshare|\bstock\b|dshare|backed|robinhood|coinbase|dinari|ondo|swarm|securitize/i;
+
+/* Casting wider for issuers also catches what those issuers tokenize that is
+   not a share. Ondo's name matches on every one of its products, and OUSG is
+   short-term treasuries — a fund, priced daily, redeemed differently, and not a
+   stock however it is wrapped. */
+const NOT_EQUITY = /treasur|t-bill|\bbill\b|\bbond|\bgold\b|\bsilver\b|money market|\bfund\b|\bnote\b|reserve|yield|staked|savings/i;
+
+/** The ticker a token tracks. Every rule below is a naming convention an issuer
+    actually publishes; anything else returns null rather than inventing one. */
 function underlying(sym, name) {
-  const m = /^([A-Z0-9]{1,5})X$/.exec(sym);
-  if (m && /x ?stock|tokenized|backed|ondo|dinari/i.test(name || '')) return m[1];
-  return /^[A-Z0-9]{1,5}$/.test(sym) && /x ?stock|tokenized/i.test(name || '') ? sym : null;
+  if (!EQUITYISH.test(name || '') || NOT_EQUITY.test(name || '')) return null;
+  const S = String(sym || '').toUpperCase();
+  // Backed and Kraken: TSLAX -> TSLA
+  let m = /^([A-Z0-9]{1,5})X$/.exec(S);
+  if (m) return m[1];
+  // Dinari: DTSLA or TSLA.D -> TSLA
+  m = /^D([A-Z]{1,5})$/.exec(S) || /^([A-Z0-9]{1,5})\.D$/.exec(S);
+  if (m) return m[1];
+  // Robinhood, Coinbase and the rest issue under the plain ticker
+  return /^[A-Z0-9]{1,5}$/.test(S) ? S : null;
 }
 
 export function loadStocks() {
@@ -362,9 +399,14 @@ export function loadStocks() {
         if (!c?.id || seen.has(c.id)) continue;
         seen.add(c.id);
         const a = asset(c, null);
-        out.push({ ...a, kind: 'stock', id: `t:${c.id}`,
-          under: underlying(a.sym, a.name),
-          key: `${a.sym} ${a.name} tokenized stock equity share rwa` });
+        // a broader net catches more issuers and also more things that are not
+        // equities at all — treasuries, gold, a fund. Keep only what names one.
+        const under = underlying(a.sym, a.name);
+        if (!under) continue;
+        const issuer = issuerOf(a.name);
+        seen.add(c.id);
+        out.push({ ...a, kind: 'stock', id: `t:${c.id}`, under, issuer,
+          key: `${a.sym} ${a.name} ${under} ${issuer} tokenized stock equity share rwa` });
       }
     }
     return out.sort((x, y) => y.mcap - x.mcap);
@@ -634,7 +676,7 @@ export function loadProtocols() {
     const index = l => Object.fromEntries((l?.protocols || []).map(x => [slugOf(x.name), x]));
     const dv = index(dex), fv = index(fees), pv = index(perps), ov = index(opts);
     return (Array.isArray(ps) ? ps : [])
-      .filter(p => num(p.tvl) > 1e6)
+      .filter(p => num(p.tvl) > 0 || num(dv[slugOf(p.name)]?.total24h) > 0)
       .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)], pv[slugOf(p.name)], ov[slugOf(p.name)]))
       .sort((a, b) => b.tvl - a.tvl)
       .slice(0, 500);
@@ -807,7 +849,7 @@ export function loadBridges() {
           key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
         };
       })
-      .filter(b => b.vol24 > 0)
+      .filter(b => b.name && b.name !== '?')
       .sort((a, b) => b.vol24 - a.vol24)
       .slice(0, 120);
   });
@@ -818,7 +860,7 @@ export function loadRaises() {
   return cache('raises', TTL, async () => {
     const j = await get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null);
     return (j?.raises || [])
-      .filter(r => num(r.amount) > 0 && r.name)
+      .filter(r => r.name)
       .map(r => {
         const investors = [...(r.leadInvestors || []), ...(r.otherInvestors || [])];
         const chains = (r.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
@@ -1024,10 +1066,66 @@ function meNft(c) {
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
     img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
     floorUsd: 0, floor: sol, unit: 'SOL',
-    chg1d: 0, chg7d: 0, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
-    supply: 0,
+    // Magic Eden's popular_collections carries neither a change nor a supply.
+    // Zero is a claim; null is the truth, and the row reads as "—" instead of
+    // "0.00%" and stays out of a filter that asks about movement.
+    chg1d: null, chg7d: null, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
+    supply: num(c.totalItems ?? c.supply) || null,
     key: `${name} ${c.symbol || ''} nft collection solana magic eden pfp art collectible`,
   };
+}
+
+/* ---------- inside a collection ----------
+   A collection is a row with one number on it — the floor — and that is the
+   least interesting thing about it. What is actually for sale, at what price,
+   with what traits, is the question anyone opening one is asking.
+
+   Magic Eden answers it without a key, so Solana collections list their real
+   listings. OpenSea's item endpoint needs one, so EVM collections list theirs
+   only where a key is configured, and say so plainly where it is not. */
+
+function meItem(l) {
+  const t = l.token || l;
+  const price = num(l.price);      // already in SOL on this endpoint
+  return {
+    id: t.mintAddress || t.mint || l.tokenMint || '',
+    name: t.name || '#?',
+    img: safeUrl(t.image) || null,
+    price, unit: 'SOL',
+    traits: (t.attributes || []).slice(0, 3)
+      .map(a => `${a.trait_type}: ${a.value}`).filter(x => !/undefined/.test(x)),
+    url: t.mintAddress ? `https://magiceden.io/item-details/${encodeURIComponent(t.mintAddress)}` : '',
+  };
+}
+
+function osItem(n, slug) {
+  return {
+    id: n.identifier || '',
+    name: n.name || `#${n.identifier}`,
+    img: safeUrl(n.display_image_url || n.image_url) || null,
+    price: 0, unit: '',
+    traits: [],
+    url: safeUrl(n.opensea_url)
+      || `https://opensea.io/assets/${encodeURIComponent(n.contract || slug)}/${encodeURIComponent(n.identifier || '')}`,
+  };
+}
+
+/** The items actually listed in a collection. Empty is an answer, not a failure. */
+export function loadNftItems(n, { openseaKey } = {}) {
+  if (!n?.cid) return Promise.resolve({ items: [], why: 'no collection id' });
+  return cache(`nftitems:${n.id}`, TTL, async () => {
+    if (n.market === 'Magic Eden') {
+      const j = await get(`${ME}/collections/${encodeURIComponent(n.cid)}/listings?offset=0&limit=24`,
+        { tries: 1, timeout: 15000 }).catch(() => null);
+      const items = (Array.isArray(j) ? j : []).map(meItem).filter(x => x.id);
+      return { items, why: items.length ? '' : 'nothing listed right now' };
+    }
+    if (!openseaKey) return { items: [], why: 'needs an OpenSea key' };
+    const j = await get(`https://api.opensea.io/api/v2/collection/${encodeURIComponent(n.cid)}/nfts?limit=24`,
+      { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
+    const items = (j?.nfts || []).map(x => osItem(x, n.cid)).filter(x => x.id);
+    return { items, why: items.length ? '' : 'no items returned' };
+  });
 }
 
 /** NFT collections. Two marketplaces, ranked within their own units. */
@@ -1038,11 +1136,11 @@ export function loadNFTs() {
       get(`${ME}/marketplace/popular_collections`, { tries: 1, timeout: 15000 }),
     ]);
     const a = dl.status === 'fulfilled' && Array.isArray(dl.value)
-      ? dl.value.map(llamaNft).filter(n => n.floorUsd || n.floor)
+      ? dl.value.map(llamaNft)
         .sort((x, y) => (y.volUsd || y.floorUsd) - (x.volUsd || x.floorUsd)).slice(0, 300)
       : [];
     const b = me.status === 'fulfilled' && Array.isArray(me.value)
-      ? me.value.map(meNft).filter(n => n.floor)
+      ? me.value.map(meNft)
         .sort((x, y) => (y.volSol || 0) - (x.volSol || 0)).slice(0, 60)
       : [];
     if (!a.length && !b.length) throw dl.reason || me.reason || new ApiError('No NFT source answered.');
@@ -1065,7 +1163,14 @@ function floorFromMoves(n) {
 /** Floor price history for a collection. */
 export function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
-    if (!n.cid) return [];
+    /* DeFiLlama's collection ids and Magic Eden's symbols are different id
+       spaces, and asking one for the other's key does not fail loudly — it
+       either returns nothing or, where the strings happen to collide, returns
+       somebody else's history. Worse, DeFiLlama's series is in dollars while a
+       Magic Eden row prices in SOL, so a wrong answer arrived wearing the right
+       row's unit: a 120 SOL floor under a 90,000 SOL headline.
+       A chart source has to match the row's source. */
+    if (!n.cid || n.market === 'Magic Eden') return [];
     const j = await get(`${NFT}/chart/${encodeURIComponent(n.cid)}`, { tries: 1, timeout: 20000 })
       .catch(() => null);
     // seen as a bare array, as {data:[...]}, and as rows keyed a few ways

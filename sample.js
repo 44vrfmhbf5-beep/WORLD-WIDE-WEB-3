@@ -156,7 +156,8 @@ window.__ATLAS_SAMPLE__ = {
     return rows.filter(([n, sym]) => !s || n.toLowerCase().includes(s) || sym.toLowerCase().includes(s))
       .map(([name, sym, chainId, dexId, price, chg, liq, vol], i) => ({
         chainId, dexId, pairAddress: 'pair' + sym, url: '',
-        baseToken: { address: 'addr' + sym, name, symbol: sym }, quoteToken: { symbol: 'SOL' },
+        baseToken: { address: 'addr' + sym, name, symbol: sym },
+        quoteToken: { symbol: i % 4 === 3 ? 'SOL' : 'USDC' },
         priceUsd: String(price), priceChange: { h24: chg }, liquidity: { usd: liq },
         volume: { h24: vol }, fdv: liq * 14 }));
   },
@@ -202,7 +203,7 @@ window.__ATLAS_SAMPLE__ = {
   gtSearch(q) {
     const s = q.toLowerCase();
     return this.pairs(s).slice(0, 3).map((p, i) => ({ id: p.chainId + '_gt' + i, type: 'pool',
-      attributes: { name: p.baseToken.symbol + ' / SOL', address: 'gt' + p.baseToken.symbol,
+      attributes: { name: p.baseToken.symbol + ' / USDC', address: 'gt' + p.baseToken.symbol,
         base_token_price_usd: p.priceUsd, price_change_percentage: { h24: String(p.priceChange.h24) },
         reserve_in_usd: String(p.liquidity.usd * 0.9), volume_usd: { h24: String(p.volume.h24) },
         fdv_usd: String(p.fdv) } }));
@@ -211,7 +212,7 @@ window.__ATLAS_SAMPLE__ = {
     ['BRETT','base',0.084,-3.1,1.1e7],['PEPE','ethereum',0.0000091,6.4,3.2e7],
     ['POPCAT','solana',0.62,-8.4,1.4e7],['MOG','ethereum',0.0000014,4.2,9.8e6]]
     .map(([sym, net, price, chg, liq], i) => ({ id: net + '_pool' + i, type: 'pool',
-      attributes: { name: sym + ' / SOL', address: 'taddr' + sym, base_token_price_usd: String(price),
+      attributes: { name: sym + (i % 4 === 3 ? ' / SOL' : ' / USDC'), address: 'taddr' + sym, base_token_price_usd: String(price),
         price_change_percentage: { h24: String(chg) }, reserve_in_usd: String(liq),
         volume_usd: { h24: String(liq * 3) }, fdv_usd: String(liq * 12) } })),
   bridges: [['Across',4.2e8],['Stargate',3.1e8],['Wormhole',2.4e8],['deBridge',1.6e8],['Synapse',9.1e7],

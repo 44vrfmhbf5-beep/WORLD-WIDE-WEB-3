@@ -210,6 +210,30 @@ first to answer wins. Charts try CoinGecko, then Binance klines, then the 7-day
 sparkline, and finally draw a flat line at the current value labelled as having
 no history — a chart never renders as an empty box.
 
+### Inside a collection
+
+A collection's floor is one number about hundreds of things, and it was the only
+thing a collection sheet had. It now lists what is **actually for sale** — the
+item, its price, its traits — because that is the question anyone opening one is
+asking.
+
+Magic Eden answers it without a key, so Solana collections list their real
+listings. OpenSea's item endpoint needs one, so EVM collections list theirs only
+where a key is configured, and say so plainly where it is not.
+
+Fixing that surfaced a chart bug of the worst kind. `loadNftChart` was asking
+DeFiLlama for a **Magic Eden symbol** — different id spaces, and the mismatch
+does not fail loudly. It either returns nothing or, where the strings collide,
+returns somebody else's history; and DeFiLlama's series is in dollars while a
+Magic Eden row prices in SOL, so a wrong answer arrived wearing the right row's
+unit: a 120 SOL floor under a **90,000 SOL** headline. A chart source has to
+match the row's source.
+
+`tools/audit-charts.mjs` now opens every chart at every range and checks the
+things a chart gets wrong without throwing — a headline that disagrees with its
+row, a series in one unit under a label in another, two axis ends printing the
+same value, a NaN in the path.
+
 ### Tokenized stocks
 
 Equities issued onchain — Backed's xStocks, Ondo, Dinari — as their own kind
@@ -217,20 +241,51 @@ with their own switch. They price like an asset and reuse that normaliser, but
 they are not crypto, so they get their own category, their own columns, and a
 row that says what it tracks: `TSLAx · tracks TSLA`.
 
-Two stock-specific CoinGecko categories are merged and deduped
-(`tokenized-stock`, `xstocks-ecosystem`). If one slug drifts the other still
-answers. Neither is the wider RWA bucket — that holds treasuries and gold,
-which are not stocks, and folding them in would mislabel them.
+Every issuer names its tokens differently, and only one convention was
+recognised, so only one issuer's tokens appeared:
 
-The underlying ticker is derived conservatively: strip a trailing `x`, and only
-when what remains still looks like a ticker and the name says it is tokenized.
-Guessing harder than that invents provenance, so anything else shows plain.
+| Issuer | Looks like |
+| --- | --- |
+| Backed / Kraken | `TSLAx` — a trailing x |
+| Dinari | `dTSLA` or `TSLA.d` |
+| Robinhood, Coinbase, Swarm, Securitize | the plain ticker, named in the title |
 
-The **Stocks** switch shows equities only, from wherever you are, and pressing
-it again puts you back. That view is one the rail already has, so the switch
-holds no state of its own — it reports whether that category is on screen, the
-rail highlight follows it, and leaving by the rail turns it off. Being a view
-rather than a flag, it is already in the URL as `?tab=stocks`.
+Seven CoinGecko category slugs are merged and deduped; a slug that does not
+exist returns nothing and costs nothing. **Which issuer** is now on the row, in
+the sheet and in the About line, because a share tokenized by Robinhood and one
+tokenized by Backed are different instruments with different redemption, and
+calling both "tokenized" hides the only thing that separates them.
+
+Casting wider for issuers also catches what those issuers tokenize that is *not*
+a share. Ondo's name matches on every one of its products, and OUSG is
+short-term treasuries — a fund, redeemed differently, and not a stock however it
+is wrapped. Anything naming a treasury, bill, bond, gold, fund or note is
+dropped, and a token whose name gives no equity signal at all never enters.
+
+### Asking in a sentence
+
+"cat meme coin on base up 50% or more in the past 24 hours" names four things
+Atlas already has a control for: a category, a network, a threshold and a word.
+Reading the sentence means **setting those controls**, visibly — the chips above
+the results say what was understood, and *Undo* puts everything back. The answer
+is never a hidden ranking.
+
+A memecoin is a DEX pair, not a listed asset, and that one mapping is the
+difference between an empty result and the right one.
+
+The parser is local, needs no key and always runs first. An **OpenAI-compatible
+endpoint** — which is what every open-source runner speaks: Ollama, llama.cpp,
+LM Studio, vLLM — can be pointed at in `config.js`, runs after it, and may
+disagree. Anything it returns that does not map onto a control that exists is
+dropped. A search box that stops working when a third party is down is not a
+search box.
+
+**A short query is a name, not a sentence.** `bitcoin` is a thing to find, not a
+request for the Bitcoin network with nothing to search for; `usd coin` is a
+stablecoin, not a request for the Assets tab. So a reading only applies when the
+sentence says something a search box cannot — a threshold, a network *with*
+something to filter, or a category word that means exactly one thing. A bare
+"coin" or "token" is what things are called.
 
 ### One filter
 
@@ -241,13 +296,38 @@ else. They share their tells, so they share a control.
 Each kind says what trading means for it, as one more field on the same `KIND`
 descriptor:
 
+Every one of the twelve kinds now says what junk means for it. Six of them —
+protocols, stablecoins, bridges, funding rounds, exploits and networks — had no
+rule at all, so nothing in them could be junk.
+
+Four more had their rule pre-empted by an **ingest floor**, which quietly made
+the toggle a lie for those kinds: the rows were dropped before anything could
+decide to show them, so turning the filter off revealed nothing. Ingest now
+keeps only what protects the payload; the visible boundary is the rule's, and
+the toggle governs it.
+
 | Kind | Kept when |
 | --- | --- |
-| Asset | it has 24h volume |
+| Asset | it has 24h volume, a price, and at least $1M of market cap |
 | Lending market | at least $1M supplied |
 | Yield farm | at least $1M TVL, an APY above 0 but not above 1000%, not flagged an outlier by the source, and not paying more than 5× its own 30-day mean |
 | NFT collection | it has volume or a floor |
-| DEX pair | at least $1k of 24h volume and $5k of liquidity |
+| DEX pair | at least $1k of 24h volume, $5k of liquidity, **and a quote in something pegged to a dollar** |
+| Protocol | $1M of TVL, or it earns volume or fees |
+| Stablecoin | $1M in circulation, and still within a third of its peg |
+| Network | it has TVL, or a protocol indexed on it |
+| Funding round, exploit | an amount and a date |
+
+**A price is only a price if the other side holds still.** `CAT/SOL` quotes a
+memecoin in a memecoin: the number moves when either leg moves, and two such
+pairs cannot be compared to each other at all. Only pairs quoted in a stablecoin
+or a fiat currency are kept, so the price column means one thing. The peg list is
+Atlas's own stablecoin index rather than a hand-kept constant — a new stablecoin
+is recognised the day it is indexed — plus the fiat codes and the wrapped forms
+of the same dollars, which no index returns.
+
+This cuts hard: most long-tail liquidity is quoted in the chain's own token.
+Turning the filter off shows all of it.
 
 Two more rules apply only to the DEX long tail, which is where the fakes are.
 A pair wearing a **listed ticker** it cannot back — under $250k of liquidity
@@ -578,11 +658,12 @@ both where the record is read and where the link is built.
 | `app.js` | Search index, renderers, detail sheets, keyboard nav, URL state |
 | `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
 | `config.js` | Every credential, empty by default. Publishable ids only |
+| `nl.js` | Reads a question into the controls Atlas already has |
 | `wallet.js` | Privy: sign in, generate, sign, fund. Loaded on demand |
 | `trade.js` | Live quotes, venue-relayed execution, hand-off links |
 | `vendor/privy.mjs` | Privy JS SDK, pinned and bundled. Apache-2.0 |
 | `test/` | Fixture server + end-to-end suite |
-| `tools/` | Four audits that print what renders, so it can be looked at |
+| `tools/` | Five audits that print what renders, so it can be looked at |
 
 Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
 still nothing to install or build. It gives typo tolerance — `kamnio` finds
@@ -637,8 +718,10 @@ renders, because the bugs that survive longest are the ones nothing asserts.
 stats and About line. `audit-filters.mjs` turns every chip on in turn and
 reports how much it leaves, which is how five filters that could only ever match
 everything were found. `audit-artifact.mjs` serves the built artifact with every
-host blocked. `audit-images.mjs` counts, per category, how many rows carry the
-logo their source sent and how many table cells are an em dash — which is how
+host blocked. `audit-charts.mjs` opens every chart at every range and holds each
+headline to its row and each series to its unit. `audit-images.mjs` counts, per
+category, how many rows carry the logo their source sent and how many table
+cells are an em dash — which is how
 four kinds discarding a logo, and a whole column of zeroes printed as missing
 data, were found. What each one surfaced is now an assertion in the suites above —
 including the one that holds every sheet's headline to the row it came from,
