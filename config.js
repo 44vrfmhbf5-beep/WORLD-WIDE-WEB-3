@@ -15,13 +15,42 @@
    Every feature checks its own key and falls back to the link it used before,
    so a half-filled file degrades one feature at a time rather than breaking. */
 
+/* Obfuscation, not encryption — see the note on privyAppId below. */
+const CLOAK = 'atlas-privy-v1';
+const reveal = b64 => {
+  try {
+    const raw = atob(b64);
+    let out = '';
+    for (let i = 0; i < raw.length; i++)
+      out += String.fromCharCode(raw.charCodeAt(i) ^ CLOAK.charCodeAt(i % CLOAK.length));
+    return out;
+  } catch { return ''; }
+};
+
 export const config = {
   /* Privy — wallet generation, login, and signing.
-     https://dashboard.privy.io → App settings → App ID (looks like clxxxx…).
-     Add your domain under "Allowed origins" or the embedded wallet iframe is
-     refused. Everything else in this file is optional; without this one there
-     is no wallet and the hand-off links are all that is offered. */
-  privyAppId: '',
+     https://dashboard.privy.io → App settings → App ID.
+
+     This one is stored obfuscated rather than as plain text. Be clear about
+     what that is and is not:
+
+     It is NOT encryption. Anything this page can decode, a reader can decode —
+     the key is three lines below, because the browser needs it. What it buys is
+     that the id is not a greppable string in a public repository, so the
+     automated scrapers that crawl GitHub for credentials do not find it. That
+     is worth having and it is the whole of it.
+
+     It could not be a secret in any case. Privy puts the app id in the URL of
+     the wallet iframe, so it is visible in the network tab of every person who
+     ever clicks Connect. **The thing that actually protects it is the allowed-
+     origins list in the Privy dashboard**: an app id used from a domain you have
+     not listed does not work, no matter who has it. Set that list to your
+     domains and the id being public costs you nothing.
+
+     To keep it out of the repository altogether, leave `privyAppId` empty and
+     set `window.ATLAS_CONFIG = { privyAppId: '…' }` before app.js loads — from
+     a deploy step, a server template, or a file you do not commit. */
+  privyAppId: reveal('AhkYBhdEBhAFRkgeGgECGF0HGhwVGQdPHQ=='),
 
   /* Which chains the embedded wallet may transact on. Ethereum and Base by
      default; the Solana wallet is created alongside and is not listed here. */
@@ -69,6 +98,11 @@ export const config = {
      real. */
   solanaRpc: 'https://api.mainnet-beta.solana.com',
 };
+
+/* A deploy step, a server template or an uncommitted file can supply any of
+   this without it ever entering the repository. Whatever is set here wins. */
+if (typeof window !== 'undefined' && window.ATLAS_CONFIG)
+  Object.assign(config, window.ATLAS_CONFIG);
 
 /** True when the wallet layer has enough to start at all. */
 export const walletReady = () => !!config.privyAppId;

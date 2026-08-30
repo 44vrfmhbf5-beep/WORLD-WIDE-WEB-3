@@ -841,6 +841,53 @@ console.log('\n# a sentence is read into the controls, and can be taken back');
   await p.click('[data-tab=all]'); await p.waitForTimeout(600);
 }
 
+console.log('\n# one index failing is not the feature being down');
+{
+  /* Two DEX indexes are queried precisely so that one can fail. GeckoTerminal
+     allows thirty calls a minute and versions its API through the Accept
+     header; both are ordinary reasons for it to refuse, and neither means DEX
+     search is unavailable while the other index is answering. */
+  ok(seen.some(u => /geckoterminal/.test(u)), 'GeckoTerminal is queried');
+  const hdr = await p.evaluate(() => window.__gtAccept || null);
+
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  for (const [g, fn] of routes) await ctx.route(g, fn);
+  await ctx.route('https://api.geckoterminal.com/**', r => r.abort('failed'));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+  await q.fill('#q', 'cashcat'); await q.waitForTimeout(2200);
+  ok(await q.locator('.row[data-id="d:PAIR1"]').count() === 1,
+    'the surviving index still returns results');
+  ok(await q.locator('.warn').count() === 0,
+    'and no banner claims the feature is unavailable');
+
+  // when nothing answers, it does say so, and offers a way to try again
+  await ctx.route('https://api.dexscreener.com/**', r => r.abort('failed'));
+  await q.fill('#q', ''); await q.waitForTimeout(500);
+  await q.fill('#q', 'obscuretoken'); await q.waitForTimeout(2600);
+  const warn = await q.locator('.warn').textContent().catch(() => '');
+  ok(/No DEX index answered/.test(warn), `with both down it says so (${warn.trim().slice(0, 46)})`);
+  ok(await q.locator('.warn [data-retry]').count() === 1, 'and offers to retry');
+  await ctx.close();
+}
+
+console.log('\n# a category with no network is not filtered by one');
+{
+  /* CoinGecko's markets call returns no platform for a tokenized equity, so
+     Atlas does not know which chain one is issued on. Filtering by chain
+     anyway emptied the whole category — the chip appeared to break the tab. */
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(1000);
+  const all = await p.locator('#results .row').count();
+  await p.click('[data-chain=eth]'); await p.waitForTimeout(1400);
+  ok(await p.locator('#results .row').count() === all,
+    `a network chip leaves equities alone rather than emptying them (${all})`);
+  ok(/not network-specific/.test(await p.locator('#meta').textContent()),
+    'and the results line says why');
+  await p.click('[data-chain=""]'); await p.waitForTimeout(900);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
+}
+
 console.log('\n# a price is only a price if the other side holds still');
 {
   const ids = async q => { await p.fill('#q', q); await p.waitForTimeout(1600);

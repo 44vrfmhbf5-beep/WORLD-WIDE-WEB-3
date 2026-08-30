@@ -127,6 +127,28 @@ failed module fetch as "could not reach Privy" sent people to check an app id
 that was never the problem — a module that will not load and a host that will
 not answer are different failures wearing the same browser wording.
 
+### The app id, and what "hidden" can honestly mean
+
+The Privy app id is stored obfuscated rather than as plain text, and it is worth
+being exact about what that buys.
+
+**It is not encryption.** Anything this page can decode, a reader can decode —
+the key is three lines above it in `config.js`, because the browser needs it.
+What it buys is that the id is not a greppable string in a public repository, so
+the automated scrapers that crawl GitHub for credentials do not find it. That is
+real and it is the whole of it.
+
+**It could not be a secret in any case.** Privy puts the app id in the URL of the
+wallet iframe, so it is in the network tab of every person who ever clicks
+Connect. *The thing that actually protects it is the allowed-origins list in the
+Privy dashboard* — an app id used from a domain you have not listed does not
+work, no matter who holds it. Set that list to your domains and the id being
+public costs you nothing.
+
+**To keep it out of the repository entirely**, leave `privyAppId` empty and set
+`window.ATLAS_CONFIG = { privyAppId: '…' }` before `app.js` loads, from a deploy
+step or a file you do not commit. Whatever is set there wins.
+
 ### The keys are not in this page
 
 Privy's embedded wallet keeps its key material in an iframe served from Privy's
@@ -218,6 +240,20 @@ responses were being read for a quarter of what they carry:
 
 No new requests, no new hosts.
 
+### One index failing is not the feature being down
+
+Two DEX indexes are queried precisely so that one of them can fail — and then
+`DEX search unavailable — GeckoTerminal: could not reach…` was being shown while
+the other index was answering perfectly well, describing a situation that was
+not happening.
+
+GeckoTerminal versions its public API through the `Accept` header and is
+entitled to refuse a request that does not name a version; it also allows thirty
+calls a minute, and Atlas queries it on trending, on every chain switch and on
+search. Both are ordinary reasons for one index to say no. The header is now
+sent, and the banner only appears when **nothing** answered — with a Retry on
+it, since by then there is something to retry.
+
 ### No single source can empty the app
 
 CoinGecko refuses some browser origins, which used to take the whole asset layer
@@ -303,6 +339,30 @@ sentence says something a search box cannot — a threshold, a network *with*
 something to filter, or a category word that means exactly one thing. A bare
 "coin" or "token" is what things are called.
 
+### Every control against every category
+
+The filters were built one at a time, each correct on the tab it was written
+for. `tools/audit-controls.mjs` asks whether they *compose* — it walks all
+fourteen categories against the junk toggle, the network chip, sorting, facets,
+paging, density and view, and reports the combinations that do nothing or do the
+wrong thing. Two real ones came out:
+
+- **A network chip emptied Tokenized stocks.** CoinGecko's markets call returns
+  no platform for an equity, so Atlas does not know which chain one is issued
+  on. Filtering by chain anyway left the category blank, which reads as a broken
+  tab. A kind that carries no network is now exempt from the chip, and the
+  results line says `not network-specific` rather than showing nothing.
+- **Density and view did nothing on an empty category.** Both classes were set
+  after the empty-state returned, so toggling them on a category with no rows
+  had no effect until you left it.
+
+The audit also caught itself twice, which is the more useful lesson: it first
+counted the rows *on screen*, which is one page of a category and says "40"
+either way, hiding every filter that narrowed 1,224 to 300; and it tested
+sorting by clicking the column a list was already sorted by, which is a no-op by
+design. It now reads what matched, and compares the two sort directions against
+each other.
+
 ### One filter
 
 A single toggle, on by default, for the two things that make a large onchain
@@ -312,7 +372,12 @@ else. They share their tells, so they share a control.
 Each kind says what trading means for it, as one more field on the same `KIND`
 descriptor:
 
-Every one of the twelve kinds now says what junk means for it. Six of them —
+Every one of the twelve kinds now says what junk means for it, and the fixture
+carries a specimen that violates each rule — a rule with nothing to catch cannot
+be seen working or seen breaking. Before that, the toggle demonstrably changed
+four categories out of fourteen.
+
+ Six of them —
 protocols, stablecoins, bridges, funding rounds, exploits and networks — had no
 rule at all, so nothing in them could be junk.
 
@@ -679,7 +744,7 @@ both where the record is read and where the link is built.
 | `trade.js` | Live quotes, venue-relayed execution, hand-off links |
 | `vendor/privy.mjs` | Privy JS SDK, pinned and bundled. Apache-2.0 |
 | `test/` | Fixture server + end-to-end suite |
-| `tools/` | Five audits that print what renders, so it can be looked at |
+| `tools/` | Six audits that print what renders, so it can be looked at |
 
 Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
 still nothing to install or build. It gives typo tolerance — `kamnio` finds

@@ -623,6 +623,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .facetbar button:disabled{opacity:.38;cursor:default}
 .facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
 .facetbar button.on .fn{color:var(--accent)}
+.mnote{color:var(--faint);margin-left:6px}
+
 /* what a sentence was read as: stated, not applied silently */
 .facetbar .rd{display:inline-flex;align-items:center;flex:none;padding:6px 11px;border-radius:999px;
   background:color-mix(in srgb,var(--accent) 13%,var(--surface));border:1px solid var(--accent-dim);

@@ -179,7 +179,15 @@ const meets = i => S.where.every(([f, op, v]) => {
   return Number.isFinite(x) && OPS[op](x, v);
 });
 
-const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
+/* A row that carries no network cannot be filtered by one, and filtering it
+   anyway empties the category. Tokenized equities are the case: CoinGecko's
+   markets call returns no platform for them, so Atlas does not know which chain
+   an equity is issued on and will not pretend to. The chip leaves them alone
+   and the results line says why, rather than showing nothing and looking
+   broken. */
+const globalKind = k => !!KIND[k]?.global;
+const onChain = i => !S.chain || globalKind(i.kind)
+  || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 
 /* Where each kind's rows live. everything(), the category rail and the tab
    scopes all read this, so a new kind reaches all three at once. */
@@ -423,7 +431,7 @@ const KIND = {
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
-  stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
+  stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true, global: true,
     chart: [loadAssetChart, 1, R.price, usd],
     ok: i => i.vol > 0 && i.price > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
@@ -824,7 +832,9 @@ function render() {
     : S.warn && !S.err
     ? `<div class="warn">${esc(S.warn)} <button data-retry>Retry</button></div>`
     : dexErr
-    ? `<div class="warn">DEX search unavailable — ${esc(dexErr.join(' · '))}</div>` : '';
+    // only reached when every index failed; one of two being down is not news
+    ? `<div class="warn">No DEX index answered — ${esc(dexErr.join(' · '))}
+        <button data-retry>Retry</button></div>` : '';
 
   if (S.loading && !S.assets.length && !S.pools.length) {
     el.meta.textContent = 'Loading live markets…';
@@ -840,6 +850,10 @@ function render() {
   const list = S.list = withRemote(compute());
   mode = tableKind(list) || '';
   paintStats(); paintCounts(); paintFacets();
+  // set on every path, including the empty ones below, or toggling density on a
+  // category with no rows does nothing until you leave it
+  el.res.classList.toggle('table', !!mode);
+  el.res.classList.toggle('compact', S.dense);
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   const metaText = !list.length ? '' : S.q
@@ -850,6 +864,8 @@ function render() {
     : `${matched > shown ? `${shown} of ${count(matched)}` : 'Top of'}<span class="mnet"> ${
         matched > shown ? 'in ' : ''}${esc(where)}</span> · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ browse · ↵ open · [ ] category</span>`;
   el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
+  if (S.chain && globalKind(TAB_KIND[S.tab]))
+    el.meta.innerHTML += `<span class="mnote">· not network-specific</span>`;
   if (hidden && S.safe && list.length)
     el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
@@ -877,8 +893,6 @@ function render() {
     return;
   }
   paintSort();
-  el.res.classList.toggle('table', !!mode);
-  el.res.classList.toggle('compact', S.dense);
   const frag = document.createDocumentFragment();
   if (mode) {
     const h = document.createElement('template');

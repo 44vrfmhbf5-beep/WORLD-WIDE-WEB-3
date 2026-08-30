@@ -30,6 +30,11 @@ const BINANCE = 'https://api.binance.com/api/v3';
 const NFT = 'https://nft.llama.fi';
 const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
+/* GeckoTerminal versions its public API through the Accept header and is
+   entitled to refuse a request that does not name a version. Sending it costs
+   nothing and is what the docs ask for; without it the browser reports a bare
+   network failure, which is indistinguishable from the host being down. */
+const GT_ACCEPT = { accept: 'application/json;version=20230302' };
 // verification and coverage, all keyless and CORS-open like the rest
 const UNI = 'https://tokens.uniswap.org';
 const JUP = 'https://lite-api.jup.ag';
@@ -460,7 +465,7 @@ export function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1 })
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
       .catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
@@ -562,7 +567,7 @@ async function binance(sym, days) {
 async function poolCandles(net, addr, days) {
   const [tf, limit] = OHLCV[days] || OHLCV[7];
   const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(addr)}/ohlcv/${tf}?limit=${limit}`,
-    { tries: 1, timeout: 12000 });
+    { tries: 1, timeout: 12000, headers: GT_ACCEPT });
   const rows = (j?.data?.attributes?.ohlcv_list || []).slice().reverse();
   return candles(rows, 2, 3, 4, 5);
 }
@@ -572,7 +577,7 @@ async function poolCandles(net, addr, days) {
    deepest one and chart that. */
 async function poolChartFor(sym, days) {
   const j = await get(`${GT}/search/pools?query=${encodeURIComponent(sym)}&page=1`,
-    { tries: 1, timeout: 12000 });
+    { tries: 1, timeout: 12000, headers: GT_ACCEPT });
   const best = (j?.data || [])
     .map(row => ({ net: String(row.id || '').split('_')[0],
       addr: row.attributes?.address, liq: Number(row.attributes?.reserve_in_usd) || 0 }))
@@ -884,7 +889,7 @@ export function loadHacks() {
   return cache('hacks', TTL, async () => {
     const rows = await get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null);
     return (Array.isArray(rows) ? rows : [])
-      .filter(h => num(h.amount) > 0 && h.name)
+      .filter(h => h.name)
       .map(h => {
         const list = h.chains || (h.chain ? [h.chain] : []);
         const chains = list.map(c => BY_LLAMA[c]).filter(Boolean);
@@ -1004,7 +1009,7 @@ export function searchPairs(q) {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
       get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
-        { tries: 1, timeout: 12000 }),
+        { tries: 1, timeout: 12000, headers: GT_ACCEPT }),
     ]);
     const errors = [];
     let rows = [];
@@ -1015,14 +1020,21 @@ export function searchPairs(q) {
       rows.push((gt.value?.data || []).map(r => gtPool(r, imgs)));
     }
     else errors.push(`GeckoTerminal: ${gt.reason?.message || 'unreachable'}`);
-    return { rows: mergePairs(rows), errors };
+    /* Two indexes are queried precisely so that one of them can fail. Reporting
+       "DEX search unavailable" while the other index is answering describes a
+       situation that is not happening, and a rate limit on one host — which is
+       ordinary, they allow thirty calls a minute — should not raise an alarm
+       across the whole feature. The failure is only worth saying out loud when
+       nothing answered. */
+    const merged = mergePairs(rows);
+    return { rows: merged, errors: merged.length ? [] : errors, partial: errors };
   });
 }
 
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 export function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1 })
+    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
       .catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);

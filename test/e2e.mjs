@@ -201,16 +201,51 @@ console.log('\n# a wallet, and the promise that nobody pays for one unasked');
     `searching and opening a sheet never fetches the SDK (${fetched.length} wallet-ish requests)`);
   ok(await q.locator('#connect').count() === 1, 'the way in is one control in the header');
 
-  // unconfigured is the shipped state, and it says so rather than showing a
-  // form that cannot work
+  // an app id is configured, so Connect offers the sign-in it can actually do
   await q.click('#connect'); await q.waitForTimeout(2500);
-  const sheet = await q.locator('.sheet-in').textContent();
-  ok(/Not configured/.test(sheet), 'with no credentials it says so plainly');
-  ok(await q.locator('#wemail').count() === 0, 'and does not offer a dead-end form');
-  ok(fetched.some(u => /vendor\/privy/.test(u)) === false || true, 'the SDK loads only from here on');
+  ok(await q.locator('#wemail').count() === 1, 'with an app id it offers to sign in');
   await q.keyboard.press('Escape'); await q.waitForTimeout(400);
   ok(await q.locator('#results .row').count() > 0, 'and the app behind it is untouched');
   await q.close();
+}
+
+console.log('\n# the app id is not a plaintext string in the repository');
+{
+  /* It cannot be a secret — Privy puts it in the wallet iframe's URL, so every
+     user's network tab has it. What it can avoid is being greppable in a public
+     repo, which is what the scrapers crawling GitHub for credentials read. */
+  const src = fs.readFileSync(path.join(HERE, '..', 'config.js'), 'utf8');
+  const { config } = await import('../config.js');
+  ok(!!config.privyAppId, 'the app id resolves at runtime');
+  ok(!src.includes(config.privyAppId), 'and is not sitting in the file as plain text');
+  ok(/not encryption/i.test(src), 'with the file saying plainly that this is not encryption');
+
+  // and a deployment can supply it without the repository carrying it at all
+  const ctx = await b.newContext();
+  const q = await ctx.newPage();
+  await ctx.addInitScript(() => { window.ATLAS_CONFIG = { privyAppId: 'from-the-deploy-step' }; });
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  const injected = await q.evaluate(async () => (await import('./config.js')).config.privyAppId);
+  ok(injected === 'from-the-deploy-step', `a deploy step can override it (${injected})`);
+  await ctx.close();
+}
+
+console.log('\n# with no credentials at all, it says so rather than showing a dead end');
+{
+  const ctx = await b.newContext();
+  const q = await ctx.newPage();
+  await ctx.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript',
+    body: `export const config = { privyAppId: '', venues: {}, moonpay: {}, crossmint: {} };
+           export const walletReady = () => false;` }));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  await q.click('#connect'); await q.waitForTimeout(2500);
+  const sheet = await q.locator('.sheet-in').textContent();
+  ok(/Not configured/.test(sheet), 'it says so plainly');
+  ok(await q.locator('#wemail').count() === 0, 'and does not offer a form that cannot work');
+  await ctx.close();
 }
 
 console.log('\n# with an app id, the vendored SDK is real');

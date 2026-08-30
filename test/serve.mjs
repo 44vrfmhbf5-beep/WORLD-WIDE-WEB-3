@@ -16,7 +16,9 @@ const NAMES = [['bitcoin','BTC','Bitcoin'],['ethereum','ETH','Ethereum'],['solan
   ['wrapped-bitcoin','WBTC','Wrapped Bitcoin'],['avalanche-2','AVAX','Avalanche'],
   ['arbitrum','ARB','Arbitrum'],['optimism','OP','Optimism'],['aerodrome-finance','AERO','Aerodrome'],
   // hostile name: onchain strings are attacker-controlled, the UI must escape them
-  ['evil-token','<img src=x onerror="window.__XSS=1">','"><script>window.__XSS=1</script>'],...EXTRA];
+  ['evil-token','<img src=x onerror="window.__XSS=1">','"><script>window.__XSS=1</script>'],
+  // nothing has traded it and it is worth almost nothing: junk, by the rule
+  ['ghostcoin','GHOST','Ghostcoin'],...EXTRA];
 const PRICES = { BTC:96240, ETH:3412.8, SOL:186.42, USDT:1.0001, USDC:0.9999, BNB:712.3, STETH:3402.1,
   JTO:2.61, JUP:0.94, AAVE:321.4, LINK:22.14, SUI:3.86, APT:9.34, HYPE:34.8, WBTC:96180,
   AVAX:41.2, ARB:0.79, OP:1.64, AERO:1.12 };
@@ -33,7 +35,8 @@ const BY_ID = Object.fromEntries(NAMES.map(([id,sym])=>[id,PRICES[sym]??1.23]));
 const markets = (cat) => NAMES.map(([id,sym,name],i)=>({
   id, symbol:sym.toLowerCase(), name, image:`https://assets.coingecko.com/coins/images/${i}/large/x.png`,
   current_price:PRICES[sym]??1.23, market_cap:(2e12)/((i+1)**2), market_cap_rank:i+1,
-  total_volume:(4e10)/(i+1)*(1+(i%9)*.9), price_change_percentage_24h:((i%7)-3)*1.4,
+  total_volume: sym==='GHOST' ? 0 : (4e10)/(i+1)*(1+(i%9)*.9),
+  price_change_percentage_24h:((i%7)-3)*1.4,
   // the request already asks for these windows; a fixture that omits them lets
   // a dropped field pass as an em dash
   price_change_percentage_7d_in_currency:((i%9)-4)*2.6,
@@ -58,11 +61,14 @@ const EQ=[['tesla-xstock','TSLAX','Tesla xStock',412.6,8.4e8],['nvidia-xstock','
   ['swarm-msft','MSFT','Swarm Microsoft Stock Token',507.4,3.1e7],
   // in the category and not an equity: the loader must drop both
   ['ondo-treasury','OUSG','Ondo Short-Term US Treasuries',108.4,6.2e8],
-  ['paxos-gold','PAXG','Pax Gold',2640.5,7.1e8]];
+  ['paxos-gold','PAXG','Pax Gold',2640.5,7.1e8],
+  // an equity nobody trades any more: junk by the rule, not by the category
+  ['delisted-xstock','DEADX','Delisted xStock',0.4,2e6]];
 const STOCKS=(cat)=>EQ.map(([id,sym,name,price,mcap],i)=>({
   id, symbol:sym.toLowerCase(), name, image:'https://img.invalid/eq/'+id+'.png',
   current_price:price, market_cap:mcap,
-  market_cap_rank:i+1, total_volume:mcap/40, price_change_percentage_24h:((i%5)-2)*1.3,
+  market_cap_rank:i+1, total_volume: sym==='DEADX' ? 0 : mcap/40,
+  price_change_percentage_24h:((i%5)-2)*1.3,
   price_change_percentage_7d_in_currency:((i%7)-3)*2.1,
   ath:price*1.3, ath_change_percentage:-((i%6)*6+3), circulating_supply:mcap/price,
   sparkline_in_7d:{price:walk(id,168,price)},
@@ -74,7 +80,9 @@ const PROJECTS=['aave-v3','kamino-lend','morpho-blue','compound-v3','venus-core-
 const CHAINS=['Ethereum','Solana','Base','Arbitrum','BSC','Sui','Optimism','Avalanche','Polygon','Aptos'];
 const SYMS=['USDC','ETH','SOL','WBTC','USDT','SUI','STETH','AAVE','ARB','HYPE'];
 const pools=[]; const lend=[];
-for(let i=0;i<1300;i++){
+// under the 1,200 the loader keeps, so the sub-floor specimen below is not
+// sorted off the end before the rule ever sees it
+for(let i=0;i<1120;i++){
   const id=`pool-${i}`, sym=SYMS[i%SYMS.length];
   const supply=(1e10)/(i+3), borrow=supply*(.2+((i*7)%75)/100);
   const supplyOnly = i%7===3;      // plenty of real markets take deposits only
@@ -90,11 +98,33 @@ for(let i=0;i<1300;i++){
     totalSupplyUsd:supply, totalBorrowUsd:supplyOnly?0:borrow,
     ltv:.5+((i%40)/100), borrowable:!supplyOnly});
 }
+/* Farms were whatever spilled past the 1,200 the lending loader keeps — so the
+   Yield category existed only as a side effect of a slice, and emptied the
+   moment the pool count changed. A farm is a pool with no borrow side; make
+   them that, explicitly. */
+for(let i=0;i<110;i++){
+  const sym=['USDC-USDT','ETH-USDC','SOL-USDC','WBTC-ETH'][i%4];
+  const apy=2+((i*17)%1400)/100;
+  pools.push({pool:`farm-${i}`, chain:CHAINS[i%CHAINS.length],
+    project:PROJECTS[(i+3)%PROJECTS.length], symbol:sym, tvlUsd:(3e9)/((i+2)**1.6),
+    apy, apyBase:apy*0.7, apyReward:i%3?0:apy*0.3,
+    apyMean30d:apy*(.85+((i%7)/20)), apyPct30D:((i%9)-4)*1.8, sigma:((i%5)+1)/10,
+    predictions:{predictedClass:['Stable','Up','Down'][i%3], predictedProbability:55+(i%40)},
+    exposure:i%3?'single':'multi', ilRisk:i%3?'no':'yes',
+    stablecoin:sym.startsWith('USDC-USDT'), poolMeta:null});
+}
+// one farm under the rule's floor, so the toggle governs this category too
+pools.push({pool:'dustfarm',chain:'Ethereum',project:'spark',symbol:'DUST',
+  tvlUsd:4e5,apy:9,apyBase:9});
+
 // one pool that is too small to index, one on an unsupported chain
 pools.push({pool:'tiny',chain:'Ethereum',project:'aave-v3',symbol:'USDC',tvlUsd:1e3,apy:1,apyBase:1});
 lend.push({pool:'tiny',totalSupplyUsd:1e4,totalBorrowUsd:1e3,ltv:.5});
 pools.push({pool:'exotic',chain:'Fantom',project:'x',symbol:'FTM',tvlUsd:1e9,apy:5,apyBase:5});
 lend.push({pool:'exotic',totalSupplyUsd:1e9,totalBorrowUsd:1e8,ltv:.5});
+// above the ingest floor and below the rule's: the toggle is what decides it
+pools.push({pool:'thin',chain:'Ethereum',project:'aave-v3',symbol:'THIN',tvlUsd:8e5,apy:2,apyBase:2});
+lend.push({pool:'thin',apyBaseBorrow:3,totalSupplyUsd:8e5,totalBorrowUsd:2e5,ltv:.5,borrowable:true});
 // a rate eight times its own month, and one the source itself flags — both look
 // perfectly ordinary in every column the table shows
 pools.push({pool:'spikefarm',chain:'Ethereum',project:'spike-fi',symbol:'SPIKE',tvlUsd:4e6,
@@ -147,7 +177,10 @@ http.createServer(async (req,res)=>{
     chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
     url:'https://example.invalid/'+i,
-    logo: i%9===4 ? null : 'https://icons.invalid/protocols/'+i+'.png' })));
+    logo: i%9===4 ? null : 'https://icons.invalid/protocols/'+i+'.png' }))
+    // listed and doing nothing: no value locked, no volume, no fees
+    .concat([{id:'999',name:'Dormant Labs',slug:'dormant',category:'Yield',
+      chains:['Ethereum'],tvl:4e5,change_1d:0,change_7d:0,url:'https://example.invalid/d',logo:null}]));
   const overview=(f)=>({protocols:Array.from({length:120},(_,i)=>({
     name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, ...f(i)})).filter((_,i)=>i%3!==2)});
   if(p==='/dl/overview/dexs') return json(overview(i=>({total24h:(1.2e9)/(i+1)})));
@@ -165,16 +198,20 @@ http.createServer(async (req,res)=>{
     {id:'3',symbol:'DAI',name:'Dai',circulating:{peggedUSD:5.3e9},price:0.9994,pegMechanism:'crypto-backed',chains:['Ethereum','Base']},
     {id:'4',symbol:'FRAX',name:'Frax',circulating:{peggedUSD:6.4e8},price:0.997,pegMechanism:'algorithmic',chains:['Ethereum']},
     // one that has genuinely come off its peg, which is the case the chip is for
-    {id:'5',symbol:'USDD',name:'Decentralized USD',circulating:{peggedUSD:3.1e8},price:0.948,pegMechanism:'algorithmic',chains:['Tron']}]});
+    {id:'5',symbol:'USDD',name:'Decentralized USD',circulating:{peggedUSD:3.1e8},price:0.948,pegMechanism:'algorithmic',chains:['Tron']},
+    // it still calls itself a dollar; it has not been one for a long time
+    {id:'6',symbol:'DEADUSD',name:'Collapsed Dollar',circulating:{peggedUSD:2.4e7},price:0.11,pegMechanism:'algorithmic',chains:['Ethereum']}]});
   if(p==='/dl/overview/derivatives') return json(overview(i=>({total24h:(4.2e8)/(i+1)})));
   if(p==='/dl/overview/options') return json(overview(i=>({total24h:(1.1e7)/(i+1)})));
   if(p==='/bridge/bridges') return json({bridges:Array.from({length:14},(_,i)=>({
     id:i, name:'bridge'+i, displayName:'Bridge '+i, chains:[CHAINS[i%CHAINS.length],CHAINS[(i+2)%CHAINS.length]],
     // half of them shrank yesterday, and the tail is well under $10M a day
-    lastDailyVolume:(4e8)/((i+1)**2), volumePrev2Day:(4e8)/((i+1)**2)*(i%2?1.3:0.8) }))});
+    lastDailyVolume: i===13 ? 0 : (4e8)/((i+1)**2),
+    volumePrev2Day:(4e8)/((i+1)**2)*(i%2?1.3:0.8) }))});
   if(p==='/dl/raises') return json({raises:Array.from({length:40},(_,i)=>({
     date: Math.floor(Date.now()/1000)-i*86400*24, name:'Venture Co '+i, round:['Seed','Series A','Series B'][i%3],
-    amount:(120)/(i+1), chains:[CHAINS[i%CHAINS.length]], sector:'Infrastructure',
+    // an unpriced round is a row with nothing in it
+    amount: i===39 ? 0 : (120)/(i+1), chains:[CHAINS[i%CHAINS.length]], sector:'Infrastructure',
     leadInvestors:['Paradigm'], otherInvestors:['a16z','Polychain'],
     // a third of rounds never disclose one, which is what that chip is for
     valuation: i%3===2 ? 0 : (900)/(i+1),
@@ -201,8 +238,11 @@ http.createServer(async (req,res)=>{
     collectionId:'0xcol'+i, name:['Bored Ape Yacht Club','CryptoPunks','Pudgy Penguins','Azuki','Milady',
       'Doodles','Moonbirds','Art Blocks','Clone X','Chromie Squiggle'][i%10]+(i>9?' '+i:''),
     symbol:'COL'+i, image:'https://img.invalid/'+i+'.png', chain:['Ethereum','Base','Polygon'][i%3],
-    floorPrice:(30)/(i+1), floorPriceUSD:(9e4)/(i+1), floorPricePctChange1Day:((i%7)-3)*2.4,
-    floorPricePctChange7Day:((i%5)-2)*5.1, dailyVolumeUSD:(4e6)/(i+1), totalSupply:10000-i*100 })));
+    floorPrice: i===39 ? 0 : (30)/(i+1), floorPriceUSD: i===39 ? 0 : (9e4)/(i+1),
+    floorPricePctChange1Day:((i%7)-3)*2.4,
+    // never traded and never priced: a name in a list
+    floorPricePctChange7Day:((i%5)-2)*5.1,
+    dailyVolumeUSD: i===39 ? 0 : (4e6)/(i+1), totalSupply:10000-i*100 })));
   // what is actually listed inside a collection — keyless on Magic Eden
   if(/^\/me\/collections\/[^/]+\/listings$/.test(p)){
     const sym=p.split('/')[3];
@@ -271,7 +311,8 @@ http.createServer(async (req,res)=>{
     return json(u.searchParams.get('include')==='base_token' ? {data:rows,included} : {data:rows});
   }
   if(p==='/dl/hacks') return json(Array.from({length:24},(_,i)=>({
-    date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit', amount:(6e7)/(i+1),
+    date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit',
+    amount: i===23 ? 0 : (6e7)/(i+1),
     technique:['Flash loan','Price oracle','Private key','Reentrancy'][i%4],
     chains:[CHAINS[i%CHAINS.length]], source:'https://example.invalid/hack'+i })));
   if(p.startsWith('/dl/v2/historicalChainTvl/')){
@@ -315,9 +356,9 @@ http.createServer(async (req,res)=>{
   if(p==='/llama/pools') return json({status:'success',data:pools});
   if(p==='/llama/lendBorrow') return json(lend);
   if(p.startsWith('/llama/chart/')){
-    const id=p.split('/').pop(), i=+(/pool-(\d+)/.exec(id)?.[1]??0);
-    // /pools hands out this exact APY for pool-i; the history has to land on it
-    const now=1+((i*13)%900)/100+(i%4?0:1.5);
+    const id=decodeURIComponent(p.split('/').pop());
+    const row=pools.find(x=>x.pool===id);
+    const now=row ? (row.apy ?? row.apyBase ?? 6) : 6;
     return json({data:walkTo(p,400,now).map((v,j)=>({timestamp:j,apy:v,tvlUsd:1e8}))});
   }
 

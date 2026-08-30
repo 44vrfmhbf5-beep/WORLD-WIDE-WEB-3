@@ -640,6 +640,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .facetbar button:disabled{opacity:.38;cursor:default}
 .facetbar .fn{font-size:11px;font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
 .facetbar button.on .fn{color:var(--accent)}
+.mnote{color:var(--faint);margin-left:6px}
+
 /* what a sentence was read as: stated, not applied silently */
 .facetbar .rd{display:inline-flex;align-items:center;flex:none;padding:6px 11px;border-radius:999px;
   background:color-mix(in srgb,var(--accent) 13%,var(--surface));border:1px solid var(--accent-dim);
@@ -826,6 +828,11 @@ const BINANCE = 'https://api.binance.com/api/v3';
 const NFT = 'https://nft.llama.fi';
 const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
+/* GeckoTerminal versions its public API through the Accept header and is
+   entitled to refuse a request that does not name a version. Sending it costs
+   nothing and is what the docs ask for; without it the browser reports a bare
+   network failure, which is indistinguishable from the host being down. */
+const GT_ACCEPT = { accept: 'application/json;version=20230302' };
 // verification and coverage, all keyless and CORS-open like the rest
 const UNI = 'https://tokens.uniswap.org';
 const JUP = 'https://lite-api.jup.ag';
@@ -1256,7 +1263,7 @@ function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1 })
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
       .catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
@@ -1358,7 +1365,7 @@ async function binance(sym, days) {
 async function poolCandles(net, addr, days) {
   const [tf, limit] = OHLCV[days] || OHLCV[7];
   const j = await get(`${GT}/networks/${net}/pools/${encodeURIComponent(addr)}/ohlcv/${tf}?limit=${limit}`,
-    { tries: 1, timeout: 12000 });
+    { tries: 1, timeout: 12000, headers: GT_ACCEPT });
   const rows = (j?.data?.attributes?.ohlcv_list || []).slice().reverse();
   return candles(rows, 2, 3, 4, 5);
 }
@@ -1368,7 +1375,7 @@ async function poolCandles(net, addr, days) {
    deepest one and chart that. */
 async function poolChartFor(sym, days) {
   const j = await get(`${GT}/search/pools?query=${encodeURIComponent(sym)}&page=1`,
-    { tries: 1, timeout: 12000 });
+    { tries: 1, timeout: 12000, headers: GT_ACCEPT });
   const best = (j?.data || [])
     .map(row => ({ net: String(row.id || '').split('_')[0],
       addr: row.attributes?.address, liq: Number(row.attributes?.reserve_in_usd) || 0 }))
@@ -1680,7 +1687,7 @@ function loadHacks() {
   return cache('hacks', TTL, async () => {
     const rows = await get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null);
     return (Array.isArray(rows) ? rows : [])
-      .filter(h => num(h.amount) > 0 && h.name)
+      .filter(h => h.name)
       .map(h => {
         const list = h.chains || (h.chain ? [h.chain] : []);
         const chains = list.map(c => BY_LLAMA[c]).filter(Boolean);
@@ -1800,7 +1807,7 @@ function searchPairs(q) {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
       get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
-        { tries: 1, timeout: 12000 }),
+        { tries: 1, timeout: 12000, headers: GT_ACCEPT }),
     ]);
     const errors = [];
     let rows = [];
@@ -1811,14 +1818,21 @@ function searchPairs(q) {
       rows.push((gt.value?.data || []).map(r => gtPool(r, imgs)));
     }
     else errors.push(`GeckoTerminal: ${gt.reason?.message || 'unreachable'}`);
-    return { rows: mergePairs(rows), errors };
+    /* Two indexes are queried precisely so that one of them can fail. Reporting
+       "DEX search unavailable" while the other index is answering describes a
+       situation that is not happening, and a rate limit on one host — which is
+       ordinary, they allow thirty calls a minute — should not raise an alarm
+       across the whole feature. The failure is only worth saying out loud when
+       nothing answered. */
+    const merged = mergePairs(rows);
+    return { rows: merged, errors: merged.length ? [] : errors, partial: errors };
   });
 }
 
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1 })
+    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
       .catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);
@@ -2084,13 +2098,42 @@ window.__ATLAS_MODULES__ = { config: (() => {
    Every feature checks its own key and falls back to the link it used before,
    so a half-filled file degrades one feature at a time rather than breaking. */
 
+/* Obfuscation, not encryption — see the note on privyAppId below. */
+const CLOAK = 'atlas-privy-v1';
+const reveal = b64 => {
+  try {
+    const raw = atob(b64);
+    let out = '';
+    for (let i = 0; i < raw.length; i++)
+      out += String.fromCharCode(raw.charCodeAt(i) ^ CLOAK.charCodeAt(i % CLOAK.length));
+    return out;
+  } catch { return ''; }
+};
+
 const config = {
   /* Privy — wallet generation, login, and signing.
-     https://dashboard.privy.io → App settings → App ID (looks like clxxxx…).
-     Add your domain under "Allowed origins" or the embedded wallet iframe is
-     refused. Everything else in this file is optional; without this one there
-     is no wallet and the hand-off links are all that is offered. */
-  privyAppId: '',
+     https://dashboard.privy.io → App settings → App ID.
+
+     This one is stored obfuscated rather than as plain text. Be clear about
+     what that is and is not:
+
+     It is NOT encryption. Anything this page can decode, a reader can decode —
+     the key is three lines below, because the browser needs it. What it buys is
+     that the id is not a greppable string in a public repository, so the
+     automated scrapers that crawl GitHub for credentials do not find it. That
+     is worth having and it is the whole of it.
+
+     It could not be a secret in any case. Privy puts the app id in the URL of
+     the wallet iframe, so it is visible in the network tab of every person who
+     ever clicks Connect. **The thing that actually protects it is the allowed-
+     origins list in the Privy dashboard**: an app id used from a domain you have
+     not listed does not work, no matter who has it. Set that list to your
+     domains and the id being public costs you nothing.
+
+     To keep it out of the repository altogether, leave `privyAppId` empty and
+     set `window.ATLAS_CONFIG = { privyAppId: '…' }` before app.js loads — from
+     a deploy step, a server template, or a file you do not commit. */
+  privyAppId: reveal('AhkYBhdEBhAFRkgeGgECGF0HGhwVGQdPHQ=='),
 
   /* Which chains the embedded wallet may transact on. Ethereum and Base by
      default; the Solana wallet is created alongside and is not listed here. */
@@ -2138,6 +2181,11 @@ const config = {
      real. */
   solanaRpc: 'https://api.mainnet-beta.solana.com',
 };
+
+/* A deploy step, a server template or an uncommitted file can supply any of
+   this without it ever entering the repository. Whatever is set here wins. */
+if (typeof window !== 'undefined' && window.ATLAS_CONFIG)
+  Object.assign(config, window.ATLAS_CONFIG);
 
 /** True when the wallet layer has enough to start at all. */
 const walletReady = () => !!config.privyAppId;
@@ -2501,7 +2549,15 @@ const meets = i => S.where.every(([f, op, v]) => {
   return Number.isFinite(x) && OPS[op](x, v);
 });
 
-const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
+/* A row that carries no network cannot be filtered by one, and filtering it
+   anyway empties the category. Tokenized equities are the case: CoinGecko's
+   markets call returns no platform for them, so Atlas does not know which chain
+   an equity is issued on and will not pretend to. The chip leaves them alone
+   and the results line says why, rather than showing nothing and looking
+   broken. */
+const globalKind = k => !!KIND[k]?.global;
+const onChain = i => !S.chain || globalKind(i.kind)
+  || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
 
 /* Where each kind's rows live. everything(), the category rail and the tab
    scopes all read this, so a new kind reaches all three at once. */
@@ -2745,7 +2801,7 @@ const KIND = {
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
-  stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
+  stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true, global: true,
     chart: [loadAssetChart, 1, R.price, usd],
     ok: i => i.vol > 0 && i.price > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
@@ -3146,7 +3202,9 @@ function render() {
     : S.warn && !S.err
     ? `<div class="warn">${esc(S.warn)} <button data-retry>Retry</button></div>`
     : dexErr
-    ? `<div class="warn">DEX search unavailable — ${esc(dexErr.join(' · '))}</div>` : '';
+    // only reached when every index failed; one of two being down is not news
+    ? `<div class="warn">No DEX index answered — ${esc(dexErr.join(' · '))}
+        <button data-retry>Retry</button></div>` : '';
 
   if (S.loading && !S.assets.length && !S.pools.length) {
     el.meta.textContent = 'Loading live markets…';
@@ -3162,6 +3220,10 @@ function render() {
   const list = S.list = withRemote(compute());
   mode = tableKind(list) || '';
   paintStats(); paintCounts(); paintFacets();
+  // set on every path, including the empty ones below, or toggling density on a
+  // category with no rows does nothing until you leave it
+  el.res.classList.toggle('table', !!mode);
+  el.res.classList.toggle('compact', S.dense);
   S.sel = Math.max(0, Math.min(S.sel, list.length - 1));
   const where = S.chain ? CH[S.chain].name : `${CHAINS.length} networks`;
   const metaText = !list.length ? '' : S.q
@@ -3172,6 +3234,8 @@ function render() {
     : `${matched > shown ? `${shown} of ${count(matched)}` : 'Top of'}<span class="mnet"> ${
         matched > shown ? 'in ' : ''}${esc(where)}</span> · updated ${ago(S.at)}<span class="kbd-hint"> · ↑↓ browse · ↵ open · [ ] category</span>`;
   el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
+  if (S.chain && globalKind(TAB_KIND[S.tab]))
+    el.meta.innerHTML += `<span class="mnote">· not network-specific</span>`;
   if (hidden && S.safe && list.length)
     el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
@@ -3199,8 +3263,6 @@ function render() {
     return;
   }
   paintSort();
-  el.res.classList.toggle('table', !!mode);
-  el.res.classList.toggle('compact', S.dense);
   const frag = document.createDocumentFragment();
   if (mode) {
     const h = document.createElement('template');
