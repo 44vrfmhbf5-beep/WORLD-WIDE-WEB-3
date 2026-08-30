@@ -273,6 +273,44 @@ export function loadAssets() {
   });
 }
 
+/* ---------- tokenized stocks ----------
+   Equities issued onchain — Backed's xStocks, Ondo, Dinari and the rest. They
+   price like an asset and reuse that normaliser, but they are not crypto and
+   they are not curated by the same floors, so they are their own kind behind
+   their own switch. Two stock-specific CoinGecko categories are merged; if one
+   slug drifts the other still answers, and neither pulls in the wider RWA bucket
+   of treasuries and gold, which are not stocks. */
+const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem'];
+
+/** "TSLAx" tracks TSLA. Only strip a trailing x, and only when what is left
+    still looks like a ticker — guessing harder than that invents provenance. */
+function underlying(sym, name) {
+  const m = /^([A-Z0-9]{1,5})X$/.exec(sym);
+  if (m && /x ?stock|tokenized|backed|ondo|dinari/i.test(name || '')) return m[1];
+  return /^[A-Z0-9]{1,5}$/.test(sym) && /x ?stock|tokenized/i.test(name || '') ? sym : null;
+}
+
+export function loadStocks() {
+  return cache('stocks', TTL, async () => {
+    const got = await Promise.allSettled(STOCK_CATS.map(c =>
+      get(`${CG}/coins/markets?vs_currency=usd&category=${c}&order=market_cap_desc` +
+        `&per_page=100&page=1&sparkline=true&price_change_percentage=24h`, { tries: 1 })));
+    const seen = new Set(), out = [];
+    for (const r of got) {
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+      for (const c of r.value) {
+        if (!c?.id || seen.has(c.id)) continue;
+        seen.add(c.id);
+        const a = asset(c, null);
+        out.push({ ...a, kind: 'stock', id: `t:${c.id}`,
+          under: underlying(a.sym, a.name),
+          key: `${a.sym} ${a.name} tokenized stock equity share rwa` });
+      }
+    }
+    return out.sort((x, y) => y.mcap - x.mcap);
+  });
+}
+
 /* GeckoTerminal network slugs. A chain missing here simply has no per-chain
    token list; everything else about it still works. */
 const GT_NET = { eth: 'eth', sol: 'solana', base: 'base', arb: 'arbitrum', bnb: 'bsc',
@@ -788,6 +826,7 @@ export const links = {
   // a CoinPaprika-sourced asset has no CoinGecko id to link to
   asset: a => a.cg ? `https://www.coingecko.com/en/coins/${encodeURIComponent(a.cg)}`
     : `https://www.coingecko.com/en/search?query=${encodeURIComponent(a.sym)}`,
+  stock: a => links.asset(a),
   pool: p => `https://defillama.com/yields/pool/${p.pool}`,
   protocol: r => safeUrl(r.url, `https://defillama.com/protocol/${encodeURIComponent(r.slug)}`),
   stablecoin: () => 'https://defillama.com/stablecoins',

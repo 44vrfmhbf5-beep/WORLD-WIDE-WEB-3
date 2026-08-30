@@ -386,6 +386,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .vt.sf[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--up) 45%,transparent);
   background:color-mix(in srgb,var(--up) 12%,var(--surface))}
 .vt.sf[aria-pressed=true] .i{color:var(--up)}
+/* a different accent from the junk filter: two switches, two meanings */
+.vt.st[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--accent) 50%,transparent);
+  background:color-mix(in srgb,var(--accent) 13%,var(--surface))}
+.vt.st[aria-pressed=true] .i{color:var(--accent)}
 
 /* "N hidden" in the results line, one tap to undo — never filter silently, so
    the count sits outside the part that ellipsises when the line runs short */

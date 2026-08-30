@@ -45,8 +45,10 @@ ok(await p.locator('.row:not(.sk)').count() > 10, 'rows render from live shapes'
 // phase two (protocols, networks) lands after first paint
 await p.waitForSelector('.row[data-id^="f:"]', { timeout: 25000 }).catch(() => {});
 const groups = (await p.locator('.gtitle').allTextContents());
-const want = 'Assets,Lending markets,Yield,Protocols,NFT collections,DEX pairs,Stablecoins,Bridges,Funding rounds,Exploits,Networks';
-ok(groups.join() === want, `all eleven kinds grouped, once each (${groups.length}) — got ${groups.join()}`);
+// pinned on purpose: group order comes from the KIND table, so a reorder should
+// be a deliberate edit here rather than something that slips through
+const want = 'Assets,Tokenized stocks,Lending markets,Yield,Protocols,NFT collections,DEX pairs,Stablecoins,Bridges,Funding rounds,Exploits,Networks';
+ok(groups.join() === want, `every kind grouped, once each, in table order (${groups.length}) — got ${groups.join()}`);
 ok(new Set(groups).size === groups.length, 'no group heading repeats');
 ok(/updated/.test(await p.locator('#meta').textContent()), 'freshness shown');
 ok(logoReqs > 0, 'logo URLs from the API are requested');

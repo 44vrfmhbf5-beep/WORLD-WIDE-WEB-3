@@ -82,7 +82,19 @@ R('https://api.coingecko.com/**', r => {
       prices: walk('c', 100, 3400).map((v, i) => [Date.now() - i * 36e5, v]),
       total_volumes: walk('v', 100, 2e9).map((v, i) => [Date.now() - i * 36e5, v]) }) });
   }
-  const cat = new URL(u).searchParams.get('category');
+  const cat = new URL(u).searchParams.get('category') || '';
+  if (/tokenized-stock|xstocks/.test(cat)) {
+    // the two categories overlap on purpose: the loader has to dedupe them
+    const all = [
+      { id: 'tesla-xstock', symbol: 'tslax', name: 'Tesla xStock', current_price: 412.6,
+        market_cap: 8.4e8, market_cap_rank: 1, total_volume: 2.1e7, price_change_percentage_24h: 1.4 },
+      { id: 'apple-xstock', symbol: 'aaplx', name: 'Apple xStock', current_price: 241.9,
+        market_cap: 5.2e8, market_cap_rank: 2, total_volume: 9e6, price_change_percentage_24h: -0.6 },
+      { id: 'dead-xstock', symbol: 'deadx', name: 'Defunct xStock', current_price: 1,
+        market_cap: 1e6, market_cap_rank: 9, total_volume: 0, price_change_percentage_24h: 0 }];
+    return r.fulfill({ contentType: 'application/json',
+      body: JSON.stringify(cat === 'xstocks-ecosystem' ? all : all.slice(0, 3)) });
+  }
   r.fulfill({ contentType: 'application/json', body: JSON.stringify(cat ? markets.slice(0, 2) : markets) });
 });
 R('https://yields.llama.fi/**', r => {
@@ -348,10 +360,12 @@ await p.fill('#q', ''); await p.waitForTimeout(400);
 console.log('\n# the combined layout: DefiLlama density, Aave calm');
 {
   // every kind is a destination in the rail, and says how much sits behind it
+  // >= rather than a pinned count: adding a kind should not break this, but
+  // losing a category still should
   const rail = await p.locator('#rail [data-tab]').allTextContents();
-  ok(rail.length === 13, `rail lists all eleven kinds plus All and Saved (${rail.length})`);
-  ok(/Networks/.test(rail.join(' ')) && /Exploits/.test(rail.join(' ')),
-    'kinds that were search-only now have their own category');
+  ok(rail.length >= 14, `rail lists every kind plus All and Saved (${rail.length})`);
+  for (const cat of ['Networks', 'Exploits', 'Tokenized stocks', 'Bridges', 'NFT collections'])
+    ok(rail.some(r => r.includes(cat)), `${cat} has its own category`);
   ok(await p.locator('#rail [data-tab=protocols] .ct').textContent() !== '',
     'a category carries its row count');
 
@@ -398,6 +412,34 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
   await p.fill('#q', 'aave'); await p.waitForTimeout(700);
   ok(await p.locator('.gtitle').count() > 0, 'and keeps the group heading that names each kind');
   await p.fill('#q', ''); await p.waitForTimeout(400);
+}
+
+console.log('\n# tokenized stocks are their own kind behind their own switch');
+{
+  await p.waitForSelector('.row[data-id^="t:"]', { timeout: 20000 }).catch(() => {});
+  ok(hit(/category=tokenized-stock/) && hit(/category=xstocks-ecosystem/),
+    'both stock categories are asked, so one slug drifting is survivable');
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
+  const ids = await p.locator('#results .row').evaluateAll(ns => ns.map(n => n.dataset.id));
+  ok(ids.length && ids.every(i => i.startsWith('t:')), `the tab holds only equities (${ids.length})`);
+  ok(new Set(ids).size === ids.length, 'and the overlapping categories are deduped');
+  const body = await p.locator('#results').textContent();
+  ok(/tracks TSLA\b/.test(body), `an equity says what it tracks (${body.slice(0, 40).trim()})`);
+  ok(!/Defunct/.test(body), 'and one that stopped trading is filtered like anything else');
+
+  // the switch: out of the mixed views, still in its own tab
+  await p.click('[data-tab=all]'); await p.waitForTimeout(700);
+  ok(/Tokenized stocks/.test(await p.locator('#results').textContent()), 'equities show in All by default');
+  await p.click('#stocks'); await p.waitForTimeout(900);
+  ok(!/Tokenized stocks/.test(await p.locator('#results').textContent()), 'the switch takes them out of All');
+  await p.fill('#q', 'tesla'); await p.waitForTimeout(900);
+  ok(await p.locator('.row[data-id^="t:"]').count() === 0, 'and out of search');
+  await p.fill('#q', ''); await p.waitForTimeout(500);
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
+  ok(await p.locator('.row[data-id^="t:"]').count() > 0, 'but their own tab still shows them');
+  ok(/nostocks=1/.test(p.url()), 'and the choice is in the url');
+  await p.click('#stocks'); await p.waitForTimeout(900);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
 }
 
 console.log('\n# one toggle, for things that do not trade or are not what they say');

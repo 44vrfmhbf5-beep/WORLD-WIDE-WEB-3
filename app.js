@@ -2,7 +2,7 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart,
+  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
   links, flags, clearCache } from './data.js';
 
@@ -55,11 +55,12 @@ const S = {
   q: '', tab: 'all', chain: null, sel: 0, list: [],
   assets: [], pools: [], fuse: null,
   protocols: [], chainRows: [], yields: [], stables: [], bySym: {}, bridges: [], raises: [], hacks: [],
-  pairs: [], chainTokens: [], nfts: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
+  pairs: [], chainTokens: [], nfts: [], stockRows: [], remote: { q: '', rows: [], busy: false, errors: [] }, byProto: {},
   loading: true, err: null, warn: null, at: 0,
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
+  stocks: store.get('atlas:stocks') !== '0',
   sort: null,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -93,14 +94,14 @@ let enriched = false;
 async function enrich() {
   if (enriched) return; enriched = true;
   const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
-    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs(), loadNFTs()]);
+    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs(), loadNFTs(), loadStocks()]);
   const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
   S.protocols = val(0, []);
   S.chainRows = val(1, []);
   const st = val(2, { rows: [], bySym: {} });
   S.stables = st.rows; S.bySym = st.bySym;
   S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
-  S.pairs = val(6, []); S.nfts = val(7, []);
+  S.pairs = val(6, []); S.nfts = val(7, []); S.stockRows = val(8, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
   // a lending market now carries the protocol behind it
   for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
@@ -112,7 +113,7 @@ const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chai
 /* Where each kind's rows live. everything(), the category rail and the tab
    scopes all read this, so a new kind reaches all three at once. */
 const SRC = {
-  asset: () => S.assets, pool: () => S.pools, yield: () => S.yields,
+  asset: () => S.assets, stock: () => S.stockRows, pool: () => S.pools, yield: () => S.yields,
   protocol: () => S.protocols, nft: () => S.nfts,
   pair: () => [...S.pairs, ...S.chainTokens],   // a chain's own tokens are pairs
   stablecoin: () => S.stables, bridge: () => S.bridges, raise: () => S.raises,
@@ -157,7 +158,8 @@ function rowsFor(tab) {
     return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i);
   }
   const k = TAB_KIND[tab];
-  if (!k) return everything();
+  // equities are opt-out of the mixed views; their own tab always shows them
+  if (!k) return S.stocks ? everything() : everything().filter(i => i.kind !== 'stock');
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
 const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
@@ -274,6 +276,16 @@ const KIND = {
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.mcap)} cap`,
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
+  stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
+    chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
+    cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
+      ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
+    label: i => (i.under || i.sym).slice(0, 4),
+    title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
+    meta: i => i.under ? `tracks ${i.under}` : 'tokenized',
+    tail: i => `$${compact(i.mcap)} cap`,
+    n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
+
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     ok: i => i.supplyUsd >= 1e6,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
@@ -385,7 +397,7 @@ const KINDS = Object.keys(KIND);
 const SORTABLE = new Set(KINDS.flatMap(k => (KIND[k].cols || []).map(c => c[2]).filter(Boolean)));
 /* Category rail: every kind that has rows of its own gets a destination, which
    is how DefiLlama makes a large index navigable without a search term. */
-const TAB_KIND = { assets: 'asset', lending: 'pool', yield: 'yield', protocols: 'protocol',
+const TAB_KIND = { assets: 'asset', stocks: 'stock', lending: 'pool', yield: 'yield', protocols: 'protocol',
   nfts: 'nft', dex: 'pair', stables: 'stablecoin', bridges: 'bridge', raises: 'raise',
   hacks: 'hack', networks: 'chain' };
 
@@ -1064,6 +1076,7 @@ function syncUrl(now) {
     if (S.view === 'cards') p.set('view', 'cards');
     if (S.dense) p.set('dense', '1');
     if (!S.safe) p.set('all', '1');
+    if (!S.stocks) p.set('nostocks', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -1079,6 +1092,7 @@ function fromUrl() {
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
   if (p.get('dense')) S.dense = p.get('dense') === '1';
   if (p.get('all')) S.safe = p.get('all') !== '1';
+  if (p.get('nostocks')) S.stocks = p.get('nostocks') !== '1';
   paintFilters(); paintTools();
 }
 
@@ -1114,6 +1128,7 @@ function paintTools() {
   $('#density').setAttribute('aria-pressed', S.dense);
   $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
   $('#safe').setAttribute('aria-pressed', S.safe);
+  $('#stocks').setAttribute('aria-pressed', S.stocks);
 }
 
 /* ---------- events ---------- */
@@ -1127,6 +1142,10 @@ function setSafe(on) {
   paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
 }
 $('#safe').addEventListener('click', () => setSafe(!S.safe));
+$('#stocks').addEventListener('click', () => {
+  S.stocks = !S.stocks; store.set('atlas:stocks', S.stocks ? '1' : '0');
+  paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
+});
 el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
 $('#density').addEventListener('click', () => {
   S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0');

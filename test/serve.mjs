@@ -31,6 +31,17 @@ const markets = (cat) => NAMES.map(([id,sym,name],i)=>({
   sparkline_in_7d:{price:walk(id,168,PRICES[sym]??1.23)},
 })).slice(0, cat ? 40 : 101);
 
+// tokenized equities: the ticker plus an x, issued onchain
+const EQ=[['tesla-xstock','TSLAX','Tesla xStock',412.6,8.4e8],['nvidia-xstock','NVDAX','NVIDIA xStock',182.3,6.1e8],
+  ['apple-xstock','AAPLX','Apple xStock',241.9,5.2e8],['msft-xstock','MSFTX','Microsoft xStock',508.1,4.4e8],
+  ['coinbase-xstock','COINX','Coinbase xStock',312.4,2.8e8],['sp500-xstock','SPYX','S&P 500 xStock',612.7,9.6e8]];
+const STOCKS=(cat)=>EQ.map(([id,sym,name,price,mcap],i)=>({
+  id, symbol:sym.toLowerCase(), name, image:null, current_price:price, market_cap:mcap,
+  market_cap_rank:i+1, total_volume:mcap/40, price_change_percentage_24h:((i%5)-2)*1.3,
+  sparkline_in_7d:{price:walk(id,168,price)},
+  // the second category overlaps the first: the loader must dedupe
+})).slice(cat==='xstocks-ecosystem'?2:0);
+
 const PROJECTS=['aave-v3','kamino-lend','morpho-blue','compound-v3','venus-core-pool','moonwell','suilend','marginfi','spark','euler-v2'];
 const CHAINS=['Ethereum','Solana','Base','Arbitrum','BSC','Sui','Optimism','Avalanche','Polygon','Aptos'];
 const SYMS=['USDC','ETH','SOL','WBTC','USDT','SUI','STETH','AAVE','ARB','HYPE'];
@@ -61,7 +72,13 @@ http.createServer(async (req,res)=>{
     if(MODE==='429'&&hits++<2) return json({error:'rate limited'},429);
     if(MODE==='partial'&&(p.startsWith('/llama/')||p.startsWith('/dl/'))) return json({error:'nope'},503);
   }
-  if(p==='/api/v3/coins/markets') return json(markets(u.searchParams.get('category')));
+  if(p==='/api/v3/coins/markets'){
+    const cat=u.searchParams.get('category')||'';
+    // a category request used to fall through to the same coins, which filled
+    // the stocks tab with bitcoin
+    if(/tokenized-stock|xstocks/.test(cat)) return json(STOCKS(cat));
+    return json(markets(cat));
+  }
   if(p.startsWith('/api/v3/coins/')&&p.endsWith('/market_chart')){
     const id=p.split('/')[4], days=+u.searchParams.get('days')||1;
     const n=Math.min(days*24,400);

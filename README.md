@@ -94,6 +94,26 @@ first to answer wins. Charts try CoinGecko, then Binance klines, then the 7-day
 sparkline, and finally draw a flat line at the current value labelled as having
 no history — a chart never renders as an empty box.
 
+### Tokenized stocks
+
+Equities issued onchain — Backed's xStocks, Ondo, Dinari — as their own kind
+with their own switch. They price like an asset and reuse that normaliser, but
+they are not crypto, so they get their own category, their own columns, and a
+row that says what it tracks: `TSLAx · tracks TSLA`.
+
+Two stock-specific CoinGecko categories are merged and deduped
+(`tokenized-stock`, `xstocks-ecosystem`). If one slug drifts the other still
+answers. Neither is the wider RWA bucket — that holds treasuries and gold,
+which are not stocks, and folding them in would mislabel them.
+
+The underlying ticker is derived conservatively: strip a trailing `x`, and only
+when what remains still looks like a ticker and the name says it is tokenized.
+Guessing harder than that invents provenance, so anything else shows plain.
+
+The switch takes equities out of the mixed views — All and search — while their
+own tab always shows them. It is in the URL (`?nostocks=1`) and remembered per
+browser, like the junk filter it sits beside.
+
 ### One filter
 
 A single toggle, on by default, for the two things that make a large onchain
