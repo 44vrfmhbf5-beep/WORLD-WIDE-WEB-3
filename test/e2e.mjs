@@ -318,6 +318,28 @@ console.log('\n# the published artifact, with no network at all');
     await q.keyboard.press('Escape'); await q.waitForTimeout(350);
   }
   ok(!empty.length, `every category has rows offline${empty.length ? ' — blank: ' + empty.join(', ') : ''}`);
+
+  /* A dynamic import in a single-file build has nothing to fetch. Two modules
+     have no reason to be separate, so the bundler inlines them; the reader was
+     silently dead in every published build until it did. */
+  await q.click('[data-tab=all]'); await q.waitForTimeout(500);
+  await q.fill('#q', 'meme coins on solana up 5% in the past 24 hours');
+  await q.waitForTimeout(2400);
+  const chips = (await q.locator('#facetbar').textContent()).replace(/\s+/g, ' ').trim();
+  ok(/Reading/.test(chips), `a sentence is still read in a single-file build (${chips.slice(0, 60)})`);
+  ok(await q.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab') === 'dex',
+    'and still sets the category it names');
+  await q.fill('#q', ''); await q.waitForTimeout(700);
+
+  /* The wallet is the one thing that cannot be inlined — 900KB of SDK and an
+     iframe from a host this page may not reach — so it has to say that, rather
+     than report a failed module fetch as "could not reach Privy". */
+  await q.click('#connect'); await q.waitForTimeout(2000);
+  const w = (await q.locator('.sheet-in').textContent()).replace(/\s+/g, ' ').trim();
+  ok(/single-file build/.test(w), `Connect explains what this build is (${w.slice(30, 110)})`);
+  ok(!/module|failed to fetch/i.test(w), 'without reporting a module error to somebody who cannot act on it');
+  ok(await q.locator('[data-werr]').isVisible() === false, 'and without showing an error at all');
+  await q.keyboard.press('Escape'); await q.waitForTimeout(400);
   ok(!mismatch.length, `and every sheet's headline is its row's own number${mismatch.length ? ' — ' + mismatch.join('; ') : ''}`);
   ok(!errs.length, `no page error with every host blocked${errs.length ? ' — ' + errs[0] : ''}`);
   await ctx.close(); art.close();

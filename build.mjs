@@ -20,6 +20,25 @@ const data = dataSrc.replace(/^export\s+/gm, '');
 
 const app = read('app.js').replace(/^import[^;]+;$/gm, '');
 
+/* A dynamic import in a single-file build has nothing to fetch: there is no
+   ./config.js sitting next to demo.html. Two of those modules have no reason to
+   be separate — config is a literal, and the query reader only needs the chain
+   table — so they are inlined and handed to the app the same way the bundle
+   hands it Fuse. Anything genuinely unbundlable (the wallet, and the 900KB SDK
+   behind it) stays absent, and the app says so rather than reporting a module
+   error as a network failure. */
+const exportsOf = src => [...src.matchAll(/^export\s+(?:const|let|var|function|class|async function)\s+([A-Za-z_$][\w$]*)/gm)]
+  .map(m => m[1]);
+const inline = f => {
+  const src = read(f);
+  const names = exportsOf(src);
+  if (!names.length) throw new Error(`no exports found in ${f} — bundler needs updating`);
+  // its imports are already in scope in the bundle
+  const body = src.replace(/^import[^;]+;$/gm, '').replace(/^export\s+/gm, '');
+  return `(() => {\n${body}\nreturn { ${names.join(', ')} };\n})()`;
+};
+const modules = `window.__ATLAS_MODULES__ = { config: ${inline('config.js')}, nl: ${inline('nl.js')} };`;
+
 // --artifact: bundle the sample dataset and emit body-level content only, since
 // the Artifact host supplies its own <!doctype>/<html>/<head>/<body> wrapper.
 const ARTIFACT = process.argv.includes('--artifact');
@@ -29,6 +48,7 @@ const js = `
 ${sample ? '(() => {\n' + sample + '\n})();\n' : ''}
 const Fuse = (() => {\n${fuse}\n})();
 const { ${NAMES.join(', ')} } = (() => {\n${data}\nreturn { ${NAMES.join(', ')} };\n})();
+${modules}
 ${app}`;
 
 // NB: every replacement is a function. A string replacement would expand the

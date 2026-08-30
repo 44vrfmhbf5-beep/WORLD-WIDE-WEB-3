@@ -111,6 +111,22 @@ Put a Privy app id in `config.js` and this switches on:
 With the file empty — which is how it ships — *Connect* says so plainly instead
 of showing a form that cannot work, and everything else in Atlas is untouched.
 
+### What a single-file build can and cannot carry
+
+`demo.html` and the artifact are one file with no siblings, so a dynamic
+`import('./x.js')` has nothing to fetch. Two of those modules had no reason to
+be separate — `config.js` is a literal and the query reader only needs the chain
+table — so the bundler inlines them and hands them to the app the same way it
+hands it Fuse. **Until it did, natural-language search was silently dead in
+every published build**, which is a worse bug than the error that led me to it.
+
+The wallet genuinely cannot come along: 900KB of SDK, and an iframe served from
+Privy's own origin that a page like this is not allowed to reach. So *Connect*
+in a single-file build says exactly that and links to the source. Reporting a
+failed module fetch as "could not reach Privy" sent people to check an app id
+that was never the problem — a module that will not load and a host that will
+not answer are different failures wearing the same browser wording.
+
 ### The keys are not in this page
 
 Privy's embedded wallet keeps its key material in an iframe served from Privy's

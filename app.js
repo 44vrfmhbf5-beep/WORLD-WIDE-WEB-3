@@ -1001,7 +1001,7 @@ async function fillItems(box, it) {
   const host = box.querySelector('[data-items]'); if (!host) return;
   const why = host.querySelector('[data-iwhy]'), grid = host.querySelector('[data-igrid]');
   let key = '';
-  try { key = (await import('./config.js')).config.venues?.opensea?.apiKey || ''; } catch {}
+  try { key = (await loadModule('config', './config.js')).config.venues?.opensea?.apiKey || ''; } catch {}
   const { items, why: reason } = await loadNftItems(it, { openseaKey: key })
     .catch(() => ({ items: [], why: 'listings unavailable' }));
   if (!host.isConnected) return;
@@ -1827,8 +1827,15 @@ addEventListener('keydown', e => {
    The parser is local and always runs. An AI endpoint, where one is configured,
    runs after it and may disagree; anything it says that does not map onto a
    control that exists is dropped. */
+/* The single-file build has no sibling files to fetch, so the bundler inlines
+   what it can and leaves it here. Ask for that first; fall back to a real
+   module only when it is a real page with real files next to it. */
+const bundled = typeof window !== 'undefined' ? window.__ATLAS_MODULES__ : null;
+const loadModule = (name, path) => bundled?.[name]
+  ? Promise.resolve(bundled[name]) : import(path);
+
 let NL = null;
-const loadNL = () => (NL ||= import('./nl.js'));
+const loadNL = () => (NL ||= loadModule('nl', './nl.js'));
 
 /* A short query is a name, not a sentence. "bitcoin" is a thing to find, and
    reading it as "the Bitcoin network, nothing to search for" answers a question
@@ -1851,7 +1858,7 @@ async function readQuery(q) {
 
   let via = 'read locally';
   try {
-    const { config } = await import('./config.js');
+    const { config } = await loadModule('config', './config.js');
     if (config.ai?.endpoint) {
       const raw = await askAI(q, config.ai);
       const clean = sanitise(raw, {
@@ -1917,7 +1924,7 @@ const whereWord = ([f, op, v]) =>
    session that only searches never pays for any of it. If the import fails —
    offline, blocked, or a bundled build with no module to fetch — the app is the
    app it was and every sheet still offers its hand-off links. */
-let W = null, T = null, wallet = { signedIn: false }, configured = false;
+let W = null, T = null, wallet = { signedIn: false }, configured = false, standalone = false;
 const loadWallet = () => (W ||= import('./wallet.js').then(m => {
   m.onWallet(s => { wallet = s; paintConnect(); if (el.sheet.classList.contains('open')) reopen(); });
   return m;
@@ -1935,12 +1942,16 @@ function paintConnect() {
 }
 
 /** Every failure here is somebody's money, so none of them are swallowed. */
-function walletErr(box, e) {
+function walletErr(box, e, lead = '') {
   const n = box.querySelector('[data-werr]');
   if (!n) return;
   const m = e?.message || String(e);
-  // "Failed to fetch" on its own tells nobody which thing failed to fetch
-  n.textContent = /failed to fetch|networkerror|load failed/i.test(m)
+  /* A module that would not load and a host that would not answer are different
+     failures with the same browser wording, and calling the first one "could not
+     reach Privy" sends people to check an app id that is not the problem. */
+  n.textContent = /dynamically imported module|importing a module script/i.test(m)
+    ? `${lead || 'A part of the app could not load.'} ${m}`
+    : /failed to fetch|networkerror|load failed/i.test(m)
     ? `Could not reach Privy — ${m}. Check the app id in config.js and that this domain is allowed in the Privy dashboard.`
     : m;
   n.hidden = false;
@@ -1948,6 +1959,18 @@ function walletErr(box, e) {
 
 /* Shipped with no keys, so say that plainly rather than presenting a form that
    cannot work. The rest of the app does not depend on any of this. */
+const standaloneHTML = () => `<div class="wsec">
+    <h3>Not in this build</h3>
+    <p class="note l">This is the single-file build of Atlas — one HTML file, no
+      server, nothing to install. The wallet is the one thing that cannot come
+      with it: it needs a 900KB SDK and an iframe served from Privy's own origin,
+      which a page like this is not allowed to reach.</p>
+    <p class="note l">Everything else here is the whole app. Run it from the
+      repository and <code>Connect</code> works.</p>
+    <div class="wrow"><a class="s" href="https://github.com/44vrfmhbf5-beep/WORLD-WIDE-WEB-3"
+      target="_blank" rel="noopener noreferrer">The source ↗</a></div>
+  </div>`;
+
 const setupHTML = () => `<div class="wsec">
     <h3>Not configured yet</h3>
     <p class="note l">Atlas ships without credentials. Put a Privy app id in
@@ -1995,11 +2018,13 @@ function walletHTML() {
   return `<div class="grab" aria-hidden="true"></div><div class="sheet-in wallet" data-kind="wallet">
     <div class="sheet-top"><div class="ident"><div><h2>${wallet.signedIn ? 'Your wallet' : 'Connect'}</h2>
       <div class="hsub">${wallet.signedIn ? esc(wallet.label)
+      : standalone ? 'The single-file build has no wallet'
       : configured ? 'Sign in to hold, fund and trade' : 'Wallet features need one credential'}</div></div></div>
       <div class="acts"><button class="x" data-close aria-label="Close">
         <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
     <div class="note l err" data-werr hidden></div>
-    ${!configured ? setupHTML() : wallet.signedIn ? accountHTML() : authHTML()}
+    ${standalone ? standaloneHTML()
+      : !configured ? setupHTML() : wallet.signedIn ? accountHTML() : authHTML()}
     <div class="note">Atlas never holds your keys and never takes custody.</div>
   </div>`;
 }
@@ -2007,12 +2032,17 @@ function walletHTML() {
 async function openWallet() {
   history.pushState({ wallet: true, depth: ++depth }, '', location.href);
   showSheet(walletHTML());
+  /* The wallet is the one thing that cannot be inlined: 900KB of SDK, and an
+     iframe from a host a bundled page is not allowed to reach anyway. So a
+     single-file build has no wallet, and saying "failed to fetch a module" for
+     that is both mystifying and wrong. */
+  if (bundled) { standalone = true; return showSheet(walletHTML()); }
   try {
-    const [{ walletReady }] = await Promise.all([import('./config.js'), loadWallet()]);
+    const [{ walletReady }] = await Promise.all([loadModule('config', './config.js'), loadWallet()]);
     configured = walletReady();
     showSheet(walletHTML());
   } catch (e) {
-    walletErr(el.sheet, new Error('Wallet unavailable in this build — ' + (e?.message || 'module could not load')));
+    walletErr(el.sheet, e, 'The wallet could not load.');
   }
 }
 
