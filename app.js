@@ -60,7 +60,6 @@ const S = {
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
   view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
   safe: store.get('atlas:safe') !== '0',
-  stocks: store.get('atlas:stocks') !== '0',
   sort: null,
   watch: new Map(readWatch().map(i => [i.id, i])),
 };
@@ -158,8 +157,7 @@ function rowsFor(tab) {
     return [...S.watch.values()].map(i => live.find(x => x.id === i.id) || i);
   }
   const k = TAB_KIND[tab];
-  // equities are opt-out of the mixed views; their own tab always shows them
-  if (!k) return S.stocks ? everything() : everything().filter(i => i.kind !== 'stock');
+  if (!k) return everything();
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
 const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
@@ -1076,7 +1074,6 @@ function syncUrl(now) {
     if (S.view === 'cards') p.set('view', 'cards');
     if (S.dense) p.set('dense', '1');
     if (!S.safe) p.set('all', '1');
-    if (!S.stocks) p.set('nostocks', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -1092,7 +1089,6 @@ function fromUrl() {
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
   if (p.get('dense')) S.dense = p.get('dense') === '1';
   if (p.get('all')) S.safe = p.get('all') !== '1';
-  if (p.get('nostocks')) S.stocks = p.get('nostocks') !== '1';
   paintFilters(); paintTools();
 }
 
@@ -1128,7 +1124,7 @@ function paintTools() {
   $('#density').setAttribute('aria-pressed', S.dense);
   $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
   $('#safe').setAttribute('aria-pressed', S.safe);
-  $('#stocks').setAttribute('aria-pressed', S.stocks);
+  $('#stocks').setAttribute('aria-pressed', S.tab === 'stocks');
 }
 
 /* ---------- events ---------- */
@@ -1142,9 +1138,16 @@ function setSafe(on) {
   paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
 }
 $('#safe').addEventListener('click', () => setSafe(!S.safe));
+/* Stocks-only is a view, and the rail already has it. The switch is a way in
+   and back out from anywhere, so it holds no state of its own — it reports
+   whether that category is the one on screen. */
+let lastTab = 'all';
 $('#stocks').addEventListener('click', () => {
-  S.stocks = !S.stocks; store.set('atlas:stocks', S.stocks ? '1' : '0');
-  paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
+  const on = S.tab === 'stocks';
+  if (!on) lastTab = S.tab;
+  S.tab = on ? (lastTab === 'stocks' ? 'all' : lastTab) : 'stocks';
+  S.sel = 0; S.sort = null;
+  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
 $('#density').addEventListener('click', () => {
@@ -1189,8 +1192,9 @@ el.sheet.addEventListener('pointercancel', endDrag);
 
 $('#tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
+  if (S.tab !== 'stocks') lastTab = S.tab;
   S.tab = b.dataset.tab; S.sel = 0; S.sort = null;
-  paintFilters(); reindex(); render(); scrollToResults(); syncUrl(true);
+  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 });
 let chainSeq = 0;
 async function pickChain(id) {

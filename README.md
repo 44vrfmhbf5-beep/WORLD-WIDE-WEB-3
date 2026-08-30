@@ -110,9 +110,11 @@ The underlying ticker is derived conservatively: strip a trailing `x`, and only
 when what remains still looks like a ticker and the name says it is tokenized.
 Guessing harder than that invents provenance, so anything else shows plain.
 
-The switch takes equities out of the mixed views — All and search — while their
-own tab always shows them. It is in the URL (`?nostocks=1`) and remembered per
-browser, like the junk filter it sits beside.
+The **Stocks** switch shows equities only, from wherever you are, and pressing
+it again puts you back. That view is one the rail already has, so the switch
+holds no state of its own — it reports whether that category is on screen, the
+rail highlight follows it, and leaving by the rail turns it off. Being a view
+rather than a flag, it is already in the URL as `?tab=stocks`.
 
 ### One filter
 

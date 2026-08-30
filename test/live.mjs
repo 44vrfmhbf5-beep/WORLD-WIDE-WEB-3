@@ -427,19 +427,30 @@ console.log('\n# tokenized stocks are their own kind behind their own switch');
   ok(/tracks TSLA\b/.test(body), `an equity says what it tracks (${body.slice(0, 40).trim()})`);
   ok(!/Defunct/.test(body), 'and one that stopped trading is filtered like anything else');
 
-  // the switch: out of the mixed views, still in its own tab
-  await p.click('[data-tab=all]'); await p.waitForTimeout(700);
-  ok(/Tokenized stocks/.test(await p.locator('#results').textContent()), 'equities show in All by default');
+  // the switch is a way into stocks-only and back out, from anywhere
+  await p.click('[data-tab=lending]'); await p.waitForTimeout(700);
+  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false', 'the switch is off elsewhere');
   await p.click('#stocks'); await p.waitForTimeout(900);
-  ok(!/Tokenized stocks/.test(await p.locator('#results').textContent()), 'the switch takes them out of All');
-  await p.fill('#q', 'tesla'); await p.waitForTimeout(900);
-  ok(await p.locator('.row[data-id^="t:"]').count() === 0, 'and out of search');
-  await p.fill('#q', ''); await p.waitForTimeout(500);
-  await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
-  ok(await p.locator('.row[data-id^="t:"]').count() > 0, 'but their own tab still shows them');
-  ok(/nostocks=1/.test(p.url()), 'and the choice is in the url');
+  const only = await p.locator('#results .row').evaluateAll(ns => ns.map(n => n.dataset.id));
+  ok(only.length && only.every(i => i.startsWith('t:')), `it shows equities only (${only.length})`);
+  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'true', 'and reports that it is on');
+  ok(await p.locator('[data-tab=stocks]').getAttribute('aria-selected') === 'true',
+    'with the rail saying the same thing');
+  ok(/tab=stocks/.test(p.url()), 'the view is in the url');
+
+  // pressing it again returns you to where you were
   await p.click('#stocks'); await p.waitForTimeout(900);
-  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
+  ok(await p.locator('[data-tab=lending]').getAttribute('aria-selected') === 'true',
+    'pressing it again puts you back where you were');
+  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false', 'and the switch goes quiet');
+
+  // navigating the rail away has to keep the switch honest
+  await p.click('#stocks'); await p.waitForTimeout(800);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(800);
+  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false',
+    'leaving by the rail turns the switch off too');
+  ok(/Tokenized stocks/.test(await p.locator('#results').textContent()),
+    'and equities are back among everything else');
 }
 
 console.log('\n# one toggle, for things that do not trade or are not what they say');
