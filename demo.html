@@ -955,6 +955,11 @@ function cache(key, ttl, fn) {
 }
 
 /* ---------- normalise ---------- */
+/* num() folds a missing field to 0, which is right for a quantity — no volume
+   and zero volume are the same thing. It is wrong for a change: a token that
+   moved 0.00% this week is not a token whose week is unknown, and rendering
+   both as an em dash claimed data was missing when it was not. */
+const numN = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
 const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
@@ -967,15 +972,15 @@ function asset(c, chain) {
   const spark = c.sparkline_in_7d?.price || [];
   const price = c.current_price ?? 0;
   return {
-    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
+    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: safeUrl(c.image) || null,
     chain, price, chg: c.price_change_percentage_24h ?? 0,
-    chg7d: num(c.price_change_percentage_7d_in_currency),
-    chg30d: num(c.price_change_percentage_30d_in_currency),
-    chg1y: num(c.price_change_percentage_1y_in_currency),
+    chg7d: numN(c.price_change_percentage_7d_in_currency),
+    chg30d: numN(c.price_change_percentage_30d_in_currency),
+    chg1y: numN(c.price_change_percentage_1y_in_currency),
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
     fdv: num(c.fully_diluted_valuation), supply: num(c.circulating_supply),
     maxSupply: num(c.max_supply), high24: num(c.high_24h), low24: num(c.low_24h),
-    ath: num(c.ath), athChg: num(c.ath_change_percentage),
+    ath: num(c.ath), athChg: numN(c.ath_change_percentage),
     // turnover is the one liquidity read that compares a $2T asset to a $2M one
     turn: c.market_cap ? num(c.total_volume) / c.market_cap * 100 : 0,
     spark: spark.slice(-24), color: colorOf(sym),
@@ -993,7 +998,12 @@ function pool(p, lb) {
     kind: 'pool', id: `p:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
     sup: p.apy ?? p.apyBase ?? 0,
     supBase: p.apyBase ?? 0, supReward: p.apyReward ?? 0,
-    bor: (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
+    /* Borrow rate is net of borrow-side incentives, which can legitimately make
+       it negative — being paid to borrow is a real thing. But a market with no
+       borrow side at all has no rate, and subtracting rewards from a missing
+       base was printing "-0.90% borrow" on a pool nobody can borrow from. */
+    bor: lb.borrowable === false || (!lb.apyBaseBorrow && !lb.totalBorrowUsd)
+      ? null : (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
     borBase: num(lb.apyBaseBorrow), borReward: num(lb.apyRewardBorrow),
     tvl: p.tvlUsd ?? 0, supplyUsd, borrowUsd,
     util: supplyUsd > 0 ? Math.min(100, borrowUsd / supplyUsd * 100) : 0,
@@ -1018,9 +1028,9 @@ function paprikaAsset(p, i) {
   return {
     kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
     chain: null, price: num(q.price), chg: num(q.percent_change_24h),
-    chg7d: num(q.percent_change_7d), chg30d: num(q.percent_change_30d),
-    chg1y: num(q.percent_change_1y), ath: num(q.ath_price),
-    athChg: num(q.percent_from_price_ath), supply: num(p.circulating_supply),
+    chg7d: numN(q.percent_change_7d), chg30d: numN(q.percent_change_30d),
+    chg1y: numN(q.percent_change_1y), ath: num(q.ath_price),
+    athChg: numN(q.percent_from_price_ath), supply: num(p.circulating_supply),
     maxSupply: num(p.max_supply), high24: 0, low24: 0,
     turn: q.market_cap ? num(q.volume_24h) / num(q.market_cap) * 100 : 0,
     mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
@@ -1082,22 +1092,58 @@ function loadStocks() {
   });
 }
 
-/* GeckoTerminal network slugs. A chain missing here simply has no per-chain
-   token list; everything else about it still works. */
-const GT_NET = { eth: 'eth', sol: 'solana', base: 'base', arb: 'arbitrum', bnb: 'bsc',
-  poly: 'polygon_pos', avax: 'avax', op: 'optimism', sui: 'sui-network', apt: 'aptos',
-  ton: 'ton', tron: 'tron', bera: 'berachain', sonic: 'sonic', mnt: 'mantle',
-  blast: 'blast', scrl: 'scroll', linea: 'linea', zks: 'zksync', sei: 'sei-evm',
-  uni: 'unichain', ink: 'ink', abs: 'abstract', hl: 'hyperliquid', celo: 'celo',
-  monad: 'monad', plume: 'plume', story: 'story' };
+/* The same networks under three names: ours, DexScreener's `chainId` and
+   GeckoTerminal's network slug. One table, because two separate ones drifted:
+   the DEX mapping covered eleven chains and GeckoTerminal's covered twenty-eight,
+   so a Berachain pair from either index resolved to no chain at all — no network
+   badge, and invisible to every network filter. */
+const NET_ALIAS = {
+  eth:   ['ethereum',    'eth'],
+  sol:   ['solana',      'solana'],
+  base:  ['base',        'base'],
+  arb:   ['arbitrum',    'arbitrum'],
+  bnb:   ['bsc',         'bsc'],
+  hl:    ['hyperliquid', 'hyperliquid'],
+  op:    ['optimism',    'optimism'],
+  poly:  ['polygon',     'polygon_pos'],
+  avax:  ['avalanche',   'avax'],
+  sui:   ['sui',         'sui-network'],
+  apt:   ['aptos',       'aptos'],
+  tron:  ['tron',        'tron'],
+  ton:   ['ton',         'ton'],
+  btc:   ['bitcoin',     ''],
+  bera:  ['berachain',   'berachain'],
+  sonic: ['sonic',       'sonic'],
+  mnt:   ['mantle',      'mantle'],
+  blast: ['blast',       'blast'],
+  scrl:  ['scroll',      'scroll'],
+  linea: ['linea',       'linea'],
+  zks:   ['zksync',      'zksync'],
+  sei:   ['sei',         'sei-evm'],
+  uni:   ['unichain',    'unichain'],
+  ink:   ['ink',         'ink'],
+  abs:   ['abstract',    'abstract'],
+  plume: ['plume',       'plume'],
+  story: ['story',       'story'],
+  monad: ['monad',       'monad'],
+  celo:  ['celo',        'celo'],
+  rhc:   ['robinhood',   ''],
+};
+// derived, so adding a chain above reaches every index at once
+const GT_NET = Object.fromEntries(Object.entries(NET_ALIAS).filter(([, a]) => a[1]).map(([id, a]) => [id, a[1]]));
+const DEX_CHAIN = Object.fromEntries(Object.entries(NET_ALIAS).map(([id, a]) => [a[0], id]));
+const GT_CHAIN = Object.fromEntries(Object.entries(GT_NET).map(([id, slug]) => [slug, id]));
 
 /** The tokens actually trading on one chain. */
 function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1`, { tries: 1 }).catch(() => null);
-    return mergePairs([(j?.data || []).map(gtPool)]).map(p => ({ ...p, chain: chainId })).slice(0, 40);
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1 })
+      .catch(() => null);
+    const imgs = gtTokens(j);
+    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
+      .map(p => ({ ...p, chain: chainId })).slice(0, 40);
   });
 }
 
@@ -1286,8 +1332,8 @@ function protocol(p, dex, fee, perp, opt) {
   return {
     kind: 'protocol', id: `r:${p.slug || slugOf(name)}`, slug: p.slug || slugOf(name),
     name, cat: p.category || 'DeFi', chains, chain: chains[0] || null,
-    tvl: num(p.tvl), chg1d: num(p.change_1d), chg7d: num(p.change_7d),
-    url: safeUrl(p.url), img: p.logo || null, color: colorOf(name),
+    tvl: num(p.tvl), chg1d: numN(p.change_1d), chg7d: numN(p.change_7d),
+    url: safeUrl(p.url), img: safeUrl(p.logo) || null, color: colorOf(name),
     vol24: num(dex?.total24h), fees24: num(fee?.total24h),
     rev24: num(fee?.revenue24h ?? fee?.dailyRevenue),
     perps24: num(perp?.total24h), opts24: num(opt?.total24h),
@@ -1567,13 +1613,10 @@ function loadProtocolChart(r, days) {
    ones every minute — so DexScreener is queried live per search and merged in.
    GeckoTerminal's trending pools give the same kind something to show before
    anyone types. */
-const DEX_CHAIN = { solana: 'sol', ethereum: 'eth', base: 'base', arbitrum: 'arb',
-  optimism: 'op', polygon: 'poly', bsc: 'bnb', avalanche: 'avax', sui: 'sui',
-  aptos: 'apt', hyperliquid: 'hl' };
-
-/* A pair keeps its network even when it is not one of the twelve we filter by —
-   restricting the long tail to known chains was throwing away most of it. */
-const netName = id => CH[DEX_CHAIN[id]]?.name || title(String(id || '').replace(/[-_]/g, ' '));
+/* A pair keeps its network even when it is not one we filter by — restricting
+   the long tail to known chains was throwing away most of it. */
+const netName = id => CH[DEX_CHAIN[id] || GT_CHAIN[id]]?.name
+  || title(String(id || '').replace(/[-_]/g, ' '));
 
 function pairOf(p) {
   const base = p.baseToken || {};
@@ -1582,6 +1625,7 @@ function pairOf(p) {
   return {
     kind: 'pair', id: `d:${p.pairAddress || base.address}`, sym,
     name: base.name || sym, addr: base.address || '', dex,
+    img: safeUrl(p.info?.imageUrl) || null,
     chain: DEX_CHAIN[p.chainId] || null, net: netName(p.chainId),
     price: Number(p.priceUsd) || 0, chg: num(p.priceChange?.h24),
     liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), fdv: num(p.fdv),
@@ -1591,8 +1635,16 @@ function pairOf(p) {
   };
 }
 
+/* JSON:API keeps the token beside the pool rather than inside it. Asking for
+   `include=base_token` costs nothing extra and is what carries the logo; when
+   the parameter is ignored the `included` array is simply absent and the tile
+   falls back to its coloured initials, as before. */
+const gtTokens = j => Object.fromEntries((j?.included || [])
+  .filter(x => x.type === 'token')
+  .map(x => [x.id, safeUrl(x.attributes?.image_url) || null]));
+
 /** GeckoTerminal returns JSON:API pools; /search and /trending share this shape. */
-function gtPool(row) {
+function gtPool(row, imgs) {
   const a = row.attributes || {};
   const net = String(row.id || '').split('_')[0];
   const [baseSym, quoteSym] = String(a.name || '').split('/').map(s => s.trim().toUpperCase());
@@ -1600,11 +1652,12 @@ function gtPool(row) {
   return {
     kind: 'pair', id: `d:${a.address || row.id}`, sym, name: a.name || sym,
     addr: a.address || '', dex: 'DEX',
-    chain: DEX_CHAIN[net] || null, net: netName(net),
+    chain: GT_CHAIN[net] || DEX_CHAIN[net] || null, net: netName(net),
     price: Number(a.base_token_price_usd) || 0,
     chg: Number(a.price_change_percentage?.h24) || 0,
     liq: Number(a.reserve_in_usd) || 0, vol24: Number(a.volume_usd?.h24) || 0,
     fdv: Number(a.fdv_usd) || 0, quote: quoteSym || '', url: '', color: colorOf(sym),
+    img: imgs?.[row.relationships?.base_token?.data?.id] || null,
     key: `${sym} ${a.name || ''} ${netName(net)} dex pair token memecoin swap trade`,
   };
 }
@@ -1629,13 +1682,17 @@ function searchPairs(q) {
   return cache(`pairs:${term.toLowerCase()}`, 60000, async () => {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
-      get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1`, { tries: 1, timeout: 12000 }),
+      get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
+        { tries: 1, timeout: 12000 }),
     ]);
     const errors = [];
     let rows = [];
     if (dx.status === 'fulfilled') rows.push((dx.value?.pairs || []).map(pairOf));
     else errors.push(`DexScreener: ${dx.reason?.message || 'unreachable'}`);
-    if (gt.status === 'fulfilled') rows.push((gt.value?.data || []).map(gtPool));
+    if (gt.status === 'fulfilled') {
+      const imgs = gtTokens(gt.value);
+      rows.push((gt.value?.data || []).map(r => gtPool(r, imgs)));
+    }
     else errors.push(`GeckoTerminal: ${gt.reason?.message || 'unreachable'}`);
     return { rows: mergePairs(rows), errors };
   });
@@ -1644,8 +1701,10 @@ function searchPairs(q) {
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1`, { tries: 1 }).catch(() => null);
-    return mergePairs([(j?.data || []).map(gtPool)]).slice(0, 40);
+    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1 })
+      .catch(() => null);
+    const imgs = gtTokens(j);
+    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);
   });
 }
 
@@ -1668,11 +1727,11 @@ function llamaNft(c) {
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: c.image || c.logo || null, chain,
+    img: safeUrl(c.image || c.logo) || null, chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
     floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
-    chg1d: num(c.floorPricePctChange1Day), chg7d: num(c.floorPricePctChange7Day),
+    chg1d: numN(c.floorPricePctChange1Day), chg7d: numN(c.floorPricePctChange7Day),
     volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
     key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
   };
@@ -1684,7 +1743,7 @@ function meNft(c) {
   return {
     kind: 'nft', id: `n:me-${c.symbol || slugOf(name)}`, cid: c.symbol || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: c.image || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
+    img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
     floorUsd: 0, floor: sol, unit: 'SOL',
     chg1d: 0, chg7d: 0, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
     supply: 0,
@@ -1755,7 +1814,8 @@ const firstPara = s => {
 
 function loadAbout(it) {
   const cg = it.cg || (it.kind === 'stock' && it.id.slice(2));
-  if ((it.kind === 'asset' || it.kind === 'stock') && cg) {
+  // a network is described by the page of the token that secures it
+  if ((it.kind === 'asset' || it.kind === 'stock' || it.kind === 'chain') && cg) {
     return cache(`about:${it.id}`, 30 * TTL, async () => {
       const j = await get(`${CG}/coins/${encodeURIComponent(cg)}?localization=false&tickers=false` +
         `&market_data=false&community_data=false&developer_data=false&sparkline=false`,
@@ -1849,6 +1909,8 @@ const usd = n => !isFinite(n) ? '—' : n < 0 ? '-' + usd(-n)
   : n >= 1 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   : n === 0 ? '$0.00' : '$' + tiny(n);
 const pct = n => (n > 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
+// null is "we were not told"; 0 is "it did not move", and they read differently
+const move = n => n == null ? '—' : pct(n);
 const apy = n => (n >= 1000 ? compact(n) : (n ?? 0).toFixed(2)) + '%';
 const ago = t => { const m = (Date.now() - t) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0}m ago` : `${m / 60 | 0}h ago`; };
 const floorOf = i => i.floorUsd ? usd(i.floorUsd)
@@ -1936,8 +1998,7 @@ async function enrich() {
   S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
   S.pairs = val(6, []); S.nfts = val(7, []); S.stockRows = val(8, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
-  // a lending market now carries the protocol behind it
-  for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
+  joinLogos();
   nodes.clear(); reindex(); render();
   third();
 }
@@ -1955,11 +2016,34 @@ async function third() {
     const have = new Set(S.pools.filter(p => /morpho/i.test(p.slug))
       .map(p => `${p.sym}@${p.chain}`));
     const add = m.value.filter(x => !have.has(`${x.sym}@${x.chain}`));
-    for (const x of add) x.protocol = S.byProto[x.slug] || null;
+    for (const x of add) { x.protocol = S.byProto[x.slug] || null; x.img = x.protocol?.img || null; }
     S.pools = [...S.pools, ...add].sort((a, b) => b.supplyUsd - a.supplyUsd);
     S.morpho = add.length;
   }
   if (S.verified?.count || S.morpho) { nodes.clear(); reindex(); render(); }
+}
+
+/* Three kinds had a logo available and were drawing coloured initials instead.
+   A market's tile stands for the protocol running it, and DeFiLlama returns that
+   logo with the protocol; a stablecoin is nearly always also a top-100 asset,
+   whose logo is already loaded. Neither costs a request. */
+function joinLogos() {
+  for (const p of S.pools) {
+    p.protocol = S.byProto[p.slug] || null;
+    p.img = p.protocol?.img || null;
+  }
+  for (const y of S.yields) y.img = S.byProto[y.slug]?.img || null;
+  const bySym = new Map();
+  for (const a of S.assets) if (a.img && !bySym.has(a.sym)) bySym.set(a.sym, a.img);
+  for (const st of S.stables) st.img = st.img || bySym.get(st.sym) || null;
+  /* A network's own token usually carries its name — Ethereum, Solana, Sui —
+     and that token has a CoinGecko page describing the chain. Where the names
+     line up the chain inherits it; where they do not it simply has none. */
+  const byName = new Map(S.assets.filter(a => a.cg).map(a => [a.name.toLowerCase(), a]));
+  for (const c of S.chainRows) {
+    const a = byName.get(c.name.toLowerCase());
+    if (a) { c.cg = a.cg; c.img = c.img || a.img || null; }
+  }
 }
 
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
@@ -2173,8 +2257,7 @@ const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
     ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
-      ['30d', i => i.chg30d ? pct(i.chg30d) : '—', 'chg30d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
@@ -2184,7 +2267,7 @@ const KIND = {
   stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
     chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => (i.under || i.sym).slice(0, 4),
     title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
@@ -2194,13 +2277,15 @@ const KIND = {
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     ok: i => i.supplyUsd >= 1e6,
-    cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
+    cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
+      ['Borrow APY', i => i.bor == null ? '—' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
       ['Available', i => money(i.free), 'free'], ['Util', i => i.util.toFixed(0) + '%', 'util']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
-    n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
+    n1: i => apy(i.sup), n1cls: 'up',
+    n2: i => i.bor == null ? 'supply only' : `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     // four-figure APY on a small pool is the oldest farm scam there is, and a
@@ -2217,20 +2302,21 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
-    cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sgn'],
-      ['7d', i => pct(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
+    cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
       ['Revenue 24h', i => i.rev24 ? money(i.rev24) : '—', 'rev24']],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.cat,
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
     tail: i => i.vol24 ? `$${compact(i.vol24)} 24h volume` : `$${compact(i.tvl)} TVL`,
-    n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
+    n1: i => '$' + compact(i.tvl), n2: i => move(i.chg1d),
+    cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
     ok: i => i.volUsd > 0 || i.floor > 0,
-    cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => i.chg1d ? pct(i.chg1d) : '—', 'chg1d', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+    cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => move(i.chg1d), 'chg1d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
       ['Items', i => i.supply ? compact(i.supply) : '—', 'supply']],
     chart: [loadNftChart, 30, R.mid, nftValue],
@@ -2238,8 +2324,8 @@ const KIND = {
     title: i => i.name, tag: i => i.market,
     meta: i => i.net || '',
     tail: i => i.supply ? `${compact(i.supply)} items` : 'collection',
-    n1: i => floorOf(i), n2: i => i.chg1d ? pct(i.chg1d) : 'floor',
-    cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
+    n1: i => floorOf(i), n2: i => i.chg1d == null ? 'floor' : pct(i.chg1d),
+    cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
     ok: i => i.vol24 >= 1000 && i.liq >= 5000,
@@ -2316,7 +2402,7 @@ const FACET = {
     ['dip', 'Far off high', i => i.athChg <= -50]],
   stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
     ['big', '$500M+', i => i.mcap >= 5e8]],
-  pool: [['borrow', 'Borrowable', i => i.bor > 0 && i.free > 0],
+  pool: [['borrow', 'Borrowable', i => i.bor != null && i.free > 0],
     ['stable', 'Stablecoin', i => i.stable],
     ['deep', '$100M+', i => i.supplyUsd >= 1e8],
     ['ltv', 'High LTV', i => i.ltv >= 0.75],
@@ -2660,8 +2746,8 @@ const ABOUT = {
   stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
     + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
   pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
-    + `, or post it as collateral and borrow at ${apy(i.bor)}`
-    + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}. `
+    + `${i.bor == null ? '' : `, or post it as collateral and borrow at ${apy(i.bor)}`
+      + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}`}. `
     + `$${compact(i.supplyUsd)} is supplied here, ${i.util.toFixed(0)}% of it lent out.`,
   yield: i => `A ${i.stable ? 'stablecoin ' : ''}farm on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}`
     + ` paying ${apy(i.apy)} on ${i.sym}${i.apyReward ? `, of which ${apy(i.apyReward)} is incentives` : ''}`
@@ -2857,7 +2943,7 @@ function sheetHTML(it) {
     <div class="stats">
       ${stat('Total supplied', '$' + compact(it.supplyUsd))}
       ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
-      ${stat('Borrow APY', apy(it.bor))}
+      ${stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor))}
       ${stat('Available now', '$' + compact(it.free))}
       ${stat('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—')}
       ${it.mean30 ? stat('30d average supply', apy(it.mean30)) : ''}
@@ -2926,8 +3012,13 @@ const SHEET = {
   stock: it => ({ big: usd(it.price), cls: it.chg >= 0 ? 'up' : 'down',
     caption: `${pct(it.chg)} in 24 hours`,
     sub: [it.sym, it.under ? `tracks ${it.under}` : 'tokenized equity'].join(' · '),
+    // the equity request carries the same windows and high as any other asset
     stats: [['Price', usd(it.price)], ['24h', pct(it.chg)],
+      it.chg7d == null ? null : ['7d', pct(it.chg7d)],
       ['Market cap', '$' + compact(it.mcap)], ['24h volume', '$' + compact(it.vol)],
+      it.ath ? ['All-time high', usd(it.ath)] : null,
+      it.athChg == null ? null : ['Off its high', pct(it.athChg)],
+      it.supply ? ['Tokens issued', compact(it.supply)] : null,
       it.under ? ['Underlying', it.under] : null],
     link: ['View on CoinGecko', links.stock(it)] }),
 

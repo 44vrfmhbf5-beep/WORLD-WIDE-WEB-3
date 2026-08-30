@@ -51,7 +51,8 @@ const EQ=[['tesla-xstock','TSLAX','Tesla xStock',412.6,8.4e8],['nvidia-xstock','
   ['apple-xstock','AAPLX','Apple xStock',241.9,5.2e8],['msft-xstock','MSFTX','Microsoft xStock',508.1,4.4e8],
   ['coinbase-xstock','COINX','Coinbase xStock',312.4,2.8e8],['sp500-xstock','SPYX','S&P 500 xStock',612.7,9.6e8]];
 const STOCKS=(cat)=>EQ.map(([id,sym,name,price,mcap],i)=>({
-  id, symbol:sym.toLowerCase(), name, image:null, current_price:price, market_cap:mcap,
+  id, symbol:sym.toLowerCase(), name, image:'https://img.invalid/eq/'+id+'.png',
+  current_price:price, market_cap:mcap,
   market_cap_rank:i+1, total_volume:mcap/40, price_change_percentage_24h:((i%5)-2)*1.3,
   price_change_percentage_7d_in_currency:((i%7)-3)*2.1,
   ath:price*1.3, ath_change_percentage:-((i%6)*6+3), circulating_supply:mcap/price,
@@ -127,11 +128,13 @@ http.createServer(async (req,res)=>{
       total_volumes:walk('v'+id+days,n,3e9).map((v,i)=>[Date.now()-i*36e5,v])});
   }
   if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
-    id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, slug:PROJECTS[i%PROJECTS.length]+(i?'-'+i:''),
+    id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i,
+    slug: i<PROJECTS.length ? PROJECTS[i] : PROJECTS[i%PROJECTS.length]+'-'+i,
     category:['Lending','Dexes','Liquid Staking','CDP','Yield'][i%5],
     chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
-    url:'https://example.invalid/'+i, logo:null })));
+    url:'https://example.invalid/'+i,
+    logo: i%9===4 ? null : 'https://icons.invalid/protocols/'+i+'.png' })));
   const overview=(f)=>({protocols:Array.from({length:120},(_,i)=>({
     name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, ...f(i)})).filter((_,i)=>i%3!==2)});
   if(p==='/dl/overview/dexs') return json(overview(i=>({total24h:(1.2e9)/(i+1)})));
@@ -164,11 +167,16 @@ http.createServer(async (req,res)=>{
     const q=(u.searchParams.get('q')||'').toLowerCase();
     const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad','TinyCoin','BlastCat'];
     return json({pairs: names.filter(n=>n.toLowerCase().includes(q)||q.length<3).map((n,i)=>({
-      chainId: n==='BlastCat' ? 'blast' : ['solana','base','ethereum'][i%3],
+      chainId: n==='BlastCat' ? 'blast' : n==='TurboToad' ? 'berachain'
+        : ['solana','base','ethereum'][i%3],
       dexId:['raydium','aerodrome','uniswap'][i%3],
       pairAddress:'pair'+n, url:'https://dexscreener.com/x/'+n,
       baseToken:{address:'0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
-      quoteToken:{symbol:'SOL'}, priceUsd:String(0.0004*(i+1)),
+      quoteToken:{symbol:'SOL'},
+      // DexScreener returns a token logo with the pair, and one hostile scheme
+      info: i%4===3 ? undefined
+        : { imageUrl: i===1 ? 'javascript:alert(1)' : 'https://img.invalid/tok/'+n+'.png' },
+      priceUsd:String(0.0004*(i+1)),
       priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd: n==='TinyCoin' ? 1800 : (9e5)/(i+1)},
       volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
   }
@@ -194,10 +202,13 @@ http.createServer(async (req,res)=>{
     return json(walk('bn'+u.searchParams.get('symbol'),n,100).map(v=>[0,0,0,0,String(v),0])); }
   if(/^\/gt\/networks\/[^/]+\/pools$/.test(p)){
     const rows=[]; for(let i=0;i<10;i++) rows.push({id:'net_p'+i,type:'pool',
+      relationships:{ base_token:{ data:{ id:'ctok'+i, type:'token' } } },
       attributes:{name:'CHAINTOK'+i+' / SOL',address:'ct'+i,base_token_price_usd:String(0.5*(i+1)),
         price_change_percentage:{h24:'3.2'},reserve_in_usd:String(2e6/(i+1)),
         volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}});
-    return json({data:rows});
+    const included=Array.from({length:10},(_,i)=>({ id:'ctok'+i, type:'token',
+      attributes:{ image_url:'https://img.invalid/ct/'+i+'.png' }}));
+    return json({data:rows,included});
   }
   if(/ohlcv/.test(p)) return json({data:{attributes:{ohlcv_list:
     walk('ohlcv'+p,60,1).map((v,i)=>[i,0,0,0,v,0])}}});
@@ -214,13 +225,18 @@ http.createServer(async (req,res)=>{
     const rows=[];
     for(let i=0;i<12;i++) rows.push({
       id:['solana','base','eth'][i%3]+'_pool'+i, type:'pool',
+      relationships:{ base_token:{ data:{ id:'tok'+i, type:'token' } } },
       attributes:{ name:'TREND'+i+' / SOL', address:'addr'+i,
         base_token_price_usd:String(0.02*(i+1)),
         price_change_percentage:{h24:String(((i%6)-3)*5.1)},
         // half of them trade less than their own liquidity in a day
         reserve_in_usd:String((3e6)/(i+1)),
         volume_usd:{h24:String((3e6)/(i+1)*(i%2?2.7:0.4))}, fdv_usd:String((4e7)/(i+1)) }});
-    return json({data:rows});
+    // one hostile scheme, and one token the include simply does not cover
+    const included=Array.from({length:12},(_,i)=>({ id:'tok'+i, type:'token',
+      attributes:{ image_url: i===2 ? 'javascript:alert(1)' : i===5 ? null
+        : 'https://img.invalid/gt/'+i+'.png' }}));
+    return json(u.searchParams.get('include')==='base_token' ? {data:rows,included} : {data:rows});
   }
   if(p==='/dl/hacks') return json(Array.from({length:24},(_,i)=>({
     date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit', amount:(6e7)/(i+1),

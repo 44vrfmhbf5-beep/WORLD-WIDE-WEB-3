@@ -109,11 +109,14 @@ const llamaPools = { status: 'success', data: [
 
 const protocols = [
   { id: '1', name: 'Aave V3', slug: 'aave-v3', category: 'Lending', chains: ['Ethereum', 'Base', 'Solana'],
-    tvl: 1.9e10, change_1d: 1.2, change_7d: -3.4, url: 'https://aave.com', logo: null },
+    tvl: 1.9e10, change_1d: 1.2, change_7d: -3.4, url: 'https://aave.com',
+    logo: 'https://icons.example/aave-v3.png' },
   { id: '4', name: 'Poison', slug: 'poison', category: 'Dex', chains: ['Ethereum'],
     tvl: 5e9, url: 'javascript:alert(document.domain)' },
   { id: '2', name: 'Kamino Lend', slug: 'kamino-lend', category: 'Lending', chains: ['Solana'],
-    tvl: 2.4e9, change_1d: -0.7, change_7d: 5.1, url: 'https://app.kamino.finance', logo: null },
+    tvl: 2.4e9, change_1d: -0.7, change_7d: 5.1, url: 'https://app.kamino.finance',
+    // an upstream string that ends up in a src, like every other one
+    logo: 'javascript:alert(document.domain)' },
   { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },  // below the floor
 ];
 const seen = [];
@@ -148,7 +151,11 @@ R('https://api.coingecko.com/**', r => {
     // the two categories overlap on purpose: the loader has to dedupe them
     const all = [
       { id: 'tesla-xstock', symbol: 'tslax', name: 'Tesla xStock', current_price: 412.6,
-        market_cap: 8.4e8, market_cap_rank: 1, total_volume: 2.1e7, price_change_percentage_24h: 1.4 },
+        market_cap: 8.4e8, market_cap_rank: 1, total_volume: 2.1e7, price_change_percentage_24h: 1.4,
+        // an equity carries the same windows and high as any other asset
+        price_change_percentage_7d_in_currency: 3.8, ath: 488.5, ath_change_percentage: -15.5,
+        circulating_supply: 2.04e6 },
+      // and one that does not, so the sheet is still seen to omit what is absent
       { id: 'apple-xstock', symbol: 'aaplx', name: 'Apple xStock', current_price: 241.9,
         market_cap: 5.2e8, market_cap_rank: 2, total_volume: 9e6, price_change_percentage_24h: -0.6 },
       { id: 'dead-xstock', symbol: 'deadx', name: 'Defunct xStock', current_price: 1,
@@ -224,8 +231,12 @@ R('https://api.dexscreener.com/**', r => {
   r.fulfill({ contentType: 'application/json', body: JSON.stringify({ pairs: [{
     chainId: 'solana', dexId: 'raydium', pairAddress: 'PAIR1', url: 'https://dexscreener.com/solana/PAIR1',
     baseToken: { address: 'CATaddr', name: 'CashCat', symbol: 'CASHCAT' }, quoteToken: { symbol: 'SOL' },
+    info: { imageUrl: 'https://img.example/cashcat.png' },
     priceUsd: '0.00000042', priceChange: { h24: 31.4 }, liquidity: { usd: 9.1e5 },
     volume: { h24: 4.2e6 }, fdv: 2.1e7 }, {
+    chainId: 'berachain', dexId: 'kodiak', pairAddress: 'BERAPAIR',
+    baseToken: { address: 'bera1', name: 'BeraToken', symbol: 'BERATOK' },
+    priceUsd: '2', liquidity: { usd: 8e5 }, volume: { h24: 9e5 } }, {
     chainId: 'fantom', dexId: 'spooky', pairAddress: 'PAIR2',
     baseToken: { address: 'x', name: 'Unsupported', symbol: 'NOPE' },
     // it trades: this row is about chain coverage, not about being filtered
@@ -255,21 +266,30 @@ R('https://api.dexscreener.com/**', r => {
 R('https://api.geckoterminal.com/**', r => {
   const u = r.request().url(); seen.push(u);
   const pool = (id, name, addr) => ({ id, type: 'pool',
+    relationships: { base_token: { data: { id: 'tk' + name.split(' ')[0], type: 'token' } } },
     attributes: { name, address: addr, base_token_price_usd: '0.9',
       price_change_percentage: { h24: '12.5' }, reserve_in_usd: '3200000',
       volume_usd: { h24: '8100000' }, fdv_usd: '41000000' } });
   if (u.includes('/search/pools')) {
     const q = new URL(u).searchParams.get('query') || '';
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
-      data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / SOL', 'GTCASHaddr')] : [] }) });
+      data: /cashcat/i.test(q) ? [pool('solana_GTCASH', 'CASHCAT / SOL', 'GTCASHaddr')] : [],
+      // JSON:API keeps the token, and its logo, beside the pool
+      included: [{ id: 'tkGTCASH', type: 'token',
+        attributes: { image_url: 'https://img.example/gtcash.png' } }] }) });
   }
   if (/\/networks\/[^/]+\/pools/.test(u)) {          // that chain's own tokens
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
       data: Array.from({ length: 8 }, (_, i) =>
-        pool(`solana_C${i}`, `CHAINTOK${i} / SOL`, `chainaddr${i}`)) }) });
+        pool(`solana_C${i}`, `CHAINTOK${i} / SOL`, `chainaddr${i}`)),
+      included: Array.from({ length: 8 }, (_, i) => ({ id: `tkCHAINTOK${i}`, type: 'token',
+        // one hostile scheme among them: an upstream string reaching a src
+        attributes: { image_url: i === 3 ? 'javascript:alert(1)' : `https://img.example/c${i}.png` } })) }) });
   }
   r.fulfill({ contentType: 'application/json',
-    body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')] }) });
+    body: JSON.stringify({ data: [pool('solana_TREND', 'TRENDY / SOL', 'TRENDaddr')],
+      included: [{ id: 'tkTRENDY', type: 'token',
+        attributes: { image_url: 'https://img.example/trendy.png' } }] }) });
 });
 /* The two registries that say which token is real, Morpho's own markets, and
    daily bridge volume. Shapes are from each provider's published docs; this
@@ -320,7 +340,8 @@ R('https://nft.llama.fi/**', r => {
       : walkTo('nf', 120, 42300).map((v, i) => ({ timestamp: i, floorPriceUSD: v }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify([
     { collectionId: '0xbayc', name: 'Bored Ape Yacht Club', symbol: 'BAYC', chain: 'Ethereum',
-      image: null, floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
+      image: 'https://img.example/bayc.png',
+      floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
       floorPricePctChange7Day: 5.4, dailyVolumeUSD: 3.1e6, totalSupply: 10000 },
     { collectionId: '0xpoly', name: 'Polygon Apes', symbol: 'PAPE', chain: 'Polygon',
       floorPrice: 240, floorPricePctChange1Day: 1.1, totalSupply: 5000 },
@@ -364,7 +385,8 @@ ok(hit(/^https:\/\/api\.llama\.fi\/raises$/), 'DeFiLlama /raises');
 ok(hit(/^https:\/\/api\.llama\.fi\/hacks$/), 'DeFiLlama /hacks');
 ok(hit(/\/overview\/derivatives\?/), 'DeFiLlama /overview/derivatives');
 ok(hit(/\/overview\/options\?/), 'DeFiLlama /overview/options');
-ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?page=1$/), 'GeckoTerminal /trending_pools');
+ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?page=1&include=base_token$/),
+  'GeckoTerminal /trending_pools, with the token beside the pool');
 ok(hit(/^https:\/\/nft\.llama\.fi\/collections$/), 'DeFiLlama NFT /collections');
 ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collections$/), 'Magic Eden /popular_collections');
 {
@@ -409,7 +431,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   // restricting the long tail to known chains was throwing most of it away
   ok(body.includes('Unsupported'), 'pair on a chain outside the filter set is still indexed');
   ok(!body.includes('Dust'), 'pair with no liquidity and no volume is dropped');
-  ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/search\/pools\?query=cashcat&page=1$/),
+  ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/search\/pools\?query=cashcat&page=1&include=base_token$/),
     'GeckoTerminal /search/pools queried alongside DexScreener');
   ok(await p.locator('.row[data-id^="d:GTCASH"]').count() > 0, 'both DEX indexes contribute results');
   // toPrecision goes exponential under 1e-6 — the long tail trades right there
@@ -656,6 +678,116 @@ console.log('\n# an empty category says which one');
   ok(await p.locator('[data-allchains]').count() === 1, 'and offers the way out of the filter');
   await p.click('[data-allchains]'); await p.waitForTimeout(700);
   ok(await p.locator('.row').count() > 0, 'which clears the chain filter');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a row shows the logo its source already sent');
+{
+  /* Four kinds had a logo available upstream and were drawing coloured initials
+     instead. Image hosts are unreachable from here and the tag removes itself
+     on error, so serve a byte back or nothing can be counted. */
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const asked = [];
+  const imageRoute = r => {
+    if (r.request().resourceType() !== 'image') return r.fallback();
+    asked.push(r.request().url());
+    return r.fulfill({ contentType: 'image/png', body: PNG });
+  };
+  await p.route('**', imageRoute);
+  const has = async tab => {
+    await p.click(`[data-tab="${tab}"]`); await p.waitForTimeout(1100);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row:not(.sk)')]
+      .filter(r => r.querySelector('.tok img')).length);
+  };
+  ok(await has('assets') > 0, 'an asset carries its CoinGecko logo');
+  ok(await has('nfts') > 0, 'a collection carries its own image');
+  // DeFiLlama returns a protocol logo, and a market's tile stands for the
+  // protocol running it — both were being thrown away
+  ok(await has('protocols') > 0, 'a protocol carries the logo DeFiLlama returned');
+  ok(await has('lending') > 0, 'and a market inherits it from the protocol behind it');
+  await p.click('[data-tab=dex]'); await p.waitForTimeout(1100);
+  ok(hit(/trending_pools\?.*include=base_token/), 'a DEX pool asks for the token beside it');
+  ok(await p.locator('#results .row .tok img').count() > 0, 'which is what carries the pair logo');
+  // a stablecoin is nearly always also a listed asset, whose logo is loaded already
+  await p.click('[data-tab=stables]'); await p.waitForTimeout(1000);
+  ok(await p.locator('#results .row .tok img').count() > 0,
+    'a stablecoin borrows the logo of the asset it also is');
+
+  // every one of these is an upstream string reaching a src
+  ok(!asked.some(u => /^javascript:/.test(u)), 'and a hostile scheme never reaches a src');
+  await p.unroute('**', imageRoute);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(600);
+}
+
+console.log('\n# a network is described by the token that secures it');
+{
+  await p.click('[data-tab=networks]'); await p.waitForTimeout(900);
+  await p.locator('.row[data-id="c:eth"]').click(); await p.waitForTimeout(1600);
+  const src = p.locator('.sheet-in [data-src]');
+  ok(await src.count() === 1 && !(await src.isHidden()), 'a chain sheet carries source prose');
+  ok(/ethereum/i.test(await src.textContent()),
+    'from the CoinGecko page of its own token, not another chain\'s');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(900);
+  await p.locator('.row[data-id="t:tesla-xstock"]').click(); await p.waitForTimeout(1400);
+  const t = await p.locator('.sheet-in .stats').textContent();
+  // the equity request carries the same windows and high as any other asset,
+  // and the sheet was showing four of them
+  ok(/7d/.test(t) && /All-time high/.test(t),
+    `an equity sheet shows the fields its row carries (${t.replace(/\s+/g, ' ').trim().slice(0, 90)})`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  await p.locator('.row[data-id="t:apple-xstock"]').click(); await p.waitForTimeout(1400);
+  const u = await p.locator('.sheet-in .stats').textContent();
+  ok(!/All-time high/.test(u), 'and omits the ones its source did not send');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a zero is not a gap, and a gap is not a zero');
+{
+  await p.click('[data-tab=assets]'); await p.waitForTimeout(900);
+  const usdc = await p.locator('.row[data-id="a:usd-coin"]').textContent();
+  // 0.02% renders as +0.02%; only a field the source did not send is an em dash
+  ok(!/—/.test(usdc), `a change of nearly nothing still prints a number (${usdc.replace(/\s+/g, ' ').trim().slice(0, 76)})`);
+  const ghost = await p.locator('.row[data-id="a:ghostcoin"]').count();
+  ok(ghost === 0 || /—/.test(await p.locator('.row[data-id="a:ghostcoin"]').textContent()),
+    'while a field the source omitted still reads as missing');
+
+  await p.click('[data-tab=lending]'); await p.waitForTimeout(1000);
+  // borrow rate is net of incentives, so a missing base minus a reward printed
+  // "-0.90% borrow" on a market nobody can borrow from
+  const cells = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .map(r => [...r.querySelectorAll('.cell')][1]?.textContent.trim()));
+  ok(!cells.some(c => c && /^-/.test(c)), 'no market invents a negative borrow rate');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# a pair belongs to a network under either index\'s name');
+{
+  // DexScreener says "berachain", GeckoTerminal says "eth" — two tables drifted,
+  // and a pair on a chain neither covered was invisible to every network filter
+  // GeckoTerminal ids the network as "solana"/"eth"; DexScreener says
+  // "berachain". Two tables drifted, and a pair on a chain the DEX one did not
+  // list resolved to nothing — no badge, and invisible to every network filter.
+  await p.click('[data-tab=dex]'); await p.waitForTimeout(1200);
+  const gt = await p.evaluate(() => [...document.querySelectorAll('#results .row')]
+    .filter(r => /TRENDaddr|GTCASH/.test(r.dataset.id))
+    .map(r => !!r.querySelector('.tok .badge')));
+  ok(gt.length > 0 && gt.every(Boolean), `a GeckoTerminal pair resolves to a network (${gt.length})`);
+
+  await p.fill('#q', 'beratok'); await p.waitForTimeout(1700);
+  const bera = p.locator('.row[data-id="d:BERAPAIR"]');
+  ok(await bera.count() === 1, 'a Berachain pair is indexed');
+  ok(await bera.locator('.tok .badge').count() === 1,
+    'and resolves to Berachain, which the old eleven-entry table did not carry');
+  ok(/Berachain/.test(await bera.textContent()), 'named, not left as a raw slug');
+
+  // a chain neither table knows keeps its own network name and stays indexed
+  await p.fill('#q', 'unsupported'); await p.waitForTimeout(1600);
+  ok(await p.locator('.row[data-id="d:PAIR2"]').count() === 1,
+    'while a chain outside the set is still indexed under its own name');
+  await p.fill('#q', ''); await p.waitForTimeout(700);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
 
@@ -1015,7 +1147,7 @@ console.log('\n# a tokenized stock opens like anything else');
 
 console.log('\n# per-chain and chart endpoints');
 await p.click('[data-chain=sol]'); await p.waitForTimeout(1500);
-ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1$/),
+ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?page=1&include=base_token$/),
   'a chain tab pulls that network\'s own tokens');
 {
   // global assets carry no chain, so a chain filter used to empty this tab

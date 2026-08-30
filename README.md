@@ -333,6 +333,56 @@ Counts are printed exactly rather than through the money formatter. `1K of 1K`
 hid the difference between 1,029 and 1,224, which is the entire thing the
 number was there to say.
 
+### Logos, and the four kinds that had one and were not using it
+
+An asset drew its CoinGecko logo and everything else drew coloured initials —
+including four kinds whose source already sends one, at no extra cost:
+
+- **Protocols.** DeFiLlama returns `logo` with every protocol; it was being read
+  and thrown away.
+- **Lending markets and farms.** A market's tile stands for the protocol running
+  it, and that protocol is already joined to the row.
+- **DEX pairs.** DexScreener returns `info.imageUrl` with the pair. GeckoTerminal
+  keeps the token beside the pool rather than inside it, so the request now says
+  `include=base_token` — the same call, with the logo attached. Where the
+  parameter is ignored the `included` array is simply absent and the tile falls
+  back to initials.
+- **Stablecoins.** A stablecoin is nearly always also a top-100 asset, whose logo
+  is loaded already. No request at all.
+
+Every one of these is an upstream string reaching an `src`, so all of them go
+through the same `safeUrl()` as the links do.
+
+Networks keep their coloured dot on purpose: thirty chain icons at 20px are less
+legible than thirty colours, and the dot doubles as the badge on every row that
+belongs to one.
+
+### A zero is not a gap
+
+`num()` folds a missing field to `0`, which is right for a quantity — no volume
+and zero volume are the same thing. It is wrong for a change. A token that moved
+0.00% this week is not a token whose week is unknown, and both were rendering as
+an em dash, claiming data was missing when it was not. Changes now carry `null`
+for absent and `0` for flat, and read differently.
+
+The same distinction fixed a borrow rate. It is reported net of borrow-side
+incentives, so it can legitimately go negative — being paid to borrow is real.
+But subtracting a reward from a *missing* base printed **"-0.90% borrow"** on a
+market nobody can borrow from. A market with no borrow side now says so.
+
+### One network under three names
+
+DexScreener calls a chain `berachain`, GeckoTerminal calls it `berachain` but
+calls Ethereum `eth`, and Atlas calls it `bera`. There were two separate tables:
+the DEX one covered eleven chains and the GeckoTerminal one covered
+twenty-eight, and neither was used by the other index. A pair on nineteen of the
+thirty supported networks resolved to no chain at all — no network badge, and
+invisible to every network filter.
+
+One table now, keyed by the app's own id and carrying both aliases, so a chain
+cannot be resolvable in one index and missing from the other. A pair on a chain
+outside the set still keeps its own network name and stays in the index.
+
 ### Which token is the real one
 
 Three rules used to guess: a ticker repeated on one network is probably copies,
@@ -455,7 +505,7 @@ both where the record is read and where the link is built.
 | `app.js` | Search index, renderers, detail sheets, keyboard nav, URL state |
 | `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
 | `test/` | Fixture server + end-to-end suite |
-| `tools/` | Three audits that print what renders, so it can be looked at |
+| `tools/` | Four audits that print what renders, so it can be looked at |
 
 Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
 still nothing to install or build. It gives typo tolerance — `kamnio` finds
@@ -510,7 +560,10 @@ renders, because the bugs that survive longest are the ones nothing asserts.
 stats and About line. `audit-filters.mjs` turns every chip on in turn and
 reports how much it leaves, which is how five filters that could only ever match
 everything were found. `audit-artifact.mjs` serves the built artifact with every
-host blocked. What each one surfaced is now an assertion in the suites above —
+host blocked. `audit-images.mjs` counts, per category, how many rows carry the
+logo their source sent and how many table cells are an em dash — which is how
+four kinds discarding a logo, and a whole column of zeroes printed as missing
+data, were found. What each one surfaced is now an assertion in the suites above —
 including the one that holds every sheet's headline to the row it came from,
 since the chart rewrites that headline with its own last point and a loader
 keyed on the wrong entity would otherwise show one thing's price under another

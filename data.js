@@ -234,6 +234,11 @@ function cache(key, ttl, fn) {
 }
 
 /* ---------- normalise ---------- */
+/* num() folds a missing field to 0, which is right for a quantity — no volume
+   and zero volume are the same thing. It is wrong for a change: a token that
+   moved 0.00% this week is not a token whose week is unknown, and rendering
+   both as an em dash claimed data was missing when it was not. */
+const numN = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
 const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
@@ -246,15 +251,15 @@ function asset(c, chain) {
   const spark = c.sparkline_in_7d?.price || [];
   const price = c.current_price ?? 0;
   return {
-    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: c.image,
+    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym, img: safeUrl(c.image) || null,
     chain, price, chg: c.price_change_percentage_24h ?? 0,
-    chg7d: num(c.price_change_percentage_7d_in_currency),
-    chg30d: num(c.price_change_percentage_30d_in_currency),
-    chg1y: num(c.price_change_percentage_1y_in_currency),
+    chg7d: numN(c.price_change_percentage_7d_in_currency),
+    chg30d: numN(c.price_change_percentage_30d_in_currency),
+    chg1y: numN(c.price_change_percentage_1y_in_currency),
     mcap: c.market_cap ?? 0, vol: c.total_volume ?? 0, rank: c.market_cap_rank,
     fdv: num(c.fully_diluted_valuation), supply: num(c.circulating_supply),
     maxSupply: num(c.max_supply), high24: num(c.high_24h), low24: num(c.low_24h),
-    ath: num(c.ath), athChg: num(c.ath_change_percentage),
+    ath: num(c.ath), athChg: numN(c.ath_change_percentage),
     // turnover is the one liquidity read that compares a $2T asset to a $2M one
     turn: c.market_cap ? num(c.total_volume) / c.market_cap * 100 : 0,
     spark: spark.slice(-24), color: colorOf(sym),
@@ -272,7 +277,12 @@ function pool(p, lb) {
     kind: 'pool', id: `p:${p.pool}`, pool: p.pool, proto, slug: p.project || '', sym, chain,
     sup: p.apy ?? p.apyBase ?? 0,
     supBase: p.apyBase ?? 0, supReward: p.apyReward ?? 0,
-    bor: (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
+    /* Borrow rate is net of borrow-side incentives, which can legitimately make
+       it negative — being paid to borrow is a real thing. But a market with no
+       borrow side at all has no rate, and subtracting rewards from a missing
+       base was printing "-0.90% borrow" on a pool nobody can borrow from. */
+    bor: lb.borrowable === false || (!lb.apyBaseBorrow && !lb.totalBorrowUsd)
+      ? null : (lb.apyBaseBorrow ?? 0) - (lb.apyRewardBorrow ?? 0),
     borBase: num(lb.apyBaseBorrow), borReward: num(lb.apyRewardBorrow),
     tvl: p.tvlUsd ?? 0, supplyUsd, borrowUsd,
     util: supplyUsd > 0 ? Math.min(100, borrowUsd / supplyUsd * 100) : 0,
@@ -297,9 +307,9 @@ function paprikaAsset(p, i) {
   return {
     kind: 'asset', id: `a:${p.id}`, cg: null, sym, name: p.name || sym, img: null,
     chain: null, price: num(q.price), chg: num(q.percent_change_24h),
-    chg7d: num(q.percent_change_7d), chg30d: num(q.percent_change_30d),
-    chg1y: num(q.percent_change_1y), ath: num(q.ath_price),
-    athChg: num(q.percent_from_price_ath), supply: num(p.circulating_supply),
+    chg7d: numN(q.percent_change_7d), chg30d: numN(q.percent_change_30d),
+    chg1y: numN(q.percent_change_1y), ath: num(q.ath_price),
+    athChg: numN(q.percent_from_price_ath), supply: num(p.circulating_supply),
     maxSupply: num(p.max_supply), high24: 0, low24: 0,
     turn: q.market_cap ? num(q.volume_24h) / num(q.market_cap) * 100 : 0,
     mcap: num(q.market_cap), vol: num(q.volume_24h), rank: p.rank || i + 1, spark: [],
@@ -361,22 +371,58 @@ export function loadStocks() {
   });
 }
 
-/* GeckoTerminal network slugs. A chain missing here simply has no per-chain
-   token list; everything else about it still works. */
-const GT_NET = { eth: 'eth', sol: 'solana', base: 'base', arb: 'arbitrum', bnb: 'bsc',
-  poly: 'polygon_pos', avax: 'avax', op: 'optimism', sui: 'sui-network', apt: 'aptos',
-  ton: 'ton', tron: 'tron', bera: 'berachain', sonic: 'sonic', mnt: 'mantle',
-  blast: 'blast', scrl: 'scroll', linea: 'linea', zks: 'zksync', sei: 'sei-evm',
-  uni: 'unichain', ink: 'ink', abs: 'abstract', hl: 'hyperliquid', celo: 'celo',
-  monad: 'monad', plume: 'plume', story: 'story' };
+/* The same networks under three names: ours, DexScreener's `chainId` and
+   GeckoTerminal's network slug. One table, because two separate ones drifted:
+   the DEX mapping covered eleven chains and GeckoTerminal's covered twenty-eight,
+   so a Berachain pair from either index resolved to no chain at all — no network
+   badge, and invisible to every network filter. */
+const NET_ALIAS = {
+  eth:   ['ethereum',    'eth'],
+  sol:   ['solana',      'solana'],
+  base:  ['base',        'base'],
+  arb:   ['arbitrum',    'arbitrum'],
+  bnb:   ['bsc',         'bsc'],
+  hl:    ['hyperliquid', 'hyperliquid'],
+  op:    ['optimism',    'optimism'],
+  poly:  ['polygon',     'polygon_pos'],
+  avax:  ['avalanche',   'avax'],
+  sui:   ['sui',         'sui-network'],
+  apt:   ['aptos',       'aptos'],
+  tron:  ['tron',        'tron'],
+  ton:   ['ton',         'ton'],
+  btc:   ['bitcoin',     ''],
+  bera:  ['berachain',   'berachain'],
+  sonic: ['sonic',       'sonic'],
+  mnt:   ['mantle',      'mantle'],
+  blast: ['blast',       'blast'],
+  scrl:  ['scroll',      'scroll'],
+  linea: ['linea',       'linea'],
+  zks:   ['zksync',      'zksync'],
+  sei:   ['sei',         'sei-evm'],
+  uni:   ['unichain',    'unichain'],
+  ink:   ['ink',         'ink'],
+  abs:   ['abstract',    'abstract'],
+  plume: ['plume',       'plume'],
+  story: ['story',       'story'],
+  monad: ['monad',       'monad'],
+  celo:  ['celo',        'celo'],
+  rhc:   ['robinhood',   ''],
+};
+// derived, so adding a chain above reaches every index at once
+const GT_NET = Object.fromEntries(Object.entries(NET_ALIAS).filter(([, a]) => a[1]).map(([id, a]) => [id, a[1]]));
+const DEX_CHAIN = Object.fromEntries(Object.entries(NET_ALIAS).map(([id, a]) => [a[0], id]));
+const GT_CHAIN = Object.fromEntries(Object.entries(GT_NET).map(([id, slug]) => [slug, id]));
 
 /** The tokens actually trading on one chain. */
 export function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1`, { tries: 1 }).catch(() => null);
-    return mergePairs([(j?.data || []).map(gtPool)]).map(p => ({ ...p, chain: chainId })).slice(0, 40);
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1 })
+      .catch(() => null);
+    const imgs = gtTokens(j);
+    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
+      .map(p => ({ ...p, chain: chainId })).slice(0, 40);
   });
 }
 
@@ -565,8 +611,8 @@ function protocol(p, dex, fee, perp, opt) {
   return {
     kind: 'protocol', id: `r:${p.slug || slugOf(name)}`, slug: p.slug || slugOf(name),
     name, cat: p.category || 'DeFi', chains, chain: chains[0] || null,
-    tvl: num(p.tvl), chg1d: num(p.change_1d), chg7d: num(p.change_7d),
-    url: safeUrl(p.url), img: p.logo || null, color: colorOf(name),
+    tvl: num(p.tvl), chg1d: numN(p.change_1d), chg7d: numN(p.change_7d),
+    url: safeUrl(p.url), img: safeUrl(p.logo) || null, color: colorOf(name),
     vol24: num(dex?.total24h), fees24: num(fee?.total24h),
     rev24: num(fee?.revenue24h ?? fee?.dailyRevenue),
     perps24: num(perp?.total24h), opts24: num(opt?.total24h),
@@ -846,13 +892,10 @@ export function loadProtocolChart(r, days) {
    ones every minute — so DexScreener is queried live per search and merged in.
    GeckoTerminal's trending pools give the same kind something to show before
    anyone types. */
-const DEX_CHAIN = { solana: 'sol', ethereum: 'eth', base: 'base', arbitrum: 'arb',
-  optimism: 'op', polygon: 'poly', bsc: 'bnb', avalanche: 'avax', sui: 'sui',
-  aptos: 'apt', hyperliquid: 'hl' };
-
-/* A pair keeps its network even when it is not one of the twelve we filter by —
-   restricting the long tail to known chains was throwing away most of it. */
-const netName = id => CH[DEX_CHAIN[id]]?.name || title(String(id || '').replace(/[-_]/g, ' '));
+/* A pair keeps its network even when it is not one we filter by — restricting
+   the long tail to known chains was throwing away most of it. */
+const netName = id => CH[DEX_CHAIN[id] || GT_CHAIN[id]]?.name
+  || title(String(id || '').replace(/[-_]/g, ' '));
 
 function pairOf(p) {
   const base = p.baseToken || {};
@@ -861,6 +904,7 @@ function pairOf(p) {
   return {
     kind: 'pair', id: `d:${p.pairAddress || base.address}`, sym,
     name: base.name || sym, addr: base.address || '', dex,
+    img: safeUrl(p.info?.imageUrl) || null,
     chain: DEX_CHAIN[p.chainId] || null, net: netName(p.chainId),
     price: Number(p.priceUsd) || 0, chg: num(p.priceChange?.h24),
     liq: num(p.liquidity?.usd), vol24: num(p.volume?.h24), fdv: num(p.fdv),
@@ -870,8 +914,16 @@ function pairOf(p) {
   };
 }
 
+/* JSON:API keeps the token beside the pool rather than inside it. Asking for
+   `include=base_token` costs nothing extra and is what carries the logo; when
+   the parameter is ignored the `included` array is simply absent and the tile
+   falls back to its coloured initials, as before. */
+const gtTokens = j => Object.fromEntries((j?.included || [])
+  .filter(x => x.type === 'token')
+  .map(x => [x.id, safeUrl(x.attributes?.image_url) || null]));
+
 /** GeckoTerminal returns JSON:API pools; /search and /trending share this shape. */
-function gtPool(row) {
+function gtPool(row, imgs) {
   const a = row.attributes || {};
   const net = String(row.id || '').split('_')[0];
   const [baseSym, quoteSym] = String(a.name || '').split('/').map(s => s.trim().toUpperCase());
@@ -879,11 +931,12 @@ function gtPool(row) {
   return {
     kind: 'pair', id: `d:${a.address || row.id}`, sym, name: a.name || sym,
     addr: a.address || '', dex: 'DEX',
-    chain: DEX_CHAIN[net] || null, net: netName(net),
+    chain: GT_CHAIN[net] || DEX_CHAIN[net] || null, net: netName(net),
     price: Number(a.base_token_price_usd) || 0,
     chg: Number(a.price_change_percentage?.h24) || 0,
     liq: Number(a.reserve_in_usd) || 0, vol24: Number(a.volume_usd?.h24) || 0,
     fdv: Number(a.fdv_usd) || 0, quote: quoteSym || '', url: '', color: colorOf(sym),
+    img: imgs?.[row.relationships?.base_token?.data?.id] || null,
     key: `${sym} ${a.name || ''} ${netName(net)} dex pair token memecoin swap trade`,
   };
 }
@@ -908,13 +961,17 @@ export function searchPairs(q) {
   return cache(`pairs:${term.toLowerCase()}`, 60000, async () => {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
-      get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1`, { tries: 1, timeout: 12000 }),
+      get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
+        { tries: 1, timeout: 12000 }),
     ]);
     const errors = [];
     let rows = [];
     if (dx.status === 'fulfilled') rows.push((dx.value?.pairs || []).map(pairOf));
     else errors.push(`DexScreener: ${dx.reason?.message || 'unreachable'}`);
-    if (gt.status === 'fulfilled') rows.push((gt.value?.data || []).map(gtPool));
+    if (gt.status === 'fulfilled') {
+      const imgs = gtTokens(gt.value);
+      rows.push((gt.value?.data || []).map(r => gtPool(r, imgs)));
+    }
     else errors.push(`GeckoTerminal: ${gt.reason?.message || 'unreachable'}`);
     return { rows: mergePairs(rows), errors };
   });
@@ -923,8 +980,10 @@ export function searchPairs(q) {
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 export function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1`, { tries: 1 }).catch(() => null);
-    return mergePairs([(j?.data || []).map(gtPool)]).slice(0, 40);
+    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1 })
+      .catch(() => null);
+    const imgs = gtTokens(j);
+    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);
   });
 }
 
@@ -947,11 +1006,11 @@ function llamaNft(c) {
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: c.image || c.logo || null, chain,
+    img: safeUrl(c.image || c.logo) || null, chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
     floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
-    chg1d: num(c.floorPricePctChange1Day), chg7d: num(c.floorPricePctChange7Day),
+    chg1d: numN(c.floorPricePctChange1Day), chg7d: numN(c.floorPricePctChange7Day),
     volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
     key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
   };
@@ -963,7 +1022,7 @@ function meNft(c) {
   return {
     kind: 'nft', id: `n:me-${c.symbol || slugOf(name)}`, cid: c.symbol || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: c.image || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
+    img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
     floorUsd: 0, floor: sol, unit: 'SOL',
     chg1d: 0, chg7d: 0, volUsd: 0, volSol: num(c.volumeAll) / SOL_LAMPORTS,
     supply: 0,
@@ -1034,7 +1093,8 @@ const firstPara = s => {
 
 export function loadAbout(it) {
   const cg = it.cg || (it.kind === 'stock' && it.id.slice(2));
-  if ((it.kind === 'asset' || it.kind === 'stock') && cg) {
+  // a network is described by the page of the token that secures it
+  if ((it.kind === 'asset' || it.kind === 'stock' || it.kind === 'chain') && cg) {
     return cache(`about:${it.id}`, 30 * TTL, async () => {
       const j = await get(`${CG}/coins/${encodeURIComponent(cg)}?localization=false&tickers=false` +
         `&market_data=false&community_data=false&developer_data=false&sparkline=false`,

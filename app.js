@@ -26,6 +26,8 @@ const usd = n => !isFinite(n) ? '—' : n < 0 ? '-' + usd(-n)
   : n >= 1 ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   : n === 0 ? '$0.00' : '$' + tiny(n);
 const pct = n => (n > 0 ? '+' : '') + (n ?? 0).toFixed(2) + '%';
+// null is "we were not told"; 0 is "it did not move", and they read differently
+const move = n => n == null ? '—' : pct(n);
 const apy = n => (n >= 1000 ? compact(n) : (n ?? 0).toFixed(2)) + '%';
 const ago = t => { const m = (Date.now() - t) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0}m ago` : `${m / 60 | 0}h ago`; };
 const floorOf = i => i.floorUsd ? usd(i.floorUsd)
@@ -113,8 +115,7 @@ async function enrich() {
   S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
   S.pairs = val(6, []); S.nfts = val(7, []); S.stockRows = val(8, []);
   S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
-  // a lending market now carries the protocol behind it
-  for (const p of S.pools) p.protocol = S.byProto[p.slug] || null;
+  joinLogos();
   nodes.clear(); reindex(); render();
   third();
 }
@@ -132,11 +133,34 @@ async function third() {
     const have = new Set(S.pools.filter(p => /morpho/i.test(p.slug))
       .map(p => `${p.sym}@${p.chain}`));
     const add = m.value.filter(x => !have.has(`${x.sym}@${x.chain}`));
-    for (const x of add) x.protocol = S.byProto[x.slug] || null;
+    for (const x of add) { x.protocol = S.byProto[x.slug] || null; x.img = x.protocol?.img || null; }
     S.pools = [...S.pools, ...add].sort((a, b) => b.supplyUsd - a.supplyUsd);
     S.morpho = add.length;
   }
   if (S.verified?.count || S.morpho) { nodes.clear(); reindex(); render(); }
+}
+
+/* Three kinds had a logo available and were drawing coloured initials instead.
+   A market's tile stands for the protocol running it, and DeFiLlama returns that
+   logo with the protocol; a stablecoin is nearly always also a top-100 asset,
+   whose logo is already loaded. Neither costs a request. */
+function joinLogos() {
+  for (const p of S.pools) {
+    p.protocol = S.byProto[p.slug] || null;
+    p.img = p.protocol?.img || null;
+  }
+  for (const y of S.yields) y.img = S.byProto[y.slug]?.img || null;
+  const bySym = new Map();
+  for (const a of S.assets) if (a.img && !bySym.has(a.sym)) bySym.set(a.sym, a.img);
+  for (const st of S.stables) st.img = st.img || bySym.get(st.sym) || null;
+  /* A network's own token usually carries its name — Ethereum, Solana, Sui —
+     and that token has a CoinGecko page describing the chain. Where the names
+     line up the chain inherits it; where they do not it simply has none. */
+  const byName = new Map(S.assets.filter(a => a.cg).map(a => [a.name.toLowerCase(), a]));
+  for (const c of S.chainRows) {
+    const a = byName.get(c.name.toLowerCase());
+    if (a) { c.cg = a.cg; c.img = c.img || a.img || null; }
+  }
 }
 
 const onChain = i => !S.chain || (i.chains ? i.chains.includes(S.chain) : i.chain === S.chain);
@@ -350,8 +374,7 @@ const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
     ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
-      ['30d', i => i.chg30d ? pct(i.chg30d) : '—', 'chg30d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: i => i.rank ? '#' + i.rank : '',
@@ -361,7 +384,7 @@ const KIND = {
   stock: { group: 'Tokenized stocks', size: i => i.mcap, spark: true, sq: true,
     chart: [loadAssetChart, 1, R.price, usd], ok: i => i.vol > 0,
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
     label: i => (i.under || i.sym).slice(0, 4),
     title: i => i.name, sub: i => i.sym, tag: () => 'Equity',
@@ -371,13 +394,15 @@ const KIND = {
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     ok: i => i.supplyUsd >= 1e6,
-    cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'], ['Borrow APY', i => apy(i.bor), 'bor'],
+    cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
+      ['Borrow APY', i => i.bor == null ? '—' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
       ['Available', i => money(i.free), 'free'], ['Util', i => i.util.toFixed(0) + '%', 'util']],
     label: i => (i.proto || '?').slice(0, 2).toUpperCase(),
     title: i => i.proto, sub: i => i.sym, tag: () => 'Lending',
     meta: i => CH[i.chain]?.name || '', tail: i => `$${compact(i.supplyUsd)} supplied`,
-    n1: i => apy(i.sup), n1cls: 'up', n2: i => `${apy(i.bor)} borrow`, cls: () => 'mute' },
+    n1: i => apy(i.sup), n1cls: 'up',
+    n2: i => i.bor == null ? 'supply only' : `${apy(i.bor)} borrow`, cls: () => 'mute' },
 
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     // four-figure APY on a small pool is the oldest farm scam there is, and a
@@ -394,20 +419,21 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
-    cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sgn'],
-      ['7d', i => pct(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
+    cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
       ['Revenue 24h', i => i.rev24 ? money(i.rev24) : '—', 'rev24']],
     label: i => (i.name || '?').slice(0, 2).toUpperCase(),
     title: i => i.name, tag: i => i.cat,
     meta: i => `${i.chains.length} chain${i.chains.length === 1 ? '' : 's'}`,
     tail: i => i.vol24 ? `$${compact(i.vol24)} 24h volume` : `$${compact(i.tvl)} TVL`,
-    n1: i => '$' + compact(i.tvl), n2: i => pct(i.chg1d), cls: i => i.chg1d >= 0 ? 'up' : 'down' },
+    n1: i => '$' + compact(i.tvl), n2: i => move(i.chg1d),
+    cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   nft: { group: 'NFT collections', size: i => i.volUsd || i.floorUsd || i.floor,
     ok: i => i.volUsd > 0 || i.floor > 0,
-    cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => i.chg1d ? pct(i.chg1d) : '—', 'chg1d', 'sgn'],
-      ['7d', i => i.chg7d ? pct(i.chg7d) : '—', 'chg7d', 'sgn'],
+    cols: [['Floor', floorOf, 'floorUsd'], ['24h', i => move(i.chg1d), 'chg1d', 'sgn'],
+      ['7d', i => move(i.chg7d), 'chg7d', 'sgn'],
       ['Volume', i => i.volUsd ? money(i.volUsd) : '—', 'volUsd'],
       ['Items', i => i.supply ? compact(i.supply) : '—', 'supply']],
     chart: [loadNftChart, 30, R.mid, nftValue],
@@ -415,8 +441,8 @@ const KIND = {
     title: i => i.name, tag: i => i.market,
     meta: i => i.net || '',
     tail: i => i.supply ? `${compact(i.supply)} items` : 'collection',
-    n1: i => floorOf(i), n2: i => i.chg1d ? pct(i.chg1d) : 'floor',
-    cls: i => i.chg1d ? (i.chg1d >= 0 ? 'up' : 'down') : 'mute' },
+    n1: i => floorOf(i), n2: i => i.chg1d == null ? 'floor' : pct(i.chg1d),
+    cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
     ok: i => i.vol24 >= 1000 && i.liq >= 5000,
@@ -493,7 +519,7 @@ const FACET = {
     ['dip', 'Far off high', i => i.athChg <= -50]],
   stock: [['up', 'Gainers', i => i.chg > 0], ['down', 'Losers', i => i.chg < 0],
     ['big', '$500M+', i => i.mcap >= 5e8]],
-  pool: [['borrow', 'Borrowable', i => i.bor > 0 && i.free > 0],
+  pool: [['borrow', 'Borrowable', i => i.bor != null && i.free > 0],
     ['stable', 'Stablecoin', i => i.stable],
     ['deep', '$100M+', i => i.supplyUsd >= 1e8],
     ['ltv', 'High LTV', i => i.ltv >= 0.75],
@@ -837,8 +863,8 @@ const ABOUT = {
   stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
     + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
   pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
-    + `, or post it as collateral and borrow at ${apy(i.bor)}`
-    + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}. `
+    + `${i.bor == null ? '' : `, or post it as collateral and borrow at ${apy(i.bor)}`
+      + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}`}. `
     + `$${compact(i.supplyUsd)} is supplied here, ${i.util.toFixed(0)}% of it lent out.`,
   yield: i => `A ${i.stable ? 'stablecoin ' : ''}farm on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}`
     + ` paying ${apy(i.apy)} on ${i.sym}${i.apyReward ? `, of which ${apy(i.apyReward)} is incentives` : ''}`
@@ -1034,7 +1060,7 @@ function sheetHTML(it) {
     <div class="stats">
       ${stat('Total supplied', '$' + compact(it.supplyUsd))}
       ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
-      ${stat('Borrow APY', apy(it.bor))}
+      ${stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor))}
       ${stat('Available now', '$' + compact(it.free))}
       ${stat('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—')}
       ${it.mean30 ? stat('30d average supply', apy(it.mean30)) : ''}
@@ -1103,8 +1129,13 @@ const SHEET = {
   stock: it => ({ big: usd(it.price), cls: it.chg >= 0 ? 'up' : 'down',
     caption: `${pct(it.chg)} in 24 hours`,
     sub: [it.sym, it.under ? `tracks ${it.under}` : 'tokenized equity'].join(' · '),
+    // the equity request carries the same windows and high as any other asset
     stats: [['Price', usd(it.price)], ['24h', pct(it.chg)],
+      it.chg7d == null ? null : ['7d', pct(it.chg7d)],
       ['Market cap', '$' + compact(it.mcap)], ['24h volume', '$' + compact(it.vol)],
+      it.ath ? ['All-time high', usd(it.ath)] : null,
+      it.athChg == null ? null : ['Off its high', pct(it.athChg)],
+      it.supply ? ['Tokens issued', compact(it.supply)] : null,
       it.under ? ['Underlying', it.under] : null],
     link: ['View on CoinGecko', links.stock(it)] }),
 
