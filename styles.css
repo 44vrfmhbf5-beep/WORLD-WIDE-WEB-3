@@ -264,6 +264,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .note.l{text-align:left;margin-top:0}
 /* about: prose, so it gets a reading measure and a little more line height */
 .sec.about .note{line-height:1.55;color:var(--dim);max-width:62ch}
+/* the source's own words, set apart from the line we composed */
+.sec.about .src{margin-top:9px;padding-left:11px;border-left:2px solid var(--line2);color:var(--faint)}
 .cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
 .cta.one button{flex:0 0 auto;padding:11px 22px}

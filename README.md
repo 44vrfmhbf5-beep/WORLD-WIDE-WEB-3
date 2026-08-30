@@ -212,12 +212,20 @@ the same readout hovering gives. Escape belongs to the sheet, not the chart.
 
 ### Every entity says what it is
 
-Each row's sheet opens with an About line. It is composed from what the row
-already carries, so it is always there and costs no request; where the source
-publishes its own words those arrive after and take over — CoinGecko for assets
-and equities, and for protocols the same payload the TVL chart already fetches,
-so that one is free. Source prose ships with markup, which is stripped before
-it reaches the page.
+Each row's sheet opens with an About line, composed from what the row already
+carries — so it is always there and costs no request. Every kind names
+something concrete rather than restating its own category:
+
+> Supply USDC to Aave v3 on Ethereum and earn 2.50%, or post it as collateral
+> and borrow at 1.10%, up to 87% of its value. $3.33B is supplied here, 20% of
+> it lent out.
+
+Where the thing behind the row publishes its own description, that is shown
+**underneath** rather than replacing the line — for a market the two say
+different things and both are worth having. Assets and equities come from
+CoinGecko; protocols, and every pool and farm running on them, come from the
+payload the TVL chart already fetches, so those are free. Source prose ships
+with markup, which is stripped before it reaches the page.
 
 ### No chart is blank
 

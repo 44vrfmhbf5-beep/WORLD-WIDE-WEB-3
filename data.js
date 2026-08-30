@@ -862,8 +862,10 @@ export function loadAbout(it) {
       return firstPara(j?.description?.en);
     });
   }
-  if (it.kind === 'protocol' && it.slug) {
-    return cache(`about:${it.id}`, 30 * TTL, async () => {
+  // a market is run by a protocol, and that protocol describes itself — one
+  // cached request covers protocols and every pool and farm underneath them
+  if (it.slug && ['protocol', 'pool', 'yield'].includes(it.kind)) {
+    return cache(`about:proto:${it.slug}`, 30 * TTL, async () => {
       const j = await get(`${LLAMA}/protocol/${encodeURIComponent(it.slug)}`, { tries: 1, timeout: 30000 })
         .catch(() => null);
       return firstPara(j?.description);

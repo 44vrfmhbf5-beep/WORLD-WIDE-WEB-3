@@ -99,7 +99,9 @@ http.createServer(async (req,res)=>{
   if(p==='/dl/overview/dexs') return json({protocols:[{name:'Aave V3',total24h:1.2e9},{name:'aave-v3',total24h:1.2e9}]});
   if(p==='/dl/overview/fees') return json({protocols:[{name:'Aave V3',total24h:3.4e6,revenue24h:9.1e5}]});
   if(p==='/dl/v2/chains') return json(CHAINS.map((c,i)=>({name:c,tvl:(9e10)/(i+1),tokenSymbol:c.slice(0,3).toUpperCase()})));
-  if(p.startsWith('/dl/protocol/')) return json({tvl:walk(p,400,1e9).map((v,i)=>({date:i,totalLiquidityUSD:v}))});
+  if(p.startsWith('/dl/protocol/')) return json({
+    description:`<p>${p.split('/').pop()} is a protocol described by its own source.</p>`,
+    tvl:walk(p,400,1e9).map((v,i)=>({date:i,totalLiquidityUSD:v}))});
   if(p==='/stable/stablecoins') return json({peggedAssets:[
     {id:'1',symbol:'USDC',name:'USD Coin',circulating:{peggedUSD:4.1e10},price:1.0001,pegMechanism:'fiat-backed',chains:['Ethereum','Solana']},
     {id:'2',symbol:'USDT',name:'Tether',circulating:{peggedUSD:1.18e11},price:0.9998,pegMechanism:'fiat-backed',chains:['Ethereum','BSC']}]});

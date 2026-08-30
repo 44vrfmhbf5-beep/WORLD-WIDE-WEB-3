@@ -637,28 +637,62 @@ function withRemote(list) {
 /* Every entity says what it is. The composed line is always available and
    needs no request; where a source publishes its own description, that arrives
    after and takes over. */
+const netsOf = i => (i.chains || []).map(c => CH[c]?.name).filter(Boolean);
+const listOf = (a, n = 3) => a.slice(0, n).join(', ') + (a.length > n ? ` and ${a.length - n} more` : '');
+
+/* What this row is, in a sentence, from what it already carries. Every kind
+   names something concrete — the networks, the investors, the terms — rather
+   than restating its own category. */
 const ABOUT = {
-  asset: i => `${i.name} (${i.sym}) is a crypto asset${i.rank ? `, ranked #${i.rank} by market cap` : ''}.`,
-  stock: i => `${i.name} is a tokenized equity${i.under ? `, tracking ${i.under}` : ''}, traded onchain like any other token.`,
-  pool: i => `A lending market on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}: supply ${i.sym} to earn, or post it and borrow against it.`,
-  yield: i => `A yield position on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}, paying ${apy(i.apy)} on ${i.sym}.`,
-  protocol: i => `${i.name} is a ${String(i.cat).toLowerCase()} protocol running on ${i.chains.length} network${i.chains.length === 1 ? '' : 's'}.`,
-  nft: i => `An NFT collection on ${i.net}${i.supply ? `, ${compact(i.supply)} items` : ''}, floor tracked by ${i.market}.`,
-  pair: i => `${i.sym} trading on ${i.dex}${i.net ? ` on ${i.net}` : ''}${i.quote ? `, paired with ${i.quote}` : ''}.`,
-  stablecoin: i => `${i.name} is a stablecoin${i.mech ? `, ${String(i.mech).toLowerCase()}` : ''}, with $${compact(i.circulating)} in circulation.`,
-  bridge: i => `${i.name} moves value between ${i.chains.length} networks.`,
-  raise: i => `${i.name} raised $${compact(i.amount)}${i.round ? ` in a ${i.round}` : ''}${i.sector ? `, building in ${i.sector.toLowerCase()}` : ''}.`,
-  hack: i => `${i.name} lost $${compact(i.amount)} to ${String(i.technique).toLowerCase()}.`,
-  chain: i => `${i.name} is a blockchain network, holding $${compact(i.tvl)} across the protocols indexed here.`,
+  asset: i => `${i.name} trades as ${i.sym}${i.rank ? `, the #${i.rank} crypto asset by market cap` : ''}`
+    + `, at ${usd(i.price)} with $${compact(i.vol)} traded in the last day.`,
+  stock: i => `${i.name} is an equity issued onchain${i.under ? `, tracking ${i.under}` : ''}`
+    + `, so it can be held and traded in a wallet like any token. It last changed hands at ${usd(i.price)}.`,
+  pool: i => `Supply ${i.sym} to ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''} and earn ${apy(i.sup)}`
+    + `, or post it as collateral and borrow at ${apy(i.bor)}`
+    + `${i.ltv ? `, up to ${(i.ltv * 100).toFixed(0)}% of its value` : ''}. `
+    + `$${compact(i.supplyUsd)} is supplied here, ${i.util.toFixed(0)}% of it lent out.`,
+  yield: i => `A ${i.stable ? 'stablecoin ' : ''}farm on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}`
+    + ` paying ${apy(i.apy)} on ${i.sym}${i.apyReward ? `, of which ${apy(i.apyReward)} is incentives` : ''}`
+    + `, with $${compact(i.tvl)} deposited${i.risk === 'yes' ? '. Two-sided, so impermanent loss applies' : ''}.`,
+  protocol: i => `${i.name} is a ${String(i.cat).toLowerCase()} protocol holding $${compact(i.tvl)}`
+    + `${netsOf(i).length ? ` across ${listOf(netsOf(i))}` : ''}`
+    + `${i.vol24 ? `, and turned over $${compact(i.vol24)} in the last day` : ''}.`,
+  nft: i => `${i.name} is a collection on ${i.net}${i.supply ? ` of ${compact(i.supply)} items` : ''}`
+    + `, with a floor of ${floorOf(i)}${i.chg1d ? `, ${pct(i.chg1d)} in a day` : ''}. Floor data via ${i.market}.`,
+  pair: i => `${i.sym} trades on ${i.dex}${i.net ? ` on ${i.net}` : ''}${i.quote ? ` against ${i.quote}` : ''}`
+    + `, with $${compact(i.liq)} of liquidity behind it and $${compact(i.vol24)} of volume in a day.`,
+  stablecoin: i => `${i.name} is a ${String(i.mech || 'pegged').toLowerCase()} stablecoin with `
+    + `$${compact(i.circulating)} in circulation across ${i.chains.length} network${i.chains.length === 1 ? '' : 's'}`
+    + `, currently at ${usd(i.price)} against its peg.`,
+  bridge: i => `${i.name} moves value between ${netsOf(i).length ? listOf(netsOf(i)) : 'chains'}`
+    + `, carrying $${compact(i.vol24)} in the last day`
+    + `${i.volPrev ? ` against $${compact(i.volPrev)} the day before` : ''}.`,
+  raise: i => `${i.name} raised $${compact(i.amount)}${i.round ? ` in a ${i.round}` : ''} ${when(i.date)}`
+    + `${i.investors.length ? `, led by ${listOf(i.investors, 2)}` : ''}`
+    + `${i.valuation ? `, at a $${compact(i.valuation)} valuation` : ''}.`,
+  hack: i => `${i.name} lost $${compact(i.amount)} ${when(i.date)} to ${String(i.technique).toLowerCase()}`
+    + `${netsOf(i).length ? `, on ${listOf(netsOf(i))}` : ''}.`,
+  chain: i => {
+    const top = S.protocols.filter(r => r.chains.includes(i.chain));
+    return `${i.name} holds $${compact(i.tvl)} across ${top.length} protocol${top.length === 1 ? '' : 's'} indexed here`
+      + `${top[0] ? `, the largest being ${top[0].name}` : ''}`
+      + `, with ${S.pools.filter(p => p.chain === i.chain).length} lending markets on it.`;
+  },
 };
 const aboutBox = it => `<div class="sec about"><h3>About</h3>
-  <div class="note l" data-about>${esc((ABOUT[it.kind] || (() => ''))(it))}</div></div>`;
+  <div class="note l" data-about>${esc((ABOUT[it.kind] || (() => ''))(it))}</div>
+  <div class="note l src" data-src hidden></div></div>`;
 
-/** Replace the composed line if the source publishes its own words. */
+/* The composed line says what this row is; where the thing behind it publishes
+   its own description, that is added under it rather than replacing it — for a
+   lending market the two say different things, and both are worth having. */
 async function fillAbout(box, it) {
-  const el = box.querySelector('[data-about]'); if (!el) return;
+  const el = box.querySelector('[data-src]'); if (!el) return;
   const text = await loadAbout(it).catch(() => '');
-  if (text && box.isConnected) el.textContent = text;
+  if (!text || !box.isConnected) return;
+  el.textContent = it.kind === 'pool' || it.kind === 'yield' ? `${it.proto}: ${text}` : text;
+  el.hidden = false;
 }
 
 /* ---------- detail sheet ---------- */

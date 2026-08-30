@@ -121,7 +121,9 @@ R('https://api.llama.fi/**', r => {
   if (u.includes('/v2/chains')) return J([{ name: 'Ethereum', tvl: 6.2e10 }, { name: 'Solana', tvl: 9.4e9 }]);
   if (u.includes('/v2/historicalChainTvl/'))
     return J(Array.from({ length: 200 }, (_, i) => ({ date: i, tvl: 5e10 + i * 1e8 })));
-  if (u.includes('/protocol/')) return J({ tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
+  if (u.includes('/protocol/')) return J({
+    description: `<p>${u.split('/protocol/')[1]} is described by its own source.</p>`,
+    tvl: Array.from({ length: 200 }, (_, i) => ({ date: i, totalLiquidityUSD: 1e9 + i * 1e6 })) });
   if (u.endsWith('/protocols')) return J(protocols);
   if (u.includes('/overview/derivatives')) return J({ protocols: [{ name: 'Aave V3', total24h: 4.2e8 }] });
   if (u.includes('/overview/options')) return J({ protocols: [{ name: 'Aave V3', total24h: 1.1e7 }] });
@@ -558,16 +560,29 @@ console.log('\n# every entity says what it is');
   await p.locator('.row[data-id^="a:"]').first().click();
   await p.waitForSelector('[data-about]', { timeout: 8000 });
   await p.waitForTimeout(1300);
-  const txt = await p.locator('[data-about]').textContent();
-  ok(/^bitcoin is described here by its own source/.test(txt),
-    `an asset carries its own description, for itself (${txt.slice(0, 46)})`);
-  ok(!/<|href=/.test(txt), 'with the markup its source ships stripped out');
+  const line = await p.locator('[data-about]').textContent();
+  ok(/Bitcoin trades as BTC/.test(line), `every row says what it is (${line.slice(0, 40)})`);
+  const src = await p.locator('[data-src]').textContent();
+  ok(/^bitcoin is described here by its own source/.test(src),
+    `and carries its source's own words, for itself (${src.slice(0, 44)})`);
+  ok(!/<|href=/.test(src), 'with the markup its source ships stripped out');
+  ok(await p.locator('[data-src]:not([hidden])').count() === 1, 'shown beside the line, not instead of it');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 
   await p.fill('#q', 'across'); await p.waitForTimeout(800);
   await p.locator('.row[data-id^="b:"]').first().click(); await p.waitForTimeout(700);
-  ok(/moves value between/.test(await p.locator('[data-about]').textContent()),
-    'and a kind with none is described from what is known');
+  ok(/moves value between Ethereum, Base/.test(await p.locator('[data-about]').textContent()),
+    'a kind with no published description names what it actually connects');
+  ok(await p.locator('[data-src]:not([hidden])').count() === 0, 'and shows no empty source block');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+
+  // a market is run by a protocol, and that protocol describes itself
+  await p.fill('#q', 'kamino'); await p.waitForTimeout(800);
+  await p.locator('.row[data-id^="p:"]').first().click(); await p.waitForTimeout(1400);
+  ok(/Supply .* and earn/.test(await p.locator('[data-about]').textContent()),
+    'a lending market states its own terms');
+  ok(/kamino-lend is described by its own source/.test(await p.locator('[data-src]').textContent()),
+    'and inherits the description of the protocol running it');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
@@ -581,9 +596,12 @@ console.log('\n# a tokenized stock opens like anything else');
   ok(await p.locator('.sheet-in[data-kind="stock"]').count() === 1, 'clicking an equity opens its sheet');
   const sheet = await p.locator('.sheet').textContent();
   ok(/Underlying/.test(sheet) && /Market cap/.test(sheet), 'with the stats that belong to it');
-  await p.waitForTimeout(1200);
-  ok(/^tesla-xstock is described here/.test(await p.locator('[data-about]').textContent()),
-    'and an about line fetched for that equity, not another');
+  await p.waitForTimeout(1300);
+  // this fixture's largest equity is Tesla; the line must name its own underlying
+  ok(/tracking TSLA/.test(await p.locator('[data-about]').textContent()),
+    'and an about line naming its own underlying');
+  ok(/^tesla-xstock is described here/.test(await p.locator('[data-src]').textContent()),
+    'with prose fetched for that equity, not another');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
