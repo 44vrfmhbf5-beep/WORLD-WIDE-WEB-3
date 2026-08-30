@@ -960,7 +960,7 @@ function sheetHTML(it) {
         ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
         ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
-      ${aboutBox(it)}
+      ${aboutBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -980,7 +980,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
-      ${aboutBox(it)}
+      ${aboutBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -1006,7 +1006,7 @@ function sheetHTML(it) {
         ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
         ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
       </div>
-      ${aboutBox(it)}
+      ${aboutBox(it)}${tradeBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, `Open ${it.name}`, links.protocol(it))}
@@ -1028,7 +1028,7 @@ function sheetHTML(it) {
         <div class="stat wide"><div class="k">Explore</div><div class="v" style="font-size:13.5px;font-weight:500;color:var(--dim)">
           Filter the whole index to ${esc(it.name)} with the chip above the results.</div></div>
       </div>
-      ${aboutBox(it)}
+      ${aboutBox(it)}${tradeBox(it)}
       ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
       ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${ctaHTML(it, 'Open on DeFiLlama', links.chain(it))}
@@ -1045,7 +1045,7 @@ function sheetHTML(it) {
       ${head(k.title(it), [k.sub?.(it), k.meta?.(it)].filter(Boolean).join(' · '))}
       <div class="big">${esc(k.n1(it))}</div>
       <div class="chgline"><span class="mute">${esc(k.tail?.(it) || '')}</span></div>
-      ${chartBox(it)}${aboutBox(it)}
+      ${chartBox(it)}${aboutBox(it)}${tradeBox(it)}
       ${ctaHTML(it, 'Open', (links[it.kind] || links.asset)(it))}
     </div>`;
   }
@@ -1067,7 +1067,7 @@ function sheetHTML(it) {
       <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
-    ${aboutBox(it)}
+    ${aboutBox(it)}${tradeBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
@@ -1360,6 +1360,7 @@ function open(id, { push = true } = {}) {
   store.set('atlas:seen', JSON.stringify(S.seen));
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
+  fillTrade(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
 }
@@ -1506,6 +1507,7 @@ el.q.addEventListener('input', e => {
 });
 el.clear.addEventListener('click', () => { S.q = el.q.value = ''; S.sel = 0; render(); syncUrl(true); el.q.focus(); });
 $('#topSearch').addEventListener('click', () => el.q.focus());
+$('#connect').addEventListener('click', openWallet);
 $('#refresh').addEventListener('click', () => load({ force: true }));
 narrow.addEventListener('change', () => { nodes.clear(); render(); });
 function setSafe(on) {
@@ -1641,6 +1643,7 @@ el.res.addEventListener('click', e => {
 el.banner.addEventListener('click', e => e.target.closest('[data-retry]') && load({ force: true }));
 
 el.sheet.addEventListener('click', e => {
+  if (e.target.closest('[data-wact], [data-wcopy]')) return onWalletAction(e);
   const s = e.target.closest('[data-star]'); if (s) return toggleStar(s.dataset.star);
   if (e.target.closest('[data-close]')) return close();
   if (e.target.closest('[data-chain]')) return onChainClick(e);
@@ -1661,6 +1664,7 @@ el.scrim.addEventListener('click', () => close());
 
 addEventListener('popstate', () => {
   const h = location.hash.slice(1), id = h && h.replace('/', ':');
+  if (history.state?.wallet) return showSheet(walletHTML());
   if (id && find(id)) return open(id, { push: false });
   hide();
 });
@@ -1685,6 +1689,203 @@ addEventListener('keydown', e => {
   } else if (e.key === 'Enter' && S.list[S.sel]) open(S.list[S.sel].id);
 });
 
+/* ---------- wallet ----------
+   Atlas is a search engine that can hold a wallet, not a wallet that can
+   search. Everything below arrives on demand: the module, the 780KB SDK behind
+   it and the iframe it needs are all fetched the first time someone asks, and a
+   session that only searches never pays for any of it. If the import fails —
+   offline, blocked, or a bundled build with no module to fetch — the app is the
+   app it was and every sheet still offers its hand-off links. */
+let W = null, T = null, wallet = { signedIn: false }, configured = false;
+const loadWallet = () => (W ||= import('./wallet.js').then(m => {
+  m.onWallet(s => { wallet = s; paintConnect(); if (el.sheet.classList.contains('open')) reopen(); });
+  return m;
+}));
+const loadTrade = () => (T ||= import('./trade.js'));
+const reopen = () => { const id = el.sheet.querySelector('[data-id]')?.dataset.id; if (id) open(id, { push: false }); };
+
+const short = a => !a ? '' : a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+
+function paintConnect() {
+  const b = $('#connect'); if (!b) return;
+  const addr = wallet.evm || wallet.sol;
+  b.querySelector('span').textContent = wallet.signedIn ? (short(addr) || wallet.label) : 'Connect';
+  b.classList.toggle('on', !!wallet.signedIn);
+}
+
+/** Every failure here is somebody's money, so none of them are swallowed. */
+function walletErr(box, e) {
+  const n = box.querySelector('[data-werr]');
+  if (!n) return;
+  const m = e?.message || String(e);
+  // "Failed to fetch" on its own tells nobody which thing failed to fetch
+  n.textContent = /failed to fetch|networkerror|load failed/i.test(m)
+    ? `Could not reach Privy — ${m}. Check the app id in config.js and that this domain is allowed in the Privy dashboard.`
+    : m;
+  n.hidden = false;
+}
+
+/* Shipped with no keys, so say that plainly rather than presenting a form that
+   cannot work. The rest of the app does not depend on any of this. */
+const setupHTML = () => `<div class="wsec">
+    <h3>Not configured yet</h3>
+    <p class="note l">Atlas ships without credentials. Put a Privy app id in
+      <code>config.js</code> and sign-in, wallet generation, MoonPay funding and
+      signing all switch on. Everything else — search, charts, and every link
+      out of a sheet — already works without one.</p>
+    <div class="wrow"><a class="s" href="https://dashboard.privy.io" target="_blank"
+      rel="noopener noreferrer">Get an app id ↗</a></div>
+  </div>`;
+
+const authHTML = () => `<div class="wsec">
+    <h3>Sign in</h3>
+    <p class="note l">A wallet is created for you on first sign-in. Keys stay in
+      Privy's secure iframe — this page can ask it to sign and cannot read them.</p>
+    <div class="wrow"><input id="wemail" type="email" inputmode="email" autocomplete="email"
+      placeholder="you@example.com" aria-label="Email address">
+      <button class="p" data-wact="code">Email me a code</button></div>
+    <div class="wrow" data-step="code" hidden>
+      <input id="wcode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" aria-label="Login code">
+      <button class="p" data-wact="verify">Sign in</button></div>
+    <div class="wor">or</div>
+    <div class="wrow">
+      <button class="s" data-wact="oauth" data-p="google">Google</button>
+      <button class="s" data-wact="oauth" data-p="apple">Apple</button>
+      <button class="s" data-wact="external">Browser wallet</button></div>
+  </div>`;
+
+const accountHTML = () => `<div class="wsec">
+    <h3>Wallet</h3>
+    ${wallet.evm ? `<div class="waddr"><span class="k">Ethereum</span><code>${esc(wallet.evm)}</code>
+      <button class="copy" data-wcopy="${esc(wallet.evm)}" aria-label="Copy address">Copy</button></div>` : ''}
+    ${wallet.sol ? `<div class="waddr"><span class="k">Solana</span><code>${esc(wallet.sol)}</code>
+      <button class="copy" data-wcopy="${esc(wallet.sol)}" aria-label="Copy address">Copy</button></div>` : ''}
+    ${!wallet.evm && !wallet.sol ? `<p class="note l">No wallet on this account yet.</p>
+      <div class="wrow"><button class="p" data-wact="create">Generate a wallet</button></div>` : ''}
+  </div>
+  ${wallet.evm ? `<div class="wsec"><h3>Add funds</h3>
+    <p class="note l">MoonPay, opened against this wallet. Privy signs the widget
+      URL with the key registered to the app, so the destination is fixed to the
+      address above and cannot be changed in the page.</p>
+    <div class="wrow"><button class="p" data-wact="fund">Buy with MoonPay</button></div></div>` : ''}
+  <div class="wsec"><div class="wrow"><button class="s" data-wact="logout">Sign out</button></div></div>`;
+
+function walletHTML() {
+  return `<div class="grab" aria-hidden="true"></div><div class="sheet-in wallet" data-kind="wallet">
+    <div class="sheet-top"><div class="ident"><div><h2>${wallet.signedIn ? 'Your wallet' : 'Connect'}</h2>
+      <div class="hsub">${wallet.signedIn ? esc(wallet.label)
+      : configured ? 'Sign in to hold, fund and trade' : 'Wallet features need one credential'}</div></div></div>
+      <div class="acts"><button class="x" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+    <div class="note l err" data-werr hidden></div>
+    ${!configured ? setupHTML() : wallet.signedIn ? accountHTML() : authHTML()}
+    <div class="note">Atlas never holds your keys and never takes custody.</div>
+  </div>`;
+}
+
+async function openWallet() {
+  history.pushState({ wallet: true, depth: ++depth }, '', location.href);
+  showSheet(walletHTML());
+  try {
+    const [{ walletReady }] = await Promise.all([import('./config.js'), loadWallet()]);
+    configured = walletReady();
+    showSheet(walletHTML());
+  } catch (e) {
+    walletErr(el.sheet, new Error('Wallet unavailable in this build — ' + (e?.message || 'module could not load')));
+  }
+}
+
+async function onWalletAction(e) {
+  const b = e.target.closest('[data-wact], [data-wcopy]'); if (!b) return;
+  const box = el.sheet;
+  const copy = b.dataset.wcopy;
+  if (copy) {
+    navigator.clipboard?.writeText(copy).then(() => { b.textContent = 'Copied'; });
+    return;
+  }
+  const act = b.dataset.wact;
+  const busy = t => { b.disabled = true; b.dataset.was = b.textContent; b.textContent = t; };
+  const done = () => { b.disabled = false; if (b.dataset.was) b.textContent = b.dataset.was; };
+  try {
+    const m = await loadWallet();
+    if (act === 'code') {
+      busy('Sending…');
+      await m.sendEmailCode($('#wemail').value.trim());
+      box.querySelector('[data-step=code]').hidden = false;
+      $('#wcode')?.focus();
+    } else if (act === 'verify') {
+      busy('Checking…');
+      await m.loginWithEmailCode($('#wemail').value.trim(), $('#wcode').value.trim());
+      await m.createWallet();
+      showSheet(walletHTML());
+    } else if (act === 'oauth') { busy('Opening…'); await m.loginWithOAuth(b.dataset.p); }
+    else if (act === 'external') { busy('Waiting…'); await m.connectExternal(); showSheet(walletHTML()); }
+    else if (act === 'create') { busy('Generating…'); await m.createWallet(); showSheet(walletHTML()); }
+    else if (act === 'fund') {
+      busy('Opening…');
+      const url = await m.fundWithMoonpay({ address: wallet.evm });
+      open2(url);
+    } else if (act === 'logout') { await m.logout(); showSheet(walletHTML()); }
+  } catch (err) { walletErr(box, err); }
+  finally { done(); }
+}
+
+// a popup that cannot reach back into this page
+const open2 = url => { const w = window.open(url, '_blank', 'noopener,noreferrer'); if (!w) location.href = url; };
+
+/* ---------- trade ----------
+   A quote is a read, so it is fetched and shown. The send is the venue's, and
+   the link carries the wallet into it. */
+const TRADE = {
+  pair: it => it.chain === 'sol'
+    ? [['Swap on Jupiter', t => t.jupiterLink(it.addr)]]
+    : [['Trade on Uniswap', t => t.uniswapLink({ chainId: EVM_ID[it.chain], tokenOut: it.addr })]],
+  asset: it => [['Trade on Uniswap', t => t.uniswapLink({ tokenOut: it.sym })],
+    ['Perps on Hyperliquid', t => t.hyperliquidLink(it.sym)]],
+  nft: it => [['Buy on OpenSea', t => t.openseaLink(it.cid, it.net?.toLowerCase() || 'ethereum')]],
+};
+const EVM_ID = { eth: 1, base: 8453, arb: 42161, op: 10, poly: 137, bnb: 56, avax: 43114 };
+
+function tradeBox(it) {
+  if (!TRADE[it.kind]) return '';
+  return `<div class="sec trade" data-trade="${esc(it.id)}"><h3>Trade</h3>
+    <div class="quote" data-quote hidden></div>
+    <div class="cta venues" data-venues></div></div>`;
+}
+
+async function fillTrade(box, it) {
+  const host = box.querySelector('[data-trade]'); if (!host) return;
+  let t; try { t = await loadTrade(); } catch { host.remove(); return; }
+  const venues = host.querySelector('[data-venues]');
+  venues.innerHTML = (TRADE[it.kind](it) || [])
+    .map(([label, url]) => { const u = url(t); return u
+      ? `<a class="s" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>` : ''; })
+    .join('');
+  if (wallet.evm || wallet.sol) {
+    const who = document.createElement('div');
+    who.className = 'note l';
+    who.textContent = `Trades will be signed by ${short(it.chain === 'sol' ? wallet.sol : wallet.evm)}.`;
+    host.appendChild(who);
+  }
+  // a live route, priced now, before anyone commits to anything
+  if (it.kind === 'pair' && it.chain === 'sol' && it.addr && !flags.sample) {
+    const q = host.querySelector('[data-quote]');
+    try {
+      const [r, dec] = await Promise.all([
+        t.jupiterQuote({ inputMint: t.WSOL, outputMint: it.addr, amount: 1e9 }),
+        t.tokenDecimals(it.addr),
+      ]);
+      // a route with no decimals is a number of unknown magnitude — say nothing
+      if (!host.isConnected || dec == null) return;
+      const out = r.out / 10 ** dec;
+      q.innerHTML = `<div class="qline"><b>1 SOL</b> → <b>${esc(out >= 1 ? compact(out) : tiny(out))}</b> ${esc(it.sym)}</div>
+        <div class="qmeta">${esc(r.impact.toFixed(2))}% price impact${
+          r.via.length ? ` · via ${esc(listOf(r.via, 2))}` : ''} · live from Jupiter</div>`;
+      q.hidden = false;
+    } catch { /* a quote is an extra, never a gate */ }
+  }
+}
+
 /* ---------- go ---------- */
 // The shell is static HTML, so a boot failure would otherwise look like a page
 // whose search box simply ignores you. Say what happened instead.
@@ -1694,6 +1895,10 @@ addEventListener('error', e => {
 });
 
 fromUrl();
+paintConnect();
+// an OAuth redirect lands back here with a one-time code in the query string
+if (/privy_oauth_code/.test(location.search))
+  loadWallet().then(m => m.resumeOAuth()).catch(() => {});
 if (S.q.trim().length >= 2) askDex();
 load().then(() => {
   const id = location.hash.slice(1).replace('/', ':');

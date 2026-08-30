@@ -89,25 +89,98 @@ Live, keyless, straight from the browser — no backend, no wallet.
 
 Thirty-four endpoints across fourteen hosts, all keyless and CORS-open.
 
-### Where the venues are, and where they are not
+## A wallet, without becoming a wallet app
 
-Atlas indexes and explains. It holds no key, no wallet and no quote, and it is
-not going to start. What it can do is hand you off with the token already
-resolved, which is most of the value of having found it here — so a sheet
-carries the venue that can act on it: **Jupiter** for a Solana token,
-**Matcha** for an EVM one, **MoonPay** for a listed asset. All three are public
-URLs with no account, no SDK and no embedded credential.
+Atlas is a search engine that can hold a wallet, not a wallet that can search.
+That ordering decides the architecture: **nothing about the wallet loads until
+somebody asks for one.** The module, the 900KB Privy SDK behind it and the
+iframe it needs are all fetched on the first click of *Connect*. A session that
+only searches never fetches a byte of it, and there is a test that fails if it
+ever does.
 
-Two more were asked for and are not wired, for the same reason each way:
+Put a Privy app id in `config.js` and this switches on:
 
-- **Privy** is wallet authentication. It needs an app id and a signed-in user,
-  and this app is deliberately wallet-free — there is nothing here to log into.
-- **Crossmint** checkout needs a collection id issued from their console. There
-  is no way to derive one from a floor price, so a "buy this NFT" button would
-  be a link to an error page.
+| | |
+| --- | --- |
+| **Sign in** | Email code, Google, Apple, or an existing browser wallet over SIWE |
+| **Generate a wallet** | Ethereum and Solana, created on first sign-in |
+| **Fund it** | MoonPay, opened against *this* wallet — see below |
+| **Sign** | Messages and EVM transactions, through the embedded wallet |
+| **Buy an NFT** | Crossmint checkout, delivered to the wallet address |
 
-**0x / Matcha's Swap API** needs an `0x-api-key` header, so quotes are out; the
-token deep link does not, so that is what is used.
+With the file empty — which is how it ships — *Connect* says so plainly instead
+of showing a form that cannot work, and everything else in Atlas is untouched.
+
+### The keys are not in this page
+
+Privy's embedded wallet keeps its key material in an iframe served from Privy's
+own origin. This app hosts that iframe and relays `postMessage` in both
+directions; it can ask the iframe to sign and it cannot read the key. The relay
+is what the React SDK would otherwise do, and it is about fifteen lines in
+`wallet.js` — the only reason `@privy-io/react-auth` is not here is that it is
+6.5MB and brings React with it, against a 19KB dependency budget.
+
+The SDK is **vendored, pinned and rebuilt deliberately** rather than imported
+from a CDN. This is signing authority: a compromised CDN response would be too.
+
+> The first build of that vendored bundle was unusable and looked fine. The
+> entry re-exported a namespace, which makes the default export the namespace
+> itself and every named import off it `undefined` — invisible until something
+> constructs it. Nothing catches that but running it, so a test now does.
+
+### MoonPay through the wallet, not past it
+
+A `buy.moonpay.com?currencyCode=btc` link cannot say where the money goes. It
+opens a generic buy page and the buyer supplies an address by hand.
+
+Privy signs the widget URL server-side with the MoonPay key registered against
+the app, so the widget opens already bound to the wallet Atlas just generated:
+the destination is fixed before the page loads and cannot be changed in the
+browser. No MoonPay key reaches this page, and no MoonPay *secret* exists in the
+repo at all. `privy.funding.moonpay.getTransactionStatus` tracks it afterwards.
+
+Crossmint is the same idea for NFTs: its hosted checkout takes `mintTo`, so a
+card payment lands the NFT in the wallet rather than somewhere the buyer has to
+go and find.
+
+### Trading: the line, and why it is there
+
+**Quoting is wired.** Jupiter's quote endpoint is keyless and CORS-open, so a
+Solana pair's sheet shows a live route — *1 SOL → 41.2M CASHCAT, 0.31% price
+impact, via Orca and Meteora* — before anyone commits to anything. Decimals come
+from Jupiter's token lookup rather than being assumed, because a route shown
+without them is a number wrong by orders of magnitude sitting next to a price.
+Hyperliquid's `/info` is keyless too, so a connected wallet can read its own
+positions.
+
+**Broadcasting is relayed, never constructed.** Where a venue's API returns
+ready-to-sign calldata — Uniswap's Trading API, OpenSea's fulfilment endpoint —
+`trade.js` passes it to the wallet and does nothing else. The venue built the
+transaction and stands behind it. Both need that venue's key and are off until
+one is set.
+
+**What this build will not do is assemble swap calldata itself, or sign an
+exchange action it put together by hand.** Not because it is hard — because
+nothing here has executed once. This sandbox cannot reach a chain, an RPC, a
+Privy app or a live venue. Everywhere else in Atlas an untested assumption shows
+an em dash; on that path it spends money. So the last step stays with the venue,
+whose code *has* run, and Atlas carries the wallet and the trade into it.
+
+That is also why Jupiter's swap is quoted but not broadcast here: signing its
+transaction needs `@solana/web3.js`, whose dependency tree pulls the lazy bundle
+past a megabyte, to send something this build has never once seen succeed.
+
+### The hand-off links, still the floor
+
+Under everything above sits the link that needed no wallet at all, and it is
+still what a sheet offers when nothing is configured: **Jupiter** for a Solana
+token, **Matcha** or **Uniswap** for an EVM one, **OpenSea** for a collection,
+**Hyperliquid** for a perp, **MoonPay** for a listed asset. All public URLs,
+no account, no SDK, no credential — carrying the token already resolved, which
+is most of the value of having found it here.
+
+**0x / Matcha's Swap API** needs an `0x-api-key` header, so quotes through it
+are out; the token deep link does not, so that is what is used.
 
 ### More from the same bytes
 
@@ -504,6 +577,10 @@ both where the record is read and where the link is built.
 | `data.js` | API clients, caching, retry/backoff, normalisation |
 | `app.js` | Search index, renderers, detail sheets, keyboard nav, URL state |
 | `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
+| `config.js` | Every credential, empty by default. Publishable ids only |
+| `wallet.js` | Privy: sign in, generate, sign, fund. Loaded on demand |
+| `trade.js` | Live quotes, venue-relayed execution, hand-off links |
+| `vendor/privy.mjs` | Privy JS SDK, pinned and bundled. Apache-2.0 |
 | `test/` | Fixture server + end-to-end suite |
 | `tools/` | Four audits that print what renders, so it can be looked at |
 

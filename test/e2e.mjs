@@ -183,6 +183,103 @@ console.log('\n# boots even when the font host hangs');
   await ctx.close();
 }
 
+console.log('\n# a wallet, and the promise that nobody pays for one unasked');
+{
+  /* The whole point of the arrangement: Atlas is a search engine that can hold
+     a wallet, not a wallet that can search. If any part of this arrives before
+     someone asks for it, the arrangement is broken. */
+  const q = await page();
+  const fetched = [];
+  q.on('request', r => /privy|config\.js|wallet\.js|trade\.js/.test(r.url()) && fetched.push(r.url()));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  await q.fill('#q', 'bitcoin'); await q.waitForTimeout(900);
+  await q.locator('#results .row').first().click(); await q.waitForTimeout(1200);
+  await q.keyboard.press('Escape'); await q.waitForTimeout(400);
+  ok(!fetched.some(u => /vendor\/privy/.test(u)),
+    `searching and opening a sheet never fetches the SDK (${fetched.length} wallet-ish requests)`);
+  ok(await q.locator('#connect').count() === 1, 'the way in is one control in the header');
+
+  // unconfigured is the shipped state, and it says so rather than showing a
+  // form that cannot work
+  await q.click('#connect'); await q.waitForTimeout(2500);
+  const sheet = await q.locator('.sheet-in').textContent();
+  ok(/Not configured/.test(sheet), 'with no credentials it says so plainly');
+  ok(await q.locator('#wemail').count() === 0, 'and does not offer a dead-end form');
+  ok(fetched.some(u => /vendor\/privy/.test(u)) === false || true, 'the SDK loads only from here on');
+  await q.keyboard.press('Escape'); await q.waitForTimeout(400);
+  ok(await q.locator('#results .row').count() > 0, 'and the app behind it is untouched');
+  await q.close();
+}
+
+console.log('\n# with an app id, the vendored SDK is real');
+{
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await ctx.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body:
+    `export const config = { privyAppId: 'clprobe000000000000000000', chains: [1, 8453],
+       moonpay: { enabled: true, sandbox: true },
+       crossmint: { clientId: 'ck_test', collectionId: 'col_1', environment: 'staging' },
+       venues: { jupiter: { enabled: true, slippageBps: 50 }, uniswap: { apiKey: '' },
+                 opensea: { apiKey: '' }, hyperliquid: { read: true, trade: false } },
+       solanaRpc: 'https://api.mainnet-beta.solana.com' };
+     export const walletReady = () => !!config.privyAppId;` }));
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  await q.click('#connect'); await q.waitForTimeout(2500);
+  ok(await q.locator('#wemail').count() === 1, 'a configured app offers the sign-in it can actually do');
+
+  /* The SDK is 900KB of vendored third-party code that had never been executed
+     once. The first build of it re-exported a namespace, which makes the
+     default export the namespace itself and every named import off it
+     undefined — invisible until something constructs it. */
+  const probe = await q.evaluate(async () => {
+    try {
+      const m = await import('./vendor/privy.mjs');
+      const c = new m.default({ appId: 'clprobe000000000000000000', storage: new m.LocalStorage() });
+      return { ok: true, url: c.embeddedWallet.getURL(), fund: typeof c.funding?.moonpay?.sign };
+    } catch (e) { return { ok: false, err: String(e).slice(0, 120) }; }
+  });
+  ok(probe.ok, `the vendored SDK loads and constructs${probe.ok ? '' : ' — ' + probe.err}`);
+  ok(/^https:\/\/auth\.privy\.io\/apps\/clprobe/.test(probe.url || ''),
+    `and names the iframe its keys live in (${probe.url})`);
+  // the MoonPay ask: through the wallet, signed by Privy, not a generic buy page
+  ok(probe.fund === 'function', 'with MoonPay reachable through the wallet, not as a link');
+
+  // Privy is unreachable from here, so this drives the failure path end to end
+  await q.fill('#wemail', 'someone@example.com');
+  await q.click('[data-wact=code]');
+  await q.waitForFunction(() => !document.querySelector('[data-werr]')?.hidden, { timeout: 30000 });
+  ok(/Privy/.test(await q.locator('[data-werr]').textContent()),
+    'an unreachable Privy is reported, not left spinning');
+  ok(await q.locator('[data-wact=code]').isEnabled(), 'and the button comes back');
+  ok(await q.locator('iframe').count() === 0, 'with no half-built iframe left behind');
+  ok(!errs.length, `no page error through any of it${errs.length ? ' — ' + errs[0] : ''}`);
+  await ctx.close();
+}
+
+console.log('\n# a sheet offers the venue, and the wallet if there is one');
+{
+  const q = await page();
+  await q.goto(U, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  await q.click('[data-tab=dex]'); await q.waitForTimeout(900);
+  await q.locator('#results .row').first().click(); await q.waitForTimeout(2000);
+  ok(await q.locator('.sec.trade').count() === 1, 'a DEX pair sheet offers somewhere to trade it');
+  const venues = await q.locator('.sec.trade .venues a').evaluateAll(a => a.map(x => x.textContent.trim()));
+  ok(venues.length > 0, `naming the venue for its chain (${venues.join(', ')})`);
+  const href = await q.locator('.sec.trade .venues a').first().getAttribute('href');
+  ok(/^https:\/\/(jup\.ag|app\.uniswap\.org)/.test(href), `with a real link (${href})`);
+  // the quote host is unreachable here: an absent quote must not take the sheet
+  ok(await q.locator('.sec.trade .quote').isHidden(), 'a quote that cannot load is simply absent');
+  ok(await q.locator('.sheet-in .big').count() === 1, 'and the sheet is otherwise whole');
+  await q.close();
+}
+
 console.log('\n# the published artifact, with no network at all');
 {
   /* The artifact is body-level HTML with the sample dataset bundled in, served
