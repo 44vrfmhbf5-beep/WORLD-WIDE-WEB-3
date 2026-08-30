@@ -2,7 +2,7 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks,
+  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
   links, flags, clearCache } from './data.js';
 
@@ -634,6 +634,33 @@ function withRemote(list) {
     : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
 }
 
+/* Every entity says what it is. The composed line is always available and
+   needs no request; where a source publishes its own description, that arrives
+   after and takes over. */
+const ABOUT = {
+  asset: i => `${i.name} (${i.sym}) is a crypto asset${i.rank ? `, ranked #${i.rank} by market cap` : ''}.`,
+  stock: i => `${i.name} is a tokenized equity${i.under ? `, tracking ${i.under}` : ''}, traded onchain like any other token.`,
+  pool: i => `A lending market on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}: supply ${i.sym} to earn, or post it and borrow against it.`,
+  yield: i => `A yield position on ${i.proto}${CH[i.chain] ? ` on ${CH[i.chain].name}` : ''}, paying ${apy(i.apy)} on ${i.sym}.`,
+  protocol: i => `${i.name} is a ${String(i.cat).toLowerCase()} protocol running on ${i.chains.length} network${i.chains.length === 1 ? '' : 's'}.`,
+  nft: i => `An NFT collection on ${i.net}${i.supply ? `, ${compact(i.supply)} items` : ''}, floor tracked by ${i.market}.`,
+  pair: i => `${i.sym} trading on ${i.dex}${i.net ? ` on ${i.net}` : ''}${i.quote ? `, paired with ${i.quote}` : ''}.`,
+  stablecoin: i => `${i.name} is a stablecoin${i.mech ? `, ${String(i.mech).toLowerCase()}` : ''}, with $${compact(i.circulating)} in circulation.`,
+  bridge: i => `${i.name} moves value between ${i.chains.length} networks.`,
+  raise: i => `${i.name} raised $${compact(i.amount)}${i.round ? ` in a ${i.round}` : ''}${i.sector ? `, building in ${i.sector.toLowerCase()}` : ''}.`,
+  hack: i => `${i.name} lost $${compact(i.amount)} to ${String(i.technique).toLowerCase()}.`,
+  chain: i => `${i.name} is a blockchain network, holding $${compact(i.tvl)} across the protocols indexed here.`,
+};
+const aboutBox = it => `<div class="sec about"><h3>About</h3>
+  <div class="note l" data-about>${esc((ABOUT[it.kind] || (() => ''))(it))}</div></div>`;
+
+/** Replace the composed line if the source publishes its own words. */
+async function fillAbout(box, it) {
+  const el = box.querySelector('[data-about]'); if (!el) return;
+  const text = await loadAbout(it).catch(() => '');
+  if (text && box.isConnected) el.textContent = text;
+}
+
 /* ---------- detail sheet ---------- */
 function chartBox(it) {
   const c = KIND[it.kind].chart;
@@ -670,6 +697,7 @@ function sheetHTML(it) {
         ${c ? stat('Network', esc(c.name)) : stat('Lending markets', String(markets.length))}
         ${stat('Rank', it.rank ? '#' + it.rank : '—')}
       </div>
+      ${aboutBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -689,6 +717,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
+      ${aboutBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -712,6 +741,7 @@ function sheetHTML(it) {
         ${it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl))}
         ${it.rev24 ? `<div class="stat wide"><div class="k">24h revenue</div><div class="v">$${compact(it.rev24)}</div></div>` : ''}
       </div>
+      ${aboutBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
       <div class="cta"><a class="p" href="${esc(links.protocol(it))}" target="_blank" rel="noopener noreferrer">Open ${esc(it.name)} ↗</a></div>
@@ -733,10 +763,26 @@ function sheetHTML(it) {
         <div class="stat wide"><div class="k">Explore</div><div class="v" style="font-size:13.5px;font-weight:500;color:var(--dim)">
           Filter the whole index to ${esc(it.name)} with the chip above the results.</div></div>
       </div>
+      ${aboutBox(it)}
       ${prots.length ? `<div class="sec"><h3>Top protocols</h3>${prots.map(miniHTML).join('')}</div>` : ''}
       ${markets.length ? `<div class="sec"><h3>Largest lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       <div class="cta"><a class="p" href="${esc(links.chain(it))}" target="_blank" rel="noopener noreferrer">Open on DeFiLlama ↗</a></div>
       <div class="note">${flags.sample ? 'Sample data — illustrative only.' : 'Live chain TVL from DeFiLlama.'} Not financial advice.</div>
+    </div>`;
+  }
+
+  /* Anything without a sheet of its own gets one from its descriptor rather
+     than falling through to the lending renderer, which read fields it does
+     not have and threw before the sheet could open. */
+  if (it.kind !== 'pool') {
+    const k = KIND[it.kind];
+    return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="${esc(it.kind)}">
+      ${head(k.title(it), [k.sub?.(it), k.meta?.(it)].filter(Boolean).join(' · '))}
+      <div class="big">${esc(k.n1(it))}</div>
+      <div class="chgline"><span class="mute">${esc(k.tail?.(it) || '')}</span></div>
+      ${chartBox(it)}${aboutBox(it)}
+      <div class="cta"><a class="p" href="${esc((links[it.kind] || links.asset)(it))}"
+        target="_blank" rel="noopener noreferrer">Open ↗</a></div>
     </div>`;
   }
 
@@ -755,6 +801,7 @@ function sheetHTML(it) {
       <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
         <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
     </div>
+    ${aboutBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
     ${others.length ? `<div class="sec"><h3>Other ${esc(it.sym)} markets</h3>${others.map(miniHTML).join('')}</div>` : ''}
@@ -806,6 +853,14 @@ const SHEET = {
       it.supply ? ['Items', compact(it.supply)] : null,
       ['Source', it.market]],
     link: [`Open on ${it.market}`, links.nft(it)] }),
+
+  stock: it => ({ big: usd(it.price), cls: it.chg >= 0 ? 'up' : 'down',
+    caption: `${pct(it.chg)} in 24 hours`,
+    sub: [it.sym, it.under ? `tracks ${it.under}` : 'tokenized equity'].join(' · '),
+    stats: [['Price', usd(it.price)], ['24h', pct(it.chg)],
+      ['Market cap', '$' + compact(it.mcap)], ['24h volume', '$' + compact(it.vol)],
+      it.under ? ['Underlying', it.under] : null],
+    link: ['View on CoinGecko', links.stock(it)] }),
 
   pair: it => ({ big: it.price ? usd(it.price) : '—',
     cls: it.chg >= 0 ? 'up' : 'down',
@@ -1010,6 +1065,7 @@ function open(id, { push = true } = {}) {
   if (push) history.pushState({ id, depth: ++depth }, '', hash);
   else depth = history.state?.depth ?? 0;
   showSheet(sheetHTML(it));
+  fillAbout(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
 }

@@ -79,6 +79,11 @@ http.createServer(async (req,res)=>{
     if(/tokenized-stock|xstocks/.test(cat)) return json(STOCKS(cat));
     return json(markets(cat));
   }
+  if(p.startsWith('/api/v3/coins/')&&!p.endsWith('/market_chart')&&!p.endsWith('/markets')){
+    const id=p.split('/')[4];
+    return json({id, description:{en:`<p><a href="https://x.invalid">${id}</a> is a decentralised network. `
+      +`Its token secures the chain and pays for execution.</p>`}});
+  }
   if(p.startsWith('/api/v3/coins/')&&p.endsWith('/market_chart')){
     const id=p.split('/')[4], days=+u.searchParams.get('days')||1;
     const n=Math.min(days*24,400);

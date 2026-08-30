@@ -210,6 +210,15 @@ across a year.
 **Reachable by keyboard.** The plot is focusable and arrow keys scrub it, with
 the same readout hovering gives. Escape belongs to the sheet, not the chart.
 
+### Every entity says what it is
+
+Each row's sheet opens with an About line. It is composed from what the row
+already carries, so it is always there and costs no request; where the source
+publishes its own words those arrive after and take over — CoinGecko for assets
+and equities, and for protocols the same payload the TVL chart already fetches,
+so that one is free. Source prose ships with markup, which is stripped before
+it reaches the page.
+
 ### No chart is blank
 
 Sources are tried in order of how much they know, and the last one is a search:
@@ -218,7 +227,13 @@ Sources are tried in order of how much they know, and the last one is a search:
 asset   CoinGecko /market_chart  ->  Binance klines  ->  the deepest DEX pool
                                      trading that ticker  ->  7d sparkline  ->  flat
 pair    that pool's OHLCV        ->  the deepest pool for the ticker  ->  flat
+nft     its floor history        ->  its reported 1d and 7d moves  ->  flat
 ```
+
+The NFT floor endpoint answers for some collections and not others. When it
+does not, the row still carries a 1d and a 7d change — three real observations,
+which is a thin chart but an honest one, and the headline says where it came
+from.
 
 The pool search is the one that matters: a token on no price feed at all still
 charts, because if anyone trades it there is a pool somewhere. The chart says

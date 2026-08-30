@@ -811,15 +811,65 @@ export function loadNFTs() {
   });
 }
 
+/* A collection's own floor history, then the floor moves it already reports.
+   The chart endpoint answers for some collections and not others, and the row
+   itself carries a 1d and a 7d change — three real observations, which is a
+   thin chart but an honest one, and better than a flat line. */
+function floorFromMoves(n) {
+  const now = n.floorUsd || n.floor;
+  if (!now || (!n.chg1d && !n.chg7d)) return null;
+  const back = pct => pct ? now / (1 + pct / 100) : now;
+  const pts = [back(n.chg7d), back(n.chg1d), now];
+  return pts.every(v => Number.isFinite(v) && v > 0) ? pts : null;
+}
+
 /** Floor price history for a collection. */
 export function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
-    if (!n.cid || n.market !== 'DeFiLlama') return [];
+    if (!n.cid) return [];
     const j = await get(`${NFT}/chart/${encodeURIComponent(n.cid)}`, { tries: 1, timeout: 20000 })
       .catch(() => null);
-    const rows = Array.isArray(j) ? j : (j?.data || []);
-    return rows.map(r => num(r.floorPriceUSD ?? r.floorPrice ?? r[1])).filter(v => v > 0);
-  }).then(all => slice(all, days, n.floorUsd || n.floor));
+    // seen as a bare array, as {data:[...]}, and as rows keyed a few ways
+    const rows = Array.isArray(j) ? j : (j?.data || j?.chart || []);
+    return rows.map(r => Array.isArray(r) ? num(r[1])
+      : num(r.floorPriceUSD ?? r.floorPrice ?? r.floor ?? r.price ?? r.v))
+      .filter(v => v > 0);
+  }).then(all => {
+    const s = slice(all, days, n.floorUsd || n.floor);
+    if (s.live) return s;
+    const moves = floorFromMoves(n);
+    return moves ? { pts: moves, live: true, via: 'its reported 1d and 7d moves' } : s;
+  });
+}
+
+/* An entity's own description, where its source publishes one. Assets and
+   stocks come from CoinGecko, protocols from the payload the TVL chart already
+   fetches. One request, cached, and only when a sheet is opened. */
+const firstPara = s => {
+  const t = String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  const cut = t.slice(0, 420);
+  return (cut.length < t.length ? cut.replace(/\s+\S*$/, '') + '…' : cut);
+};
+
+export function loadAbout(it) {
+  const cg = it.cg || (it.kind === 'stock' && it.id.slice(2));
+  if ((it.kind === 'asset' || it.kind === 'stock') && cg) {
+    return cache(`about:${it.id}`, 30 * TTL, async () => {
+      const j = await get(`${CG}/coins/${encodeURIComponent(cg)}?localization=false&tickers=false` +
+        `&market_data=false&community_data=false&developer_data=false&sparkline=false`,
+        { tries: 1, timeout: 15000 }).catch(() => null);
+      return firstPara(j?.description?.en);
+    });
+  }
+  if (it.kind === 'protocol' && it.slug) {
+    return cache(`about:${it.id}`, 30 * TTL, async () => {
+      const j = await get(`${LLAMA}/protocol/${encodeURIComponent(it.slug)}`, { tries: 1, timeout: 30000 })
+        .catch(() => null);
+      return firstPara(j?.description);
+    });
+  }
+  return Promise.resolve('');
 }
 
 export const links = {

@@ -262,6 +262,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sheet-top .ident h2{overflow-wrap:anywhere}
 .sheet-top .acts{display:flex;gap:6px;flex:none}
 .note.l{text-align:left;margin-top:0}
+/* about: prose, so it gets a reading measure and a little more line height */
+.sec.about .note{line-height:1.55;color:var(--dim);max-width:62ch}
 .cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
 .cta.one button{flex:0 0 auto;padding:11px 22px}

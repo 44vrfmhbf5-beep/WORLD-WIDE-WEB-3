@@ -82,6 +82,14 @@ R('https://api.coingecko.com/**', r => {
       prices: walk('c', 100, 3400).map((v, i) => [Date.now() - i * 36e5, v]),
       total_volumes: walk('v', 100, 2e9).map((v, i) => [Date.now() - i * 36e5, v]) }) });
   }
+  // /coins/{id}? — not /coins/markets?, which this matched and broke everything
+  if (/\/coins\/(?!markets\b)[^/?]+\?/.test(u) && !u.includes('market_chart')) {
+    // echo the id back, so a sheet showing the wrong entity's prose is visible
+    const id = u.split('/coins/')[1].split('?')[0];
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      description: { en: `<p><a href="https://x.invalid">${id}</a> is described here `
+        + 'by its own source, in prose that carries markup.</p>' } }) });
+  }
   const cat = new URL(u).searchParams.get('category') || '';
   if (/tokenized-stock|xstocks/.test(cat)) {
     // the two categories overlap on purpose: the loader has to dedupe them
@@ -186,8 +194,10 @@ R('https://api.geckoterminal.com/**', r => {
 });
 R('https://nft.llama.fi/**', r => {
   const u = r.request().url(); seen.push(u);
+  // reported live: this endpoint answers for some collections and not others
   if (u.includes('/chart/')) return r.fulfill({ contentType: 'application/json',
-    body: JSON.stringify(Array.from({ length: 120 }, (_, i) => ({ timestamp: i, floorPriceUSD: 90000 + i * 40 }))) });
+    body: JSON.stringify(/0xpoly/.test(u) ? []
+      : Array.from({ length: 120 }, (_, i) => ({ timestamp: i, floorPriceUSD: 90000 + i * 40 }))) });
   r.fulfill({ contentType: 'application/json', body: JSON.stringify([
     { collectionId: '0xbayc', name: 'Bored Ape Yacht Club', symbol: 'BAYC', chain: 'Ethereum',
       image: null, floorPrice: 12.4, floorPriceUSD: 42300, floorPricePctChange1Day: -2.1,
@@ -256,6 +266,17 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
   ok(hit(/^https:\/\/nft\.llama\.fi\/chart\/0xbayc$/), 'floor history hits /chart/{collectionId}');
   ok(await p.locator('.chart svg .line').count() === 1, 'an NFT collection charts its floor');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  // the collection whose history endpoint gives back nothing
+  await p.fill('#q', 'polygon apes'); await p.waitForTimeout(900);
+  await p.locator('.row[data-id="n:0xpoly"]').click();
+  await p.waitForSelector('.sheet-in[data-kind="nft"]', { timeout: 8000 });
+  await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
+  ok(await p.locator('.chart svg .line').count() === 1, 'a collection with no history still charts');
+  ok(await p.locator('.nohist').count() === 0, 'from the floor moves it already reports');
+  ok(/reported 1d and 7d moves/.test(await p.locator('.chgline').textContent()),
+    'and says that is where the line came from');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
@@ -528,6 +549,42 @@ console.log('\n# a sorted view survives a reload and a shared link');
   await p.waitForTimeout(1200);
   ok(await p.locator('.thead button[data-sort=tvl]').getAttribute('aria-sort') === 'descending',
     'and comes back on a reload');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+}
+
+console.log('\n# every entity says what it is');
+{
+  await p.fill('#q', 'bitcoin'); await p.waitForTimeout(700);
+  await p.locator('.row[data-id^="a:"]').first().click();
+  await p.waitForSelector('[data-about]', { timeout: 8000 });
+  await p.waitForTimeout(1300);
+  const txt = await p.locator('[data-about]').textContent();
+  ok(/^bitcoin is described here by its own source/.test(txt),
+    `an asset carries its own description, for itself (${txt.slice(0, 46)})`);
+  ok(!/<|href=/.test(txt), 'with the markup its source ships stripped out');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+
+  await p.fill('#q', 'across'); await p.waitForTimeout(800);
+  await p.locator('.row[data-id^="b:"]').first().click(); await p.waitForTimeout(700);
+  ok(/moves value between/.test(await p.locator('[data-about]').textContent()),
+    'and a kind with none is described from what is known');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await p.fill('#q', ''); await p.waitForTimeout(400);
+}
+
+console.log('\n# a tokenized stock opens like anything else');
+{
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
+  await p.locator('.row[data-id^="t:"]').first().click(); await p.waitForTimeout(800);
+  // it fell through to the lending renderer and threw on a field it does not
+  // have, so the sheet never opened at all
+  ok(await p.locator('.sheet-in[data-kind="stock"]').count() === 1, 'clicking an equity opens its sheet');
+  const sheet = await p.locator('.sheet').textContent();
+  ok(/Underlying/.test(sheet) && /Market cap/.test(sheet), 'with the stats that belong to it');
+  await p.waitForTimeout(1200);
+  ok(/^tesla-xstock is described here/.test(await p.locator('[data-about]').textContent()),
+    'and an about line fetched for that equity, not another');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
 
