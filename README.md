@@ -339,6 +339,98 @@ sentence says something a search box cannot — a threshold, a network *with*
 something to filter, or a category word that means exactly one thing. A bare
 "coin" or "token" is what things are called.
 
+### The contract, read before anyone trades on it
+
+Liquidity, volume and a price are what a market looks like from outside. A
+token can look perfectly healthy on every number Atlas shows and still be a
+contract that will not let you sell. So where a row carries an address, the
+address is read.
+
+[GoPlus](https://gopluslabs.io) publishes exactly that, keyless and CORS-open,
+under two endpoints with two different vocabularies — one for EVM chains, one
+for Solana. Both are normalised into one list of flags, so the sheet renders
+one thing and a new chain is a row in a table rather than a branch in the UI:
+
+- **Reasons not to trade** — honeypot, blacklist, an owner who can change any
+  holder's balance, a hidden or reclaimable owner, a contract that can delete
+  itself, a token you cannot sell all of.
+- **Reasons to look closer** — mintable supply, a whitelist, pausable
+  transfers, a tax that can be raised after you buy, a trading cooldown, a max
+  wallet, an upgradeable proxy, an unverified contract, a tax over 10%.
+- **From the row itself, with no request** — liquidity under $25k, volume that
+  looks like a bot, a ticker borrowed from a listed asset.
+
+Both endpoints take a comma-separated list, which is the whole reason a warning
+can sit on the *row*: a page of rows costs one request per chain rather than
+one per row. A warning nobody sees until they open the sheet is a warning that
+arrives after the decision.
+
+Three things this is careful about:
+
+- **A missing field is not a "no".** `is_mintable` absent means nobody checked,
+  and an unchecked contract reads as *not checked*, never as clean. The summary
+  line says which findings came from the contract and which from the row.
+- **"Nothing flagged" is not "safe"**, and says so in those words.
+- **"Unlisted" is not a warning.** Most of the DEX long tail is in no registry;
+  a mark on every row teaches people to ignore the mark. It appears in the
+  sheet, where somebody is already reading, and nowhere else.
+
+The fixture carries a token — deep pool, heavy volume, dollar quote — whose
+contract is a honeypot. Nothing in the price data can catch it, which is the
+point of reading the contract at all.
+
+### A trade, rather than a link to one
+
+The sheet used to end in a row of links: *Trade on Uniswap ↗*. A link is the
+app saying it knows what you want and cannot do it. Now the panel asks how
+much, quotes it, and signs it with the Privy wallet in the header.
+
+| Venue | How |
+| --- | --- |
+| **Uniswap v3** | No key and no gateway: `QuoterV2` prices the route over `eth_call`, the best of four fee tiers wins, and `SwapRouter02` executes it. Router and quoter addresses are per chain and checked for code before use. |
+| **Matcha (0x)** | With a key, 0x routes across every DEX rather than Uniswap's own pools and returns a ready-to-sign transaction. Without one, Uniswap direct is the route — never a link. |
+| **Jupiter** | Keyless end to end: Jupiter quotes it and serialises the transaction, and the wallet signs bytes it was handed rather than bytes this app assembled. |
+| **OpenSea** | The best listing per token carries the price *and* the order hash, so the marketplace builds the fulfilment transaction and the wallet signs it. |
+| **Crossmint** | A hosted card checkout that delivers to the wallet — the one place a link *is* the integration. |
+| **Hyperliquid** | Mids and positions are read and shown on the asset sheet. Acting is not wired, and says so. |
+
+Two rules hold for all of them: **nothing is sent that was not quoted first** —
+a quote that fails is a route that does not exist — and **nothing is sent to an
+address with no code at it**, with approvals for the exact amount of the trade
+rather than unlimited.
+
+An asset row carries a ticker and no address, because BTC is not a contract.
+The token registries the app already loads for the duplicate rule carry both,
+so a listed ticker resolves to the chain and address it trades at; a ticker no
+registry names says so rather than offering a button that cannot work.
+
+**What is not wired, and why.** Hyperliquid signs orders over a msgpack
+encoding of the action. Hand-rolling msgpack and keccak in a file that has
+never executed against the live venue would be the one bug in this codebase
+that costs money rather than showing an em dash. So it reads Hyperliquid and
+says plainly that it does not trade on it — which is worth more than a link
+dressed as a feature.
+
+### Asking CoinGecko directly
+
+Atlas indexes the top few hundred assets. CoinGecko knows about seventeen
+thousand and publishes an [MCP server](https://docs.coingecko.com/reference/mcp-server)
+over them, which is a JSON-RPC endpoint with `initialize`, `tools/list` and
+`tools/call`. `mcp.js` is a client for exactly that in about a hundred lines.
+
+It is used in two places: a search that found little locally is joined by coins
+CoinGecko knows, folded in beside the assets as ordinary rows that sort, filter,
+open and star like anything else; and an asset sheet asks what else its page
+says — which sectors it is counted in, how many watchlists it is on, when it
+started.
+
+Tool names are matched rather than hard-coded (whichever tool has "search" in
+its name is the search tool), so the server renaming one costs nothing. It runs
+*after* the local answer is already on screen and failing costs nothing, which
+is the same rule the AI parser follows: a search box that stops working when
+somebody else's server is down is not a search box. Whether a browser may call
+it at all is a CORS decision on their side.
+
 ### Every control against every category
 
 The filters were built one at a time, each correct on the tab it was written
@@ -363,7 +455,7 @@ sorting by clicking the column a list was already sorted by, which is a no-op by
 design. It now reads what matched, and compares the two sort directions against
 each other.
 
-### One rule, not a switch
+### Junk is four things, and size is not one of them
 
 Two things make a large onchain index unusable: rows that no longer trade, and
 rows pretending to be something else. They share their tells, so they share one
@@ -371,6 +463,23 @@ rule — and the rule is not a toggle. Nobody opens a search engine wanting the
 dead listings, and a switch that says "show me the junk" is a question with one
 sensible answer, asked of every visitor forever. It is applied, always, and the
 app does not report a tally of what it withheld.
+
+What the rule hides is exactly four things:
+
+| | Hidden because |
+| --- | --- |
+| **Duplicates** | The same ticker twice on one network is copies of one token. The deepest pool survives; anything an order of magnitude shallower does not — unless a registry names its contract, which settles it. |
+| **Scams** | A ticker borrowed from a listed asset without the liquidity to be it. A four-figure APY on a small pool. A "stablecoin" trading at 40 cents. |
+| **Nothing at all** | A zero where the activity goes: no volume *and* no price, no supply, no floor and no trades, a protocol with no TVL, no volume and no fees. |
+| **Bots** | Volume many times the pool that produced it. A pool turning over forty times its own depth in a day is the same coins going round, and the price it prints is not one anybody paid. |
+
+**Size was in that list and should not have been.** Every kind carried a floor —
+$1M of market cap, $1M supplied, $5k of liquidity — and a floor is the app
+deciding that somebody searching for a $220k market did not mean it. The floors
+are gone from the rule *and* from ingest, where a second copy of the same
+decision was quietly pre-empting the first. What is left of ingest is a cap on
+how many rows are kept, which is a different thing: it never removes a row that
+would otherwise have been the answer to a search.
 
 Each kind says what trading means for it, as one more field on the same `KIND`
 descriptor. All twelve now do, and the fixture carries a specimen that violates
@@ -447,11 +556,15 @@ Both are on screen at once:
 
 **All, with nothing typed, is the categories.** A ranked mix of twelve kinds is
 what you get *after* asking something; before that it is a wall that answers a
-question nobody put. So the landing screen is one tile per category with its
-count — the same thing the rail says, at the size of a decision — and typing or
-picking a category replaces it with rows. The stat bar that used to sit under
-the search box is gone with it: four totals nobody came for, above the answer
-they did.
+question nobody put. The stat bar that used to sit under the search box is gone
+for the same reason: four totals nobody came for, above the answer they did.
+
+A grid of tiles is also a wall, just a shorter one. The categories are a column
+of horizontal cards that cycles upward forever: the list is rendered twice and
+the track travels exactly one copy, so the seam never lands on screen. It stops
+the moment the pointer enters it — a target that moves out from under the
+cursor is worse than no animation — the duplicate copy is hidden from assistive
+tech and the tab order, and `prefers-reduced-motion` gets the plain list.
 
 The rule for which shape you get needs no special cases: **a tab that pins one
 kind gets columns, a ranked mix of kinds gets cards.** On All and Saved the
@@ -780,15 +893,19 @@ both where the record is read and where the link is built.
 | `vendor/fuse.mjs` | [Fuse.js](https://fusejs.io) 7.5.0, Apache-2.0 — fuzzy search |
 | `config.js` | Every credential, empty by default. Publishable ids only |
 | `nl.js` | Reads a question into the controls Atlas already has |
+| `mcp.js` | CoinGecko's MCP server, in a hundred lines of JSON-RPC |
 | `wallet.js` | Privy: sign in, generate, sign, fund. Loaded on demand |
-| `trade.js` | Live quotes, venue-relayed execution, hand-off links |
+| `trade.js` | Quotes and swaps: Uniswap v3 direct, 0x, Jupiter, OpenSea |
 | `vendor/privy.mjs` | Privy JS SDK, pinned and bundled. Apache-2.0 |
 | `test/` | Fixture server + end-to-end suite |
-| `tools/` | Six audits that print what renders, so it can be looked at |
+| `tools/` | Seven audits that print what renders, so it can be looked at |
 
-Fuse.js is the only dependency, vendored as a single 19KB ES module so there is
-still nothing to install or build. It gives typo tolerance — `kamnio` finds
-Kamino — and its scores are re-ranked afterwards so an exact ticker always wins.
+Fuse.js is the only runtime dependency, vendored as a single 19KB ES module so
+there is still nothing to install or build for the app itself. It gives typo
+tolerance — `kamnio` finds Kamino — and its scores are re-ranked afterwards so
+an exact ticker always wins. Two dev dependencies exist and never reach the
+browser: Playwright, for the suites, and oxlint, which `npm run audit` runs over
+every module.
 
 ## Interactions
 
@@ -813,8 +930,9 @@ blocks. `test/e2e.mjs` hangs the font host and asserts the app still boots.
 ## Tests
 
 ```
-npm install     # playwright, for the test run only
-npm test
+npm install     # playwright and oxlint, for the checks only
+npm test        # the static audit, both builds, and every suite against all three
+npm run audit   # just the static pass: imports, exports, bundle coverage, lint
 ```
 
 Two suites, both offline:
@@ -840,8 +958,15 @@ the wire is checking the served app rather than this one; and `artifact.html`
 carries a sample dataset, so a source going down is a fallback there, not a
 degraded state.
 
-**`tools/`** is not a suite — it is six scripts that print what actually
+**`tools/`** is not a suite — it is seven scripts that print what actually
 renders, because the bugs that survive longest are the ones nothing asserts.
+`audit-code.mjs` is the one that never opens a browser: it reads the source and
+asks whether every import resolves to an export, whether the bundler carries
+every export the app lazily loads, and whether anything is exported that nothing
+uses — then runs [oxlint](https://oxc.rs) over the lot. That last question is
+the one that pays: it found `osImage`, a function written to fill missing NFT
+images and never once called, and a whole Hyperliquid read layer wired to
+nothing.
 `audit-entities.mjs` walks every kind and dumps its columns, facets, headline,
 stats and About line. `audit-filters.mjs` turns every chip on in turn and
 reports how much it leaves, which is how five filters that could only ever match

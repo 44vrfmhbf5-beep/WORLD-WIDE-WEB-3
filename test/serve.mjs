@@ -178,9 +178,10 @@ http.createServer(async (req,res)=>{
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
     url:'https://example.invalid/'+i,
     logo: i%9===4 ? null : 'https://icons.invalid/protocols/'+i+'.png' }))
-    // listed and doing nothing: no value locked, no volume, no fees
+    // listed and doing nothing: no value locked, no volume, no fees — which is
+    // the only thing that makes a protocol junk. Small is not junk.
     .concat([{id:'999',name:'Dormant Labs',slug:'dormant',category:'Yield',
-      chains:['Ethereum'],tvl:4e5,change_1d:0,change_7d:0,url:'https://example.invalid/d',logo:null}]));
+      chains:['Ethereum'],tvl:0,change_1d:0,change_7d:0,url:'https://example.invalid/d',logo:null}]));
   const overview=(f)=>({protocols:Array.from({length:120},(_,i)=>({
     name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, ...f(i)})).filter((_,i)=>i%3!==2)});
   if(p==='/dl/overview/dexs') return json(overview(i=>({total24h:(1.2e9)/(i+1)})));
@@ -225,13 +226,19 @@ http.createServer(async (req,res)=>{
     source:'https://example.invalid/raise'+i }))});
   if(p==='/dex/latest/dex/search'){
     const q=(u.searchParams.get('q')||'').toLowerCase();
-    const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad','TinyCoin','BlastCat'];
+    /* HoneyCat is a real market by every number Atlas can see — deep pool,
+       heavy volume, dollar quote — and a contract that will not let you sell.
+       Nothing in the price data can catch that, which is the point of the
+       contract scan. WashCat is the other half: volume forty times its own
+       pool, which is a machine trading with itself. */
+    const names=['CashCat','PepeCoin','BonkInu','WifHat','MoonDog','TurboToad','TinyCoin','BlastCat',
+      'HoneyCat','WashCat'];
     return json({pairs: names.filter(n=>n.toLowerCase().includes(q)||q.length<3).map((n,i)=>({
       chainId: n==='BlastCat' ? 'blast' : n==='TurboToad' ? 'berachain'
         : ['solana','base','ethereum'][i%3],
       dexId:['raydium','aerodrome','uniswap'][i%3],
       pairAddress:'pair'+n, url:'https://dexscreener.com/x/'+n,
-      baseToken:{address:'0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
+      baseToken:{address: n==='HoneyCat' ? '0xhoneypot1' : '0x'+n, name:n, symbol:n.slice(0,6).toUpperCase()},
       // TinyCoin keeps a moving quote on purpose: a price in SOL is not a price
       quoteToken:{symbol: n==='TinyCoin' ? 'SOL' : 'USDC'},
       // DexScreener returns a token logo with the pair, and one hostile scheme
@@ -239,7 +246,7 @@ http.createServer(async (req,res)=>{
         : { imageUrl: i===1 ? 'javascript:alert(1)' : 'https://img.invalid/tok/'+n+'.png' },
       priceUsd:String(0.0004*(i+1)),
       priceChange:{h24:((i%5)-2)*7.4}, liquidity:{usd: n==='TinyCoin' ? 1800 : (9e5)/(i+1)},
-      volume:{h24:(4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
+      volume:{h24: n==='WashCat' ? 6e7 : (4e6)/(i+1)}, fdv:(2e7)/(i+1) }))});
   }
   if(p==='/nft/collections') return json(Array.from({length:40},(_,i)=>({
     collectionId:'0xcol'+i, name:['Bored Ape Yacht Club','CryptoPunks','Pudgy Penguins','Azuki','Milady',
@@ -266,6 +273,71 @@ http.createServer(async (req,res)=>{
   /* A tokenized share's About comes from Wikipedia, under the company's name
      with the issuer's wrapping taken off — so the title that arrives here is
      the check that the stripping worked. */
+  /* GoPlus, in both its vocabularies. The address decides what comes back, so
+     one fixture covers a clean token, a honeypot, a mintable one and an
+     address the API has never seen. */
+  /* CoinGecko over MCP: initialize, tools/list, tools/call. The tool names are
+     matched rather than hard-coded in the client, so the fixture names them
+     the way the real server does and nothing is pinned to a guess. */
+  if(p==='/mcp'&&req.method==='POST'){
+    let raw=''; for await (const c of req) raw+=c;
+    const m=JSON.parse(raw||'{}');
+    const rep=r=>{res.writeHead(200,{'content-type':'application/json','mcp-session-id':'sess-1',
+      'access-control-allow-origin':'*'});res.end(JSON.stringify({jsonrpc:'2.0',id:m.id,result:r}));};
+    if(m.method==='initialize') return rep({protocolVersion:'2025-06-18',serverInfo:{name:'coingecko'}});
+    if(m.method==='tools/list') return rep({tools:[{name:'search'},{name:'get_coins_markets'},
+      {name:'get_id_coins'},{name:'get_simple_price'}]});
+    if(m.method==='tools/call'){
+      const t=m.params?.name, a=m.params?.arguments||{};
+      const wrap=o=>rep({content:[{type:'text',text:JSON.stringify(o)}]});
+      if(t==='search'){
+        const q=String(a.query||'').toLowerCase();
+        // a coin the local index has never carried, which is the whole point
+        const all=[{id:'obscure-frog',symbol:'frog',name:'Obscure Frog',market_cap_rank:2201},
+          {id:'bitcoin',symbol:'btc',name:'Bitcoin',market_cap_rank:1}];
+        return wrap({coins:all.filter(c=>c.name.toLowerCase().includes(q)||c.symbol.includes(q))});
+      }
+      if(t==='get_coins_markets'){
+        const ids=String(a.ids||'').split(',').filter(Boolean);
+        return wrap(ids.map((id,i)=>({id,symbol:id.split('-')[0],name:id.replace(/-/g,' '),
+          current_price:0.42+i,market_cap:9.1e6,total_volume:4.2e5,market_cap_rank:2201+i,
+          price_change_percentage_24h:12.5,circulating_supply:2.2e7,
+          high_24h:0.5,low_24h:0.3,ath:2.1,ath_change_percentage:-80})));
+      }
+      if(t==='get_id_coins') return wrap({categories:['Meme','Solana Ecosystem'],
+        links:{homepage:['https://example.invalid']},sentiment_votes_up_percentage:71,
+        watchlist_portfolio_users:18400,market_cap_rank:2201,genesis_date:'2021-04-01'});
+      return wrap({});
+    }
+    return rep({});
+  }
+  if(p.startsWith('/goplus/')){
+    /* One entry per address, because that is what the endpoint does — a
+       fixture that answers a comma-separated list as one blob makes the
+       batched read look like it works when it does not. */
+    const list=(u.searchParams.get('contract_addresses')||'').toLowerCase().split(',').filter(Boolean);
+    const sol=p.includes('/solana/');
+    const on=v=>v?'1':'0';
+    const result={};
+    for(const a of list){
+      if(/unknown/.test(a)) continue;            // an address it has never seen
+      const evil=/scam|fake|honey/.test(a), mint=/mint|trend1|cashcat/.test(a);
+      result[a]= sol ? {
+        mintable:{status:on(mint)}, freezable:{status:on(evil)},
+        closable:{status:'0'}, balance_mutable_authority:{status:on(evil)},
+        non_transferable:{status:'0'}, metadata_mutable:{status:on(mint)},
+        trusted_token:on(!evil&&!mint), holder_count:String(evil?31:41200)} : {
+        is_open_source:on(!evil), is_proxy:'0', is_mintable:on(mint),
+        owner_change_balance:on(evil), hidden_owner:'0', can_take_back_ownership:'0',
+        selfdestruct:'0', is_honeypot:on(evil), cannot_sell_all:'0',
+        transfer_pausable:on(evil), is_blacklisted:on(evil), is_whitelisted:'0',
+        slippage_modifiable:'0', trading_cooldown:'0', is_anti_whale:'0',
+        buy_tax:evil?'0.15':'0', sell_tax:evil?'0.35':'0',
+        trust_list:on(!evil&&!mint), holder_count:String(evil?27:88400),
+        lp_holder_count:String(evil?1:640)};
+    }
+    return json({code:1,message:'OK',result});
+  }
   if(p.startsWith('/wiki/')){
     const title=decodeURIComponent(p.slice(6));
     if(/xstock|token/i.test(title)) return json({type:'disambiguation',title});
@@ -405,7 +477,9 @@ http.createServer(async (req,res)=>{
     .replace("'https://tokens.uniswap.org'","'/uni'")
     .replace("'https://lite-api.jup.ag'","'/jup'")
     .replace("'https://api.morpho.org/graphql'","'/morpho'")
-    .replace("'https://en.wikipedia.org/api/rest_v1/page/summary'","'/wiki'"));
+    .replace("'https://en.wikipedia.org/api/rest_v1/page/summary'","'/wiki'")
+    .replace("'https://api.gopluslabs.io/api/v1'","'/goplus'")
+    .replace("endpoint: 'https://mcp.api.coingecko.com/mcp'","endpoint: '/mcp'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

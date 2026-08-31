@@ -25,7 +25,7 @@ for (const t of tabs) {
   if (t === 'saved') continue;
   await p.click(`[data-tab="${t}"]`); await p.waitForTimeout(700);
   if (!await p.locator('#results .row:not(.sk)').count()) {
-    const tiles = await p.locator('#results .tile').count();
+    const tiles = await p.locator('#results .hcard:not([aria-hidden])').count();
     console.log(`${t}: ${tiles ? tiles + ' category tiles' : 'EMPTY'}`); continue;
   }
   const rowNum = (await p.locator('#results .row:not(.sk)').first().locator('.n1, .cell').first().textContent()).trim();

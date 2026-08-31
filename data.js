@@ -265,6 +265,21 @@ export function clearCache() {
   mem.clear(); inflight.clear();
   try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {}
 }
+/* A batched read caches per item rather than per request, so the two share the
+   store but not the shape: peek says what is already known, put records one
+   answer. Undefined means "never asked" — null is a real answer meaning "asked
+   and nothing came back", and the two must not collapse into each other. */
+function peek(key, ttl = TTL) {
+  let hit = mem.get(key) || null;
+  if (!hit) try { hit = JSON.parse(sessionStorage.getItem('atlas:' + key) || 'null'); } catch {}
+  return hit && Date.now() - hit.t < ttl ? hit.v : undefined;
+}
+function put(key, v) {
+  const rec = { t: Date.now(), v };
+  mem.set(key, rec);
+  try { sessionStorage.setItem('atlas:' + key, JSON.stringify(rec)); } catch {}
+}
+
 function cache(key, ttl, fn) {
   if (inflight.has(key)) return inflight.get(key);
   let hit = mem.get(key) || null;
@@ -292,7 +307,8 @@ function cache(key, ttl, fn) {
    both as an em dash claimed data was missing when it was not. */
 const numN = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
-const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
+// every row's fallback tile colour, so a row built outside this file matches
+export const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
 
 /* The markets call already asks for 7d, 30d and 1y moves and returns supply and
@@ -569,16 +585,20 @@ export function loadPools() {
     const rows = (pools?.data || []).filter(p => BY_LLAMA[p.chain]);
     const lending = rows
       .map(p => [p, lb[p.pool] || borrowOf(p)])
-      .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 5e5)
+      /* Ingest keeps what protects the payload and nothing more. A value floor
+         here decided the same question the junk rule decides, and decided it
+         first — so a $220k market somebody is using was gone before anything
+         could ask whether it was real. The cap stays; the floor does not. */
+      .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 0)
       .map(([p, b]) => pool(p, b))
       .sort((a, b) => b.supplyUsd - a.supplyUsd)
-      .slice(0, 1200);
+      .slice(0, 4000);
     const borrowed = new Set(lending.map(l => l.pool));
     const yields = rows
-      .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 1e6 && num(p.apy ?? p.apyBase) > 0)
+      .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 0 && num(p.apy ?? p.apyBase) > 0)
       .map(farm)
       .sort((a, b) => b.tvl - a.tvl)
-      .slice(0, 1200);
+      .slice(0, 4000);
     return { lending, yields };
   });
 }
@@ -754,11 +774,16 @@ const addSym = (set, sym, chain) => sym && set.add(`${String(sym).toUpperCase()}
 
 async function uniswapList() {
   const j = await get(UNI, { tries: 1, timeout: 20000 }).catch(() => null);
-  const out = { syms: new Set(), addrs: new Set() };
+  const out = { syms: new Set(), addrs: new Set(), at: new Map() };
   for (const t of j?.tokens || []) {
     const chain = EVM[t.chainId];
     if (chain) addSym(out.syms, t.symbol, chain);
     if (t.address) out.addrs.add(String(t.address).toLowerCase());
+    /* The same list that says a token is real also says where it lives, which
+       is what turns "trade BTC" into a route: an asset row carries a ticker
+       and no address, and this is the only place the two are joined. */
+    if (chain && t.symbol && t.address)
+      out.at.set(`${String(t.symbol).toUpperCase()}@${chain}`, String(t.address).toLowerCase());
   }
   return out;
 }
@@ -766,12 +791,13 @@ async function uniswapList() {
 async function jupiterList() {
   const j = await get(`${JUP}/tokens/v2/tag?query=verified`, { tries: 1, timeout: 20000 })
     .catch(() => null);
-  const out = { syms: new Set(), addrs: new Set() };
+  const out = { syms: new Set(), addrs: new Set(), at: new Map() };
   // the field carrying the mint has moved between versions; accept any of them
   for (const t of Array.isArray(j) ? j : j?.tokens || []) {
     addSym(out.syms, t.symbol, 'sol');
     const mint = t.id || t.address || t.mint;
     if (mint) out.addrs.add(String(mint).toLowerCase());
+    if (t.symbol && mint) out.at.set(`${String(t.symbol).toUpperCase()}@sol`, String(mint));
   }
   return out;
 }
@@ -1135,6 +1161,139 @@ export function loadTrendingPairs() {
   });
 }
 
+/* ---------- what the contract itself says ----------
+   Liquidity, volume and a listing are what a market looks like from the
+   outside. The contract is the inside, and it holds the answers no price feed
+   carries: whether more supply can be minted, whether an owner can move or
+   freeze somebody's balance, whether an address can be blacklisted out of
+   selling. A token can look perfectly healthy on every number Atlas shows and
+   still be a contract that will not let you leave.
+
+   GoPlus publishes exactly that, keyless and CORS-open, under two endpoints
+   with two different vocabularies — one for EVM chains, one for Solana. Both
+   are normalised into one list of flags here, so the sheet renders one thing
+   and a new chain is a row in a table rather than a branch in the UI. */
+const GOPLUS = 'https://api.gopluslabs.io/api/v1';
+const GP_ID = Object.fromEntries(Object.entries(EVM).map(([id, c]) => [c, id]));
+
+/* [field, severity, label, what it means to somebody about to trade]. `bad` is
+   a reason not to; `warn` is a reason to look closer first. */
+const GP_EVM = [
+  ['is_honeypot', 'bad', 'Honeypot', 'This contract has been seen refusing to let holders sell.'],
+  ['cannot_sell_all', 'bad', 'Cannot sell all', 'Holders are blocked from selling their whole balance.'],
+  ['is_blacklisted', 'bad', 'Blacklist', 'The owner can block chosen addresses from trading.'],
+  ['owner_change_balance', 'bad', 'Controllable supply', "The owner can change any holder's balance."],
+  ['hidden_owner', 'bad', 'Hidden owner', 'Ownership is disguised inside the contract.'],
+  ['can_take_back_ownership', 'bad', 'Ownership reclaimable', 'A renounced owner can take control back.'],
+  ['selfdestruct', 'bad', 'Self-destruct', 'The contract can delete itself.'],
+  ['is_whitelisted', 'warn', 'Whitelist', 'Only chosen addresses are allowed to trade.'],
+  ['is_mintable', 'warn', 'Mintable', 'The supply is not fixed — more can be created.'],
+  ['transfer_pausable', 'warn', 'Pausable', 'Transfers can be switched off.'],
+  ['slippage_modifiable', 'warn', 'Changeable tax', 'The trading tax can be raised after you buy.'],
+  ['trading_cooldown', 'warn', 'Trading cooldown', 'The contract enforces a wait between trades.'],
+  ['is_anti_whale', 'warn', 'Max wallet', 'The contract caps how much one address may hold.'],
+  ['is_proxy', 'warn', 'Upgradeable', 'The code behind this address can be replaced.'],
+];
+const GP_SOL = [
+  ['freezable', 'bad', 'Freezable', 'The issuer can freeze your token account.'],
+  ['closable', 'bad', 'Closable', 'The issuer can close your token account.'],
+  ['balance_mutable_authority', 'bad', 'Controllable supply', "An authority can change any holder's balance."],
+  ['non_transferable', 'bad', 'Non-transferable', 'The token cannot be sent anywhere.'],
+  ['mintable', 'warn', 'Mintable', 'The supply is not fixed — more can be created.'],
+  ['metadata_mutable', 'warn', 'Mutable metadata', 'The name, symbol and image can be changed later.'],
+  ['transfer_hook', 'warn', 'Transfer hook', 'Custom code runs on every transfer.'],
+  ['default_account_state_upgradable', 'warn', 'Account state changeable', 'New holders can be frozen by default.'],
+];
+/* Both endpoints answer "1"/"0" for EVM and {status:"1"} for Solana, and a
+   missing field means "not checked" rather than "no" — which must not read as
+   a clean bill of health. */
+const gpOn = v => (v && typeof v === 'object' ? v.status : v) === '1';
+const gpSaw = (o, f) => o[f] !== undefined && o[f] !== null;
+
+function gpFlags(o, table) {
+  const out = [];
+  for (const [field, sev, label, why] of table)
+    if (gpSaw(o, field) && gpOn(o[field])) out.push({ id: field, sev, label, why });
+  return out;
+}
+
+/** Can this row be checked at all? */
+export const scannable = it => !!(String(it?.addr || '').trim() &&
+  (it.chain === 'sol' || GP_ID[it.chain]));
+
+/* Both endpoints take a comma-separated list, which is what makes a warning on
+   the row affordable: one request covers a page of them rather than one each. */
+const SEC_BATCH = 25;
+function gpUrl(chain, addrs) {
+  const list = addrs.map(a => encodeURIComponent(a)).join(',');
+  return chain === 'sol'
+    ? `${GOPLUS}/solana/token_security?contract_addresses=${list}`
+    : `${GOPLUS}/token_security/${GP_ID[chain]}?contract_addresses=${list}`;
+}
+/** Reads one batch and hands back a Map keyed by the address asked for. */
+async function gpBatch(chain, addrs) {
+  const sol = chain === 'sol';
+  const out = new Map();
+  const j = await get(gpUrl(chain, addrs), { tries: 1, timeout: 20000 }).catch(() => null);
+  const res = j?.result || {};
+  // the API answers in whichever case it prefers, so index both ways once
+  const lower = new Map(Object.entries(res).map(([k, v]) => [k.toLowerCase(), v]));
+  for (const a of addrs) {
+    const row = res[a] || lower.get(a.toLowerCase());
+    out.set(a, row ? readSecurity(row, sol) : null);
+  }
+  return out;
+}
+
+/** Contract risk for many rows at once, cached per address. */
+export async function loadSecurityMany(chain, addrs) {
+  const out = new Map(), miss = [];
+  for (const a of addrs) {
+    const hit = peek(`sec:${chain}:${a}`, 6 * TTL);
+    if (hit !== undefined) out.set(a, hit); else miss.push(a);
+  }
+  for (let i = 0; i < miss.length; i += SEC_BATCH) {
+    const slice = miss.slice(i, i + SEC_BATCH);
+    const got = await gpBatch(chain, slice).catch(() => new Map());
+    for (const a of slice) {
+      const v = got.get(a) ?? null;
+      put(`sec:${chain}:${a}`, v);
+      out.set(a, v);
+    }
+  }
+  return out;
+}
+
+function readSecurity(row, sol) {
+  {
+    const flags = gpFlags(row, sol ? GP_SOL : GP_EVM);
+    if (!sol) {
+      // open source is the one field where the *absence* of the property is
+      // the finding, so it cannot go in the table above
+      if (gpSaw(row, 'is_open_source') && !gpOn(row.is_open_source))
+        flags.push({ id: 'closed', sev: 'bad', label: 'Unverified contract',
+          why: 'The source code behind this address has never been published.' });
+      const tax = Math.max(num(row.buy_tax) * 100, num(row.sell_tax) * 100);
+      if (tax >= 10) flags.push({ id: 'tax', sev: tax >= 25 ? 'bad' : 'warn',
+        label: `${tax.toFixed(0)}% trading tax`,
+        why: 'That much of every trade is taken by the contract.' });
+    }
+    return {
+      flags, checked: true, source: 'GoPlus',
+      holders: num(row.holder_count), lp: num(row.lp_holder_count),
+      // a token a registry vouches for is one GoPlus also knows by name
+      trusted: gpOn(row.trust_list) || gpOn(row.trusted_token),
+    };
+  }
+}
+
+/** Every risk one contract carries. null when nothing can check it. */
+export async function loadSecurity(it) {
+  if (!scannable(it)) return null;
+  const addr = String(it.addr).trim();
+  return (await loadSecurityMany(it.chain, [addr]).catch(() => new Map())).get(addr) ?? null;
+}
+
 /* ---------- NFTs ----------
    Keyless, CORS-open NFT data is thin on the ground. DeFiLlama covers the EVM
    marketplaces broadly; Magic Eden adds Solana and Bitcoin Ordinals. Floors
@@ -1150,10 +1309,26 @@ const NFT_UNIT = { eth: 'ETH', base: 'ETH', arb: 'ETH', op: 'ETH', blast: 'ETH',
    is also the one most likely to hand back a row with no image and no history.
    Where it does, the collection is still real — so the gaps are filled from the
    marketplace that actually holds the collection rather than left blank.
-   OpenSea's endpoints need a key; its CDN does not, and neither does the slug
-   its own URLs use. */
-const osImage = slug => slug
-  ? `https://i.seadn.io/gcs/${encodeURIComponent(slug)}` : null;
+   OpenSea has the image, under the collection slug, and there is no keyless
+   path to it — a seadn.io URL is an opaque hash, not something a slug can be
+   turned into. So this is a key-gated fill rather than a guess: with a key the
+   blanks are filled, without one they stay blank and say why. */
+export async function nftImages(rows, key) {
+  if (!key) return new Map();
+  const out = new Map();
+  const want = rows.filter(n => !n.img && (n.cid || n.slug)).slice(0, 12);
+  for (const n of want) {
+    const slug = n.slug || n.cid;
+    const hit = peek(`nftimg:${slug}`, 12 * TTL);
+    if (hit !== undefined) { if (hit) out.set(n.id, hit); continue; }
+    const j = await get(`https://api.opensea.io/api/v2/collections/${encodeURIComponent(slug)}`,
+      { tries: 1, timeout: 12000, headers: { 'x-api-key': key } }).catch(() => null);
+    const img = safeUrl(j?.image_url || j?.banner_image_url) || '';
+    put(`nftimg:${slug}`, img);
+    if (img) out.set(n.id, img);
+  }
+  return out;
+}
 
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
@@ -1207,10 +1382,27 @@ function meItem(l) {
     id: t.mintAddress || t.mint || l.tokenMint || '',
     name: t.name || '#?',
     img: safeUrl(t.image) || null,
-    price, unit: 'SOL',
+    price, unit: 'SOL', order: '',
     traits: (t.attributes || []).slice(0, 3)
       .map(a => `${a.trait_type}: ${a.value}`).filter(x => !/undefined/.test(x)),
     url: t.mintAddress ? `https://magiceden.io/item-details/${encodeURIComponent(t.mintAddress)}` : '',
+  };
+}
+
+/* A listing is an item plus the two things needed to buy it: what it costs and
+   the hash of the order that sells it. */
+function osListing(l, slug) {
+  const t = l.protocol_data?.parameters?.offer?.[0] || {};
+  const price = Number(l.price?.current?.value) || 0;
+  const dec = Number(l.price?.current?.decimals) || 18;
+  const id = String(t.identifierOrCriteria || '');
+  return {
+    id, name: `#${id}`, img: null,
+    price: price / 10 ** dec, unit: l.price?.current?.currency || 'ETH',
+    traits: [], order: l.order_hash || '', chain: l.chain || 'ethereum',
+    protocol: l.protocol_address || '',
+    url: `https://opensea.io/assets/${encodeURIComponent(l.chain || 'ethereum')}/${
+      encodeURIComponent(t.token || slug)}/${encodeURIComponent(id)}`,
   };
 }
 
@@ -1219,8 +1411,7 @@ function osItem(n, slug) {
     id: n.identifier || '',
     name: n.name || `#${n.identifier}`,
     img: safeUrl(n.display_image_url || n.image_url) || null,
-    price: 0, unit: '',
-    traits: [],
+    price: 0, unit: '', traits: [], order: '',
     url: safeUrl(n.opensea_url)
       || `https://opensea.io/assets/${encodeURIComponent(n.contract || slug)}/${encodeURIComponent(n.identifier || '')}`,
   };
@@ -1254,6 +1445,14 @@ export function loadNftItems(n, { openseaKey } = {}) {
       return { items, why: items.length ? '' : 'nothing listed right now' };
     }
     if (!openseaKey) return { items: [], why: 'needs an OpenSea key' };
+    /* The best listing per token rather than the token list: same request
+       count, and it carries the price and the order hash — which is the
+       difference between showing an item and being able to buy it. */
+    const slug = n.slug || n.cid;
+    const l = await get(`https://api.opensea.io/api/v2/listings/collection/${encodeURIComponent(slug)}/best?limit=24`,
+      { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
+    const listed = (l?.listings || []).map(x => osListing(x, slug)).filter(x => x.id);
+    if (listed.length) return { items: listed, why: '' };
     const j = await get(`https://api.opensea.io/api/v2/collection/${encodeURIComponent(n.cid)}/nfts?limit=24`,
       { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
     const items = (j?.nfts || []).map(x => osItem(x, n.cid)).filter(x => x.id);

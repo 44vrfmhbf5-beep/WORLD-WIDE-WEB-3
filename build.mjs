@@ -7,14 +7,21 @@ import vm from 'node:vm';
 
 const read = f => fs.readFileSync(f, 'utf8');
 
+/* One reader for every module's exports. It used to be two, and the one used
+   for data.js did not know about `export async function` — so an async export
+   was simply absent from the bundle and the single-file build died at runtime
+   with "X is not defined". A regex that silently omits things is worse than no
+   regex, so there is now exactly one. */
+const exportsOf = src => [...src.matchAll(
+  /^export\s+(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]);
+
 const fuse = read('vendor/fuse.mjs').replace(/export\s*\{\s*re as default\s*\}\s*;?\s*$/, 'return re;');
 if (!fuse.includes('return re;')) throw new Error('fuse export shape changed — bundler needs updating');
 
 const dataSrc = read('data.js');
 // derived, not hand-listed: a hand-kept list silently drops a newly added export
 // and the bundle dies at runtime with "X is not defined"
-const NAMES = [...dataSrc.matchAll(/^export\s+(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)]
-  .map(m => m[1]);
+const NAMES = exportsOf(dataSrc);
 if (!NAMES.length) throw new Error('no exports found in data.js');
 const data = dataSrc.replace(/^export\s+/gm, '');
 
@@ -27,17 +34,20 @@ const app = read('app.js').replace(/^import[^;]+;$/gm, '');
    hands it Fuse. Anything genuinely unbundlable (the wallet, and the 900KB SDK
    behind it) stays absent, and the app says so rather than reporting a module
    error as a network failure. */
-const exportsOf = src => [...src.matchAll(/^export\s+(?:const|let|var|function|class|async function)\s+([A-Za-z_$][\w$]*)/gm)]
-  .map(m => m[1]);
-const inline = f => {
+
+const inline = (f, pre = '') => {
   const src = read(f);
   const names = exportsOf(src);
   if (!names.length) throw new Error(`no exports found in ${f} — bundler needs updating`);
-  // its imports are already in scope in the bundle
+  /* Imports are dropped because what they name is already in scope in the
+     bundle — except where one inlined module imports another, which no longer
+     is: config lives inside its own closure. `pre` hands those bindings in. */
   const body = src.replace(/^import[^;]+;$/gm, '').replace(/^export\s+/gm, '');
-  return `(() => {\n${body}\nreturn { ${names.join(', ')} };\n})()`;
+  return `(() => {\n${pre}${body}\nreturn { ${names.join(', ')} };\n})()`;
 };
-const modules = `window.__ATLAS_MODULES__ = { config: ${inline('config.js')}, nl: ${inline('nl.js')} };`;
+const modules = `const __cfg = ${inline('config.js')};\n`
+  + `window.__ATLAS_MODULES__ = { config: __cfg, nl: ${inline('nl.js')}, `
+  + `mcp: ${inline('mcp.js', 'const { config } = __cfg;\n')} };`;
 
 // --artifact: bundle the sample dataset and emit body-level content only, since
 // the Artifact host supplies its own <!doctype>/<html>/<head>/<body> wrapper.

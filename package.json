@@ -6,9 +6,12 @@
     "start": "node serve.mjs",
     "build": "node build.mjs",
     "fixtures": "node test/serve.mjs",
-    "test": "node build.mjs && node test/e2e.mjs && node test/live.mjs && PAGE=demo.html node test/live.mjs"
+    "test": "node tools/audit-code.mjs && node build.mjs && node build.mjs --artifact && node test/e2e.mjs && PAGE=demo.html node test/e2e.mjs && PAGE=artifact.html node test/e2e.mjs && node test/live.mjs && PAGE=demo.html node test/live.mjs",
+    "audit": "node tools/audit-code.mjs",
+    "lint": "oxlint app.js data.js nl.js mcp.js trade.js wallet.js config.js build.mjs"
   },
   "devDependencies": {
+    "oxlint": "^1.80.0",
     "playwright": "^1.56.1"
   }
 }

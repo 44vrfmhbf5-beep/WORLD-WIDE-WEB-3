@@ -57,9 +57,10 @@ p.on('request', r => { if (r.url().includes('assets.coingecko.com')) logoReqs++;
    tile per category, in the order the KIND table declares. Pinned on purpose —
    a reorder should be a deliberate edit here rather than something that slips
    through. */
-await p.goto(U); await p.waitForSelector('#results .tile', { timeout: 20000 });
+await p.goto(U); await p.waitForSelector('#results .hcard', { timeout: 20000 });
 await p.waitForTimeout(2500);
-const tiles = await p.locator('#results .tile .tl').allTextContents();
+// the loop renders the list twice; the duplicate is hidden from everything
+const tiles = await p.locator('#results .hcard:not([aria-hidden]) .ht b').allTextContents();
 const want = 'Assets,Tokenized stocks,DEX pairs,NFT collections,Lending markets,Yield,Protocols,Stablecoins,Bridges,Networks,Funding rounds,Exploits,Saved';
 ok(tiles.join() === want, `every category is a tile, in rail order (${tiles.length}) — got ${tiles.join()}`);
 ok(new Set(tiles).size === tiles.length, 'no category listed twice');
@@ -67,7 +68,7 @@ ok(await p.locator('#results .row').count() === 0, 'and nothing is listed before
 ok(/updated/.test(await p.locator('#meta').textContent()), 'freshness shown');
 
 // a tile is the way in, and the category it opens is the one it named
-await p.locator('#results .tile').first().click(); await p.waitForTimeout(900);
+await p.locator('#results .hcard').first().evaluate(el => el.click()); await p.waitForTimeout(900);
 ok(await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab') === 'assets',
   'clicking a tile opens that category');
 ok(await p.locator('#results .row:not(.sk)').count() > 5, 'which has rows in it');
@@ -80,6 +81,57 @@ ok(groups.length >= 2, `a search across kinds groups them (${groups.join(', ')})
 ok(new Set(groups).size === groups.length, 'no group heading repeats');
 await p.fill('#q', ''); await p.waitForTimeout(600);
 ok(logoReqs > 0, 'logo URLs from the API are requested');
+
+console.log('\n# the home loop');
+{
+  /* A grid of tiles is a wall. The same categories as a column of cards that
+     keeps moving is something to watch — which means the list is rendered
+     twice and the duplicate must be invisible to everything but the eye. */
+  await p.goto(U); await p.waitForSelector('#results .hcard', { timeout: 20000 });
+  const live = await p.locator('#results .hcard:not([aria-hidden])').count();
+  const all = await p.locator('#results .hcard').count();
+  ok(all === live * 2, `the list is rendered twice so the loop has no seam (${all} of ${live})`);
+  ok(await p.locator('#results .hcard[aria-hidden] [tabindex="-1"], #results .hcard[aria-hidden="true"]').count() === live,
+    'and the copy is hidden from assistive tech and the tab order');
+  const anim = await p.locator('#results .track').evaluate(e => getComputedStyle(e).animationName);
+  ok(anim === 'cycle', `the column cycles (${anim})`);
+  /* A card you are reaching for has to hold still, and the whole column stops
+     the moment the pointer enters it — not once it reaches a card, which would
+     be a target that moves out from under the cursor. Moved by coordinate
+     rather than by element, because a moving element is never "stable". */
+  const box = await p.locator('#results .loop').boundingBox();
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.waitForTimeout(200);
+  ok(await p.locator('#results .track').evaluate(e => getComputedStyle(e).animationPlayState) === 'paused',
+    'and stops the moment the pointer enters it');
+  await p.mouse.move(0, 0); await p.waitForTimeout(200);
+  ok(await p.locator('#results .track').evaluate(e => getComputedStyle(e).animationPlayState) === 'running',
+    'and starts again when it leaves');
+  await p.locator('#results .hcard').first().evaluate(el => el.click()); await p.waitForTimeout(700);
+  ok(/tab=/.test(p.url()), 'a card is still the way in');
+  // hand the page back the way it was found: All, with everything loaded
+  await p.goto(U); await p.waitForSelector('#results .hcard', { timeout: 20000 });
+  await p.waitForTimeout(800);
+}
+
+console.log('\n# CoinGecko, asked directly');
+{
+  /* The local index is the top few hundred assets. A search that finds nothing
+     locally can still find something, and what comes back has to be a row like
+     any other rather than a suggestion nobody can act on. */
+  const q = await page();
+  await q.goto(U + '?tab=assets', { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.fill('#q', 'frog'); await q.waitForTimeout(3500);
+  const row = q.locator('.row[data-id="a:obscure-frog"]');
+  ok(await row.count() === 1, 'a coin the local index never carried is found');
+  ok(/\$0\.42/.test(await row.textContent()), 'with its numbers on it, not just its name');
+  await row.evaluate(el => el.click()); await q.waitForTimeout(1500);
+  ok(await q.locator('.sheet-in[data-kind="asset"]').count() === 1, 'and it opens like any other asset');
+  ok(/Counted in/.test(await q.locator('.sec.about').textContent()),
+    'the sheet asks CoinGecko what else it knows');
+  await q.close();
+}
 
 console.log('\n# XSS: hostile token name from the API must not execute');
 await p.fill('#q', 'script'); await p.waitForTimeout(600);
@@ -165,7 +217,7 @@ await clickRow(p, '.row .star');
 await p.fill('#q', ''); await p.waitForTimeout(400);
 await p.click('[data-tab=saved]'); await p.waitForTimeout(600);
 ok(await p.locator('.row').count() === 1, 'saved item listed');
-await p.reload(); await p.waitForSelector('.row:not(.sk), #results .tile', { timeout: 15000 });
+await p.reload(); await p.waitForSelector('.row:not(.sk), #results .hcard', { timeout: 15000 });
 await p.waitForTimeout(600);
 ok(await p.locator('[data-tab=saved]').getAttribute('aria-selected') === 'true', 'tab restored from URL');
 ok(await p.locator('.row').count() === 1, 'watchlist survives reload');
@@ -339,21 +391,26 @@ console.log('\n# with an app id, the vendored SDK is real');
 
 }   // !SOLO
 
-console.log('\n# a sheet offers the venue, and the wallet if there is one');
+console.log('\n# a sheet trades the thing, rather than linking to somewhere that does');
 {
   const q = await page();
   await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(1200);
   await q.click('[data-tab=dex]'); await q.waitForTimeout(900);
-  await q.locator('#results .row').first().click(); await q.waitForTimeout(2000);
+  await q.locator('#results .row').first().evaluate(el => el.click()); await q.waitForTimeout(2000);
   ok(await q.locator('.sec.trade').count() === 1, 'a DEX pair sheet offers somewhere to trade it');
-  const venues = await q.locator('.sec.trade .venues a').evaluateAll(a => a.map(x => x.textContent.trim()));
-  ok(venues.length > 0, `naming the venue for its chain (${venues.join(', ')})`);
-  const href = await q.locator('.sec.trade .venues a').first().getAttribute('href');
-  ok(/^https:\/\/(jup\.ag|app\.uniswap\.org)/.test(href), `with a real link (${href})`);
-  // the quote host is unreachable here: an absent quote must not take the sheet
-  ok(await q.locator('.sec.trade .quote').isHidden(), 'a quote that cannot load is simply absent');
+  /* The old shape was a row of links out. A link is the app saying it knows
+     what you want and cannot do it, so there must not be one left. */
+  ok(await q.locator('.sec.trade a[href^="http"]').count() === 0,
+    'and no link out to a venue to finish the job elsewhere');
+  ok(await q.locator('.sec.trade [data-amt]').count() === 1, 'it asks how much');
+  ok(await q.locator('.sec.trade [data-tquote]').count() === 1, 'and offers to price it');
+  ok(/Connect a wallet/.test(await q.locator('[data-tnote]').textContent()),
+    'with no wallet, it says what is missing rather than hiding');
+  // the venue is unreachable here: the failure belongs in the panel, not the sheet
+  await q.click('[data-tquote]'); await q.waitForTimeout(2500);
+  ok(await q.locator('[data-tnote]').textContent() !== '', 'a quote that cannot load says so');
   ok(await q.locator('.sheet-in .big').count() === 1, 'and the sheet is otherwise whole');
   await q.close();
 }
@@ -377,9 +434,9 @@ console.log('\n# the published artifact, with no network at all');
     ? r.continue() : r.abort('failed'));
   await q.goto('http://localhost:8903/', { waitUntil: 'domcontentloaded' });
   // All is the category home now, so the landing screen is tiles
-  await q.waitForSelector('#results .tile', { timeout: 25000 });
+  await q.waitForSelector('#results .hcard', { timeout: 25000 });
   await q.waitForTimeout(2200);
-  ok(await q.locator('#results .tile').count() >= 12, 'the offline build lands on its categories');
+  ok(await q.locator('#results .hcard:not([aria-hidden])').count() >= 12, 'the offline build lands on its categories');
 
   const tabs = await q.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
   const empty = [], mismatch = [];

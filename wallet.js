@@ -180,6 +180,35 @@ export async function sendEvm(tx) {
   return p.request({ method: 'eth_sendTransaction', params: [tx] });
 }
 
+/* A read of the chain, through the same provider that would send to it. Using
+   the wallet's own RPC rather than a public one means a quote is priced by the
+   node that will see the transaction. */
+export async function callEvm({ to, data, chainId }) {
+  const p = await evmProvider();
+  if (chainId) await p.request({ method: 'wallet_switchEthereumChain',
+    params: [{ chainId: '0x' + Number(chainId).toString(16) }] }).catch(() => {});
+  return p.request({ method: 'eth_call', params: [{ to, data }, 'latest'] });
+}
+
+/** Is there a contract at this address at all? A swap is not sent into a gap. */
+export async function codeAt(address, chainId) {
+  const p = await evmProvider();
+  if (chainId) await p.request({ method: 'wallet_switchEthereumChain',
+    params: [{ chainId: '0x' + Number(chainId).toString(16) }] }).catch(() => {});
+  const code = await p.request({ method: 'eth_getCode', params: [address, 'latest'] });
+  return typeof code === 'string' && code.length > 4;
+}
+
+/* Solana's side of the same idea: the venue builds and serialises the
+   transaction, the wallet signs and broadcasts it. Privy's provider takes the
+   serialised bytes, so nothing here has to construct a transaction. */
+export async function sendSolana(base64Tx) {
+  const p = await solProvider();
+  const r = await p.request({ method: 'signAndSendTransaction',
+    params: { transaction: base64Tx, encoding: 'base64' } });
+  return r?.signature || r;
+}
+
 /* ---------- money in ---------- */
 
 /* Privy signs the MoonPay URL server-side with the MoonPay key registered
@@ -200,12 +229,6 @@ export async function fundWithMoonpay({ address, chainId = 1, amount, currencyCo
     useSandbox: !!config.moonpay.sandbox,
   });
   return url;
-}
-
-export async function moonpayStatus(transactionId) {
-  const c = await privy();
-  return c.funding.moonpay.getTransactionStatus({
-    transactionId, useSandbox: !!config.moonpay.sandbox });
 }
 
 /* Crossmint sells an NFT for a card payment and delivers it to an address, so

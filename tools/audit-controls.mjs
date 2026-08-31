@@ -9,7 +9,7 @@ const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 const U = 'http://127.0.0.1:8899/';
 await p.goto(U, { waitUntil: 'domcontentloaded' });
-await p.waitForSelector('#results .row:not(.sk), #results .tile', { timeout: 25000 });
+await p.waitForSelector('#results .row:not(.sk), #results .hcard', { timeout: 25000 });
 await p.waitForTimeout(2200);
 
 /* The screen is one page of a category. Counting the rows on it says 40 either
@@ -26,7 +26,7 @@ const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')]
 let bad = 0;
 const bad_ = m => { bad++; return 'BROKEN: ' + m; };
 const fresh = async tab => { await p.goto(U + '?tab=' + tab, { waitUntil: 'domcontentloaded' });
-  await p.waitForSelector('#results .row:not(.sk), .empty, #results .tile', { timeout: 20000 }); await p.waitForTimeout(1400); };
+  await p.waitForSelector('#results .row:not(.sk), .empty, #results .hcard', { timeout: 20000 }); await p.waitForTimeout(1400); };
 
 console.log('cat        rows  chain       sort        facet       page        view');
 for (const tab of tabs) {

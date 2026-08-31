@@ -118,7 +118,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 /* results */
 .results{display:flex;flex-direction:column;gap:8px}
 /* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
-.results .row,.results .tile{scroll-margin-top:132px}
+.results .row,.results .hcard{scroll-margin-top:132px}
 .wrap>#banner{margin-top:14px}
 .row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
   background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
@@ -126,9 +126,30 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .row.in{animation:in .3s var(--ease) both}
 @keyframes in{from{opacity:0;transform:translateY(7px)}}
 .row:hover{background:var(--surface2)}
-.row.sel{border-color:var(--accent-dim);background:var(--surface2);
-  box-shadow:0 0 0 3px rgba(171,159,242,.12)}
+/* Selection is a keyboard affordance, not a claim about the row. A ring around
+   the first result reads as "this one is special", which it is not &#8212; the list
+   is already in order. A quiet fill is enough to follow the arrow keys. */
+.row.sel{background:var(--surface2)}
 .row:active{transform:scale(.994)}
+
+/* ---- warnings ----
+   A mark on the row, not a wall of text: the reasons are in the sheet. Amber
+   for something to weigh, red for something that decides it. */
+.warnb{display:inline-flex;align-items:center;gap:3px;vertical-align:middle;
+  min-width:17px;height:17px;padding:0 5px;border-radius:999px;
+  font-size:10.5px;font-weight:700;line-height:1;letter-spacing:0;
+  background:color-mix(in srgb,#f5a524 22%,transparent);color:#f5a524;cursor:help}
+.warnb.bad{background:color-mix(in srgb,var(--down) 20%,transparent);color:var(--down)}
+.warnb i{font-style:normal;font-size:10px;opacity:.85}
+.flags{display:flex;flex-direction:column;gap:8px}
+.flag{padding:10px 12px;border-radius:12px;background:var(--surface2);
+  border-left:3px solid #f5a524}
+.flag.bad{border-left-color:var(--down)}
+/* context rather than a warning: said once, where somebody is already reading */
+.flag.note{border-left-color:var(--line2)}
+.flag .fl{display:block;font-size:13px;font-weight:600;color:var(--text)}
+.flag .fw{display:block;margin-top:2px;font-size:12.5px;color:var(--dim);line-height:1.45}
+.sec.risk .note{margin-top:10px}
 
 /* 4-char tickers get a tighter face */
 .tok.t4{font-size:9.5px;letter-spacing:-.04em}
@@ -299,11 +320,27 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .rangebar span{cursor:pointer}
 .rangebar span:hover{color:var(--dim)}
 .empty .cta{max-width:220px;margin-inline:auto}
+/* ---- trade ----
+   An amount, a quote, and one button. The quote block is deliberately loud:
+   it is the last thing anyone reads before signing. */
+.tform{display:flex;gap:10px;align-items:stretch;margin-bottom:12px}
+.tamt{flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding:9px 13px;
+  border-radius:12px;background:var(--surface2);border:1px solid var(--line)}
+.tamt:focus-within{border-color:var(--accent-dim)}
+.tamt span{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+.tamt input{flex:1;min-width:0;background:none;border:0;outline:none;
+  font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.tamt b{font-size:13px;color:var(--dim)}
+.tform .p{flex:none}
+
 /* ---- wallet ----
-   The one control that changes what the app can do, so it reads as a state
-   rather than a button once it holds something. */
-.ghost-btn.wallet.on{color:var(--text);border-color:var(--accent-dim);
-  background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+   The one control that changes what the app can do, so it is the one control
+   in the header wearing the accent &#8212; and it reads as a state rather than a
+   button once it holds something. */
+.ghost-btn.wallet{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ghost-btn.wallet:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--on-accent)}
+.ghost-btn.wallet.on{color:var(--on-accent);border-color:var(--accent-dim);
+  background:color-mix(in srgb,var(--accent) 78%,#000)}
 .ghost-btn.wallet span{font-variant-numeric:tabular-nums}
 .wsec{margin-top:22px}
 .wsec:first-of-type{margin-top:18px}
@@ -332,6 +369,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* what is actually for sale inside a collection */
 .sec.items .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+/* an item you can buy says so on itself, rather than sending you elsewhere */
+.sec.items .item{position:relative}
+.sec.items .ilink{display:block;color:inherit;text-decoration:none}
+.sec.items .buy{position:absolute;right:7px;bottom:7px;padding:5px 11px;border-radius:9px;
+  font-size:12px;font-weight:600;background:var(--accent);color:var(--on-accent);
+  opacity:0;transition:.15s var(--ease);z-index:1}
+.sec.items .item:hover .buy,.sec.items .buy:focus-visible{opacity:1}
+.sec.items .buy:disabled{opacity:.6}
+.s.card{margin-top:10px;display:inline-flex}
 .sec.items .item{display:block;border-radius:12px;overflow:hidden;background:var(--surface);
   border:1px solid var(--line);text-decoration:none;transition:.14s var(--ease)}
 .sec.items .item:hover{border-color:var(--line2);transform:translateY(-1px)}
@@ -352,17 +398,42 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.trade .qline{font-size:15px;color:var(--text)}
 .sec.trade .qline b{font-weight:600;font-variant-numeric:tabular-nums}
 .sec.trade .qmeta{margin-top:4px;font-size:11.5px;color:var(--faint)}
-.sec.trade .cta{margin-top:0}
+.sec.trade .cta{margin-top:12px}
 
-/* All, with nothing typed: the categories themselves, not a sample of each */
-.results.home{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-.tile{display:block;text-align:left;padding:16px 17px 15px;border-radius:16px;
-  background:var(--surface);border:1px solid var(--line);transition:.16s var(--ease)}
-.tile:hover{background:var(--surface2);border-color:var(--accent-dim);transform:translateY(-2px)}
-.tile .tl{font-size:14px;font-weight:600;color:var(--text)}
-.tile .tn{margin-top:9px;font-size:22px;font-weight:600;color:var(--accent-dim);
+/* All, with nothing typed: the categories themselves, not a sample of each &#8212;
+   a column of horizontal cards that cycles forever. The track holds the list
+   twice and travels exactly one copy, so the seam never lands on screen. */
+.results.home{display:block}
+.loop{position:relative;height:min(60vh,470px);overflow:hidden;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 9%,#000 91%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 9%,#000 91%,transparent)}
+.track{display:flex;flex-direction:column;gap:10px;
+  animation:cycle calc(var(--n,12) * 2.4s) linear infinite}
+/* one copy of the list, plus one gap, is exactly what the seam needs */
+@keyframes cycle{to{transform:translateY(calc(-50% - 5px))}}
+/* reaching for a card it must hold still, and a keyboard is reaching too */
+.loop:hover .track,.loop:focus-within .track{animation-play-state:paused}
+.hcard{display:flex;align-items:center;gap:14px;flex:none;width:100%;
+  padding:15px 18px;border-radius:16px;text-align:left;
+  background:var(--surface);border:1px solid var(--line);
+  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
+.hcard:hover{background:var(--surface2);border-color:var(--accent-dim);transform:translateX(4px)}
+.hcard .hi{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+  font-size:15px;font-weight:700;color:var(--on-accent);letter-spacing:-.02em;
+  background:linear-gradient(140deg,var(--accent),var(--accent-dim))}
+.hcard .ht{flex:1;min-width:0}
+.hcard .ht b{display:block;font-size:15px;font-weight:600;color:var(--text)}
+.hcard .ht em{display:block;margin-top:2px;font-size:12.5px;font-style:normal;color:var(--faint)}
+.hcard .hn{flex:none;font-size:19px;font-weight:600;color:var(--accent-dim);
   font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.tile .tw{margin-top:3px;font-size:12px;color:var(--faint)}
+.hcard .hgo{flex:none;width:18px;color:var(--faint);transition:.16s var(--ease)}
+.hcard:hover .hgo{color:var(--accent-dim);transform:translateX(3px)}
+@media (prefers-reduced-motion:reduce){
+  /* the loop is decoration; the list is the content, so it stays and stops */
+  .loop{height:auto;-webkit-mask-image:none;mask-image:none}
+  .track{animation:none}
+  .track>[aria-hidden=true]{display:none}
+}
 .pickgrid .chip.cat{justify-content:space-between}
 .pickgrid .chip.cat .ct{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
 .pickgrid .chip.cat.on{background:color-mix(in srgb,var(--accent) 16%,var(--surface2));
@@ -712,7 +783,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
     </button>
     <button class="ghost-btn wallet" id="connect" aria-haspopup="dialog">
       <svg viewBox="0 0 24 24" class="i"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M16 12.5h.01"/></svg>
-      <span>Connect</span>
+      <span>Trade</span>
     </button>
   </nav>
 </header>
@@ -1059,7 +1130,7 @@ const Fuse = (() => {
  */
 function e(e){return Array.isArray?Array.isArray(e):u(e)===`[object Array]`}function t(e){if(typeof e==`string`)return e;if(typeof e==`bigint`)return e.toString();let t=e+``;return t==`0`&&1/e==-1/0?`-0`:t}function n(e){return e==null?``:t(e)}function r(e){return typeof e==`string`}function i(e){return typeof e==`number`}function a(e){return e===!0||e===!1||s(e)&&u(e)==`[object Boolean]`}function o(e){return typeof e==`object`}function s(e){return o(e)&&e!==null}function c(e){return e!=null}function l(e){return!e.trim().length}function u(e){return e==null?e===void 0?`[object Undefined]`:`[object Null]`:Object.prototype.toString.call(e)}const d=`Invalid doc index: must be a non-negative integer within the bounds of the docs array`,f=e=>`Pattern length exceeds max of ${e}.`,p=e=>`Missing ${e} property in key`,m=e=>`Property 'weight' in key '${e}' must be a positive integer`,h=Object.prototype.hasOwnProperty;var g=class{constructor(e){this._keys=[],this._keyMap={};let t=0;e.forEach(e=>{let n=_(e);this._keys.push(n),this._keyMap[n.id]=n,t+=n.weight}),this._keys.forEach(e=>{e.weight/=t})}get(e){return this._keyMap[e]}keys(){return this._keys}toJSON(){return JSON.stringify(this._keys)}};function _(t){let n=null,i=null,a=null,o=1,s=null;if(r(t)||e(t))a=t,n=v(t),i=y(t);else{if(!h.call(t,`name`))throw Error(p(`name`));let e=t.name;if(a=e,h.call(t,`weight`)&&t.weight!==void 0&&(o=t.weight,o<=0))throw Error(m(y(e)));n=v(e),i=y(e),s=t.getFn??null}return{path:n,id:i,weight:o,src:a,getFn:s}}function v(t){return e(t)?t:t.split(`.`)}function y(t){return e(t)?t.join(`.`):t}function b(t,o){let s=[],l=!1,u=(t,o,d,f)=>{if(c(t))if(!o[d])s.push(f===void 0?t:{v:t,i:f});else{let p=t[o[d]];if(!c(p))return;if(d===o.length-1&&(r(p)||i(p)||a(p)||typeof p==`bigint`))s.push(f===void 0?n(p):{v:n(p),i:f});else if(e(p)){l=!0;for(let e=0,t=p.length;e<t;e+=1)u(p[e],o,d+1,e)}else o.length&&u(p,o,d+1,f)}};return u(t,r(o)?o.split(`.`):o,0),l?s:s[0]}const x={includeMatches:!1,findAllMatches:!1,minMatchCharLength:1},S={isCaseSensitive:!1,ignoreDiacritics:!1,includeScore:!1,keys:[],shouldSort:!0,sortFn:(e,t)=>e.score===t.score?e.idx<t.idx?-1:1:e.score<t.score?-1:1},C={location:0,threshold:.6,distance:100},w={useExtendedSearch:!1,useTokenSearch:!1,tokenize:void 0,tokenMatch:`any`,getFn:b,ignoreLocation:!1,ignoreFieldNorm:!1,fieldNormWeight:1},T=Object.freeze({...S,...x,...C,...w});function E(e){return e>=9&&e<=13||e===32||e===160}function D(e=1,t=3){let n=new Map,r=10**t;return{get(t){let i=0,a=!1;for(let e=0;e<t.length;e++)E(t.charCodeAt(e))?a=!1:a||(i++,a=!0);if(i===0&&(i=1),n.has(i))return n.get(i);let o=Math.round(r/i**(.5*e))/r;return n.set(i,o),o},clear(){n.clear()}}}var O=class{constructor({getFn:e=T.getFn,fieldNormWeight:t=T.fieldNormWeight}={}){this.norm=D(t,3),this.getFn=e,this.isCreated=!1,this.docs=[],this.keys=[],this._keysMap={},this.setIndexRecords()}setSources(e=[]){this.docs=e}setIndexRecords(e=[]){this.records=e}setKeys(e=[]){this.keys=e,this._keysMap={},e.forEach((e,t)=>{this._keysMap[e.id]=t})}create(){if(this.isCreated||!this.docs.length)return;this.isCreated=!0;let e=this.docs.length;this.records=Array(e);let t=0;if(r(this.docs[0]))for(let n=0;n<e;n++){let e=this._createStringRecord(this.docs[n],n);e&&(this.records[t++]=e)}else for(let n=0;n<e;n++)this.records[t++]=this._createObjectRecord(this.docs[n],n);this.records.length=t,this.norm.clear()}add(e,t){if(!Number.isInteger(t)||t<0)throw Error(d);if(r(e)){let n=this._createStringRecord(e,t);return n&&this.records.push(n),n}let n=this._createObjectRecord(e,t);return this.records.push(n),n}removeAt(e){if(!Number.isInteger(e)||e<0)throw Error(d);for(let t=0,n=this.records.length;t<n;t+=1)if(this.records[t].i===e){this.records.splice(t,1);break}for(let t=0,n=this.records.length;t<n;t+=1)this.records[t].i>e&&--this.records[t].i}removeAll(e){let t=new Set;for(let n of e)Number.isInteger(n)&&n>=0&&t.add(n);if(t.size===0)return;this.records=this.records.filter(e=>!t.has(e.i));let n=Array.from(t).sort((e,t)=>e-t);for(let e of this.records){let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e.i?t=i+1:r=i}e.i-=t}}getValueForItemAtKeyId(e,t){return e[this._keysMap[t]]}size(){return this.records.length}_createStringRecord(e,t){return!c(e)||l(e)?null:{v:e,i:t,n:this.norm.get(e)}}_createObjectRecord(t,i){let a={i,$:{}};for(let i=0,o=this.keys.length;i<o;i++){let o=this.keys[i],s=o.getFn?o.getFn(t):this.getFn(t,o.path);if(c(s)){if(e(s)){let e=[];for(let t=0,i=s.length;t<i;t+=1){let i=s[t];if(c(i)){if(r(i)){if(!l(i)){let n={v:i,i:t,n:this.norm.get(i)};e.push(n)}}else if(c(i.v)){let t=r(i.v)?i.v:n(i.v);if(!l(t)){let n={v:t,i:i.i,n:this.norm.get(t)};e.push(n)}}}}a.$[i]=e}else if(r(s)&&!l(s)){let e={v:s,n:this.norm.get(s)};a.$[i]=e}}}return a}toJSON(){return{keys:this.keys.map(({getFn:e,...t})=>t),records:this.records}}};function k(e,t,{getFn:n=T.getFn,fieldNormWeight:r=T.fieldNormWeight}={}){let i=new O({getFn:n,fieldNormWeight:r});return i.setKeys(e.map(_)),i.setSources(t),i.create(),i}function A(e,{getFn:t=T.getFn,fieldNormWeight:n=T.fieldNormWeight}={}){let{keys:r,records:i}=e,a=new O({getFn:t,fieldNormWeight:n});return a.setKeys(r),a.setIndexRecords(i),a}function j(e=[],t=T.minMatchCharLength){let n=[],r=-1,i=-1,a=0;for(let o=e.length;a<o;a+=1){let o=e[a];o&&r===-1?r=a:!o&&r!==-1&&(i=a-1,i-r+1>=t&&n.push([r,i]),r=-1)}return e[a-1]&&a-r>=t&&n.push([r,a-1]),n}function M(e,t,n,{location:r=T.location,distance:i=T.distance,threshold:a=T.threshold,findAllMatches:o=T.findAllMatches,minMatchCharLength:s=T.minMatchCharLength,includeMatches:c=T.includeMatches,ignoreLocation:l=T.ignoreLocation}={}){if(t.length>32)throw Error(f(32));let u=t.length,d=e.length,p=Math.max(0,Math.min(r,d)),m=a,h=p,g=(e,t)=>{let n=e/u;if(l)return n;let r=Math.abs(p-t);return i?n+r/i:r?1:n},_=s>1||c,v=_?Array(d):[],y;for(;(y=e.indexOf(t,h))>-1;){let e=g(0,y);if(m=Math.min(e,m),h=y+u,_){let e=0;for(;e<u;)v[y+e]=1,e+=1}}h=-1;let b=[],x=1,S=0,C=u+d,w=1<<u-1;for(let t=0;t<u;t+=1){let r=0,i=C;for(;r<i;)g(t,p+i)<=m?r=i:C=i,i=Math.floor((C-r)/2+r);C=i;let a=Math.max(1,p-i+1),s=o?d:Math.min(p+i,d)+u,c=Array(s+2);c[s+1]=(1<<t)-1;for(let r=s;r>=a;--r){let i=r-1,o=n[e[i]];if(c[r]=(c[r+1]<<1|1)&o,t&&(c[r]|=(b[r+1]|b[r])<<1|1|b[r+1]),c[r]&w&&(x=g(t,i),x<=m)){if(m=x,h=i,S=t,h<=p)break;a=Math.max(1,2*p-h)}}if(g(t+1,p)>m)break;b=c}if(_&&h>=0){let t=Math.min(d-1,h+u-1+S);for(let r=h;r<=t;r+=1)n[e[r]]&&(v[r]=1)}let E={isMatch:h>=0,score:Math.max(.001,x)};if(_){let e=j(v,s);e.length?c&&(E.indices=e):E.isMatch=!1}return E}function N(e){let t={};for(let n=0,r=e.length;n<r;n+=1){let i=e.charAt(n);t[i]=(t[i]||0)|1<<r-n-1}return t}function P(e){if(e.length<=1)return e;e.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let t=[e[0]];for(let n=1,r=e.length;n<r;n+=1){let r=t[t.length-1],i=e[n];i[0]<=r[1]+1?r[1]=Math.max(r[1],i[1]):t.push(i)}return t}const F={\u0142:`l`,\u0141:`L`,\u0111:`d`,\u0110:`D`,\u00f8:`o`,\u00d8:`O`,\u0127:`h`,\u0126:`H`,\u0167:`t`,\u0166:`T`,\u0131:`i`,\u00df:`ss`},I=RegExp(`[`+Object.keys(F).join(``)+`]`,`g`),L=typeof String.prototype.normalize==`function`?e=>e.normalize(`NFD`).replace(/[\u0300-\u036F\u0483-\u0489\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0711\u0730-\u074A\u07A6-\u07B0\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u08D3-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A70\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B62\u0B63\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0C00-\u0C04\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D82\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0EB1\u0EB4-\u0EB9\u0EBB\u0EBC\u0EC8-\u0ECD\u0F18\u0F19\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F\u109A-\u109D\u135D-\u135F\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u180B-\u180D\u1885\u1886\u18A9\u1920-\u192B\u1930-\u193B\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F\u1AB0-\u1ABE\u1B00-\u1B04\u1B34-\u1B44\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BE6-\u1BF3\u1C24-\u1C37\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF2-\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DF9\u1DFB-\u1DFF\u20D0-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\uA66F-\uA672\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA880\uA881\uA8B4-\uA8C5\uA8E0-\uA8F1\uA8FF\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9E5\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F]/g,``).replace(I,e=>F[e]):e=>e;var R=class{constructor(e,{location:t=T.location,threshold:n=T.threshold,distance:r=T.distance,includeMatches:i=T.includeMatches,findAllMatches:a=T.findAllMatches,minMatchCharLength:o=T.minMatchCharLength,isCaseSensitive:s=T.isCaseSensitive,ignoreDiacritics:c=T.ignoreDiacritics,ignoreLocation:l=T.ignoreLocation}={}){if(this.options={location:t,threshold:n,distance:r,includeMatches:i,findAllMatches:a,minMatchCharLength:o,isCaseSensitive:s,ignoreDiacritics:c,ignoreLocation:l},e=s?e:e.toLowerCase(),e=c?L(e):e,this.pattern=e,this.chunks=[],!this.pattern.length)return;let u=(e,t)=>{this.chunks.push({pattern:e,alphabet:N(e),startIndex:t})},d=this.pattern.length;if(d>32){let e=0,t=d%32,n=d-t;for(;e<n;)u(this.pattern.substr(e,32),e),e+=32;if(t){let e=d-32;u(this.pattern.substr(e),e)}}else u(this.pattern,0)}searchIn(e){let{isCaseSensitive:t,ignoreDiacritics:n,includeMatches:r}=this.options;if(e=t?e:e.toLowerCase(),e=n?L(e):e,this.pattern===e){if(e.length<this.options.minMatchCharLength)return{isMatch:!1,score:1};let t={isMatch:!0,score:0};return r&&(t.indices=[[0,e.length-1]]),t}let{location:i,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,ignoreLocation:l}=this.options,u=[],d=0,f=!1;this.chunks.forEach(({pattern:t,alphabet:n,startIndex:p})=>{let{isMatch:m,score:h,indices:g}=M(e,t,n,{location:i+p,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,includeMatches:r,ignoreLocation:l});m&&(f=!0),d+=h,m&&g&&u.push(...g)});let p={isMatch:f,score:f?d/this.chunks.length:1};return f&&r&&(p.indices=P(u)),p}};const z=[];function B(...e){z.push(...e)}function V(e,t){for(let n=0,r=z.length;n<r;n+=1){let r=z[n];if(r.condition(e,t))return new r(e,t)}return new R(e,t)}function H(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){let n=1;return e.forEach(({key:e,norm:r,score:i})=>{let a=e?e.weight:null;n*=(i===0&&a?2**-52:i)**+((a||1)*(t?1:r))}),n}function U(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){e.forEach(e=>{e.score=H(e.matches,{ignoreFieldNorm:t})})}var W=class{constructor(e,t){this.limit=e,this.heap=[],this.comparator=t}get size(){return this.heap.length}insert(e){this.size<this.limit?(this.heap.push(e),this._bubbleUp(this.size-1)):this.comparator(e,this.heap[0])<0&&(this.heap[0]=e,this._sinkDown(0))}extractSorted(){return this.heap.sort(this.comparator)}_bubbleUp(e){let t=this.heap;for(;e>0;){let n=e-1>>1;if(this.comparator(t[e],t[n])<=0)break;let r=t[e];t[e]=t[n],t[n]=r,e=n}}_sinkDown(e){let t=this.heap,n=t.length,r=e;do{e=r;let i=2*e+1,a=2*e+2;if(i<n&&this.comparator(t[i],t[r])>0&&(r=i),a<n&&this.comparator(t[a],t[r])>0&&(r=a),r!==e){let n=t[e];t[e]=t[r],t[r]=n}}while(r!==e)}};function G(e){let t=[];return e.matches.forEach(e=>{if(!c(e.indices)||!e.indices.length)return;let n={indices:e.indices,value:e.value};e.key&&(n.key=e.key.id),e.idx>-1&&(n.refIndex=e.idx),t.push(n)}),t}function K(e,t,{includeMatches:n=T.includeMatches,includeScore:r=T.includeScore}={}){return e.map(e=>{let{idx:i}=e,a={item:t[i],refIndex:i};return n&&(a.matches=G(e)),r&&(a.score=e.score),a})}const q=/[\p{L}\p{M}\p{N}_]+/gu;function J(e){return typeof e==`function`?t=>e(t):e instanceof RegExp?(e.global,t=>t.match(e)||[]):e=>e.match(q)||[]}function Y({isCaseSensitive:e=!1,ignoreDiacritics:t=!1,tokenize:n}={}){let r=J(n);return{tokenize(n){return e||(n=n.toLowerCase()),t&&(n=L(n)),r(n)}}}function X(e,t,n,r){let i=r.tokenize(t);if(!i.length)return;e.fieldCount++,e.docFieldCount.set(n,(e.docFieldCount.get(n)||0)+1);let a=new Set(i),o=e.docTermFieldHits.get(n);o||(o=new Map,e.docTermFieldHits.set(n,o));for(let t of a)o.set(t,(o.get(t)||0)+1),e.df.set(t,(e.df.get(t)||0)+1)}function Z(e,t,n,r){let{i,v:a,$:o}=t;if(a!==void 0){X(e,a,i,r);return}if(o)for(let t=0;t<n;t++){let n=o[t];if(n)if(Array.isArray(n))for(let t of n)X(e,t.v,i,r);else X(e,n.v,i,r)}}function ee(e,t,n){let r={fieldCount:0,df:new Map,docFieldCount:new Map,docTermFieldHits:new Map};for(let i of e)Z(r,i,t,n);return r}function te(e,t,n,r){Z(e,t,n,r)}function ne(e,t){let n=e.docFieldCount.get(t);if(n===void 0)return;e.fieldCount-=n,e.docFieldCount.delete(t);let r=e.docTermFieldHits.get(t);if(r){for(let[t,n]of r){let r=(e.df.get(t)||0)-n;r<=0?e.df.delete(t):e.df.set(t,r)}e.docTermFieldHits.delete(t)}}function Q(e,t){if(t.length===0)return;let n=Array.from(new Set(t)).sort((e,t)=>e-t);for(let t of n)ne(e,t);let r=e=>{let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e?t=i+1:r=i}return e-t},i=n[0],a=new Map;for(let[t,n]of e.docFieldCount)a.set(t>i?r(t):t,n);e.docFieldCount=a;let o=new Map;for(let[t,n]of e.docTermFieldHits)o.set(t>i?r(t):t,n);e.docTermFieldHits=o}var $=class{constructor(e,t,n){if(this.options={...T,...t},this.options.useExtendedSearch)throw Error(`Extended search is not available`);if(this.options.useTokenSearch)throw Error(`Token search is not available`);this._keyStore=new g(this.options.keys),this._docs=e,this._myIndex=null,this._invertedIndex=null,this.setCollection(e,n),this._lastQuery=null,this._lastSearcher=null}_getSearcher(e){if(this._lastQuery===e)return this._lastSearcher;let t=V(e,this._invertedIndex?{...this.options,_invertedIndex:this._invertedIndex}:this.options);return this._lastQuery=e,this._lastSearcher=t,t}setCollection(e,t){if(this._docs=e,t&&!(t instanceof O))throw Error(`Incorrect 'index' type`);if(this._myIndex=t||k(this.options.keys,this._docs,{getFn:this.options.getFn,fieldNormWeight:this.options.fieldNormWeight}),this.options.useTokenSearch){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});this._invertedIndex=ee(this._myIndex.records,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}add(e){if(!c(e))return;this._docs.push(e);let t=this._myIndex.add(e,this._docs.length-1);if(this._invertedIndex&&t){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});te(this._invertedIndex,t,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}remove(e=()=>!1){let t=[],n=[];for(let r=0,i=this._docs.length;r<i;r+=1)e(this._docs[r],r)&&(t.push(this._docs[r]),n.push(r));if(n.length){this._invertedIndex&&Q(this._invertedIndex,n);let e=new Set(n);this._docs=this._docs.filter((t,n)=>!e.has(n)),this._myIndex.removeAll(n),this._invalidateSearcherCache()}return t}removeAt(e){if(!Number.isInteger(e)||e<0||e>=this._docs.length)throw Error(d);this._invertedIndex&&Q(this._invertedIndex,[e]);let t=this._docs.splice(e,1)[0];return this._myIndex.removeAt(e),this._invalidateSearcherCache(),t}_invalidateSearcherCache(){this._lastQuery=null,this._lastSearcher=null}getIndex(){return this._myIndex}_normalizedKeys(){return this._myIndex.keys.map(e=>this._keyStore.get(e.id)||e)}search(e,t){let{limit:n=-1}=t||{},{includeMatches:a,includeScore:o,shouldSort:s,sortFn:c,ignoreFieldNorm:l}=this.options;if(r(e)&&!e.trim()){let e=this._docs.map((e,t)=>({item:e,refIndex:t}));return i(n)&&n>-1&&(e=e.slice(0,n)),e}let u=s&&i(n)&&n>0&&r(e),d=c,f=(e,t)=>d(e,t)||e.idx-t.idx,p;if(u){let t=new W(n,f);r(this._docs[0])?this._searchStringList(e,{heap:t,ignoreFieldNorm:l}):this._searchObjectList(e,{heap:t,ignoreFieldNorm:l}),p=t.extractSorted()}else p=r(e)?r(this._docs[0])?this._searchStringList(e):this._searchObjectList(e):this._searchLogical(e),U(p,{ignoreFieldNorm:l}),s&&p.sort(r(e)?f:d),i(n)&&n>-1&&(p=p.slice(0,n));return K(p,this._docs,{includeMatches:a,includeScore:o})}_searchStringList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=t?null:[];return a.forEach(({v:e,i:a,n:s})=>{if(!c(e))return;let l=r.searchIn(e);if(l.isMatch){let r={score:l.score,value:e,norm:s,indices:l.indices};i&&(r.matchedMask=l.matchedMask,r.matchedTerms=l.matchedTerms,r.termCount=l.termCount);let c=[r];if(!i||this._coversAllTokens(c)){let r={item:e,idx:a,matches:c};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):o.push(r)}}}),o}_searchLogical(e){throw Error(`Logical search is not available`)}_searchObjectList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=this._normalizedKeys(),s=t?null:[];return a.forEach(({$:e,i:a})=>{if(!c(e))return;let l=[],u=!1,d=!1;if(o.forEach((t,n)=>{let i=this._findMatches({key:t,value:e[n],searcher:r});i.length?(l.push(...i),i[0].hasInverse&&(d=!0)):u=!0}),!(d&&u)&&l.length&&(!i||this._coversAllTokens(l))){let r={idx:a,item:e,matches:l};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):s.push(r)}}),s}_findMatches({key:t,value:n,searcher:r}){if(!c(n))return[];let i=[];if(e(n))n.forEach(({v:e,i:n,n:a})=>{if(!c(e))return;let o=r.searchIn(e);if(o.isMatch){let r={score:o.score,key:t,value:e,idx:n,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(r.matchedMask=o.matchedMask,r.matchedTerms=o.matchedTerms,r.termCount=o.termCount),i.push(r)}});else{let{v:e,n:a}=n,o=r.searchIn(e);if(o.isMatch){let n={score:o.score,key:t,value:e,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(n.matchedMask=o.matchedMask,n.matchedTerms=o.matchedTerms,n.termCount=o.termCount),i.push(n)}}return i}_coversAllTokens(e){let t=e.length?e[0].termCount:void 0;if(t===void 0)return!0;if(t<=31){let n=0;for(let t=0;t<e.length;t++)n|=e[t].matchedMask||0;return n===2**t-1}let n=new Set;for(let t=0;t<e.length;t++){let r=e[t].matchedTerms;if(r)for(let e of r)n.add(e)}return n.size===t}};$.version=`7.5.0`,$.createIndex=k,$.parseIndex=A,$.config=T,$.match=function(e,t,n){if(n&&n.useTokenSearch)throw Error(`Fuse.match does not support useTokenSearch: token search requires corpus-level statistics (df, fieldCount) that a one-off string comparison does not have. Use new Fuse(...).search(...) instead.`);return V(e,{...T,...n}).searchIn(t)},$.use=function(...e){e.forEach(e=>B(e))};var re=$;return re;
 })();
-const { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions } = (() => {
+const { CHAINS, CH, ApiError, flags, clearCache, colorOf, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, scannable, loadSecurityMany, loadSecurity, nftImages, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions } = (() => {
 /* data.js \u2014 live data, no API keys and no backend: every source below allows
    direct browser calls.
 
@@ -1327,6 +1398,21 @@ function clearCache() {
   mem.clear(); inflight.clear();
   try { Object.keys(sessionStorage).forEach(k => k.startsWith('atlas:') && sessionStorage.removeItem(k)); } catch {}
 }
+/* A batched read caches per item rather than per request, so the two share the
+   store but not the shape: peek says what is already known, put records one
+   answer. Undefined means "never asked" \u2014 null is a real answer meaning "asked
+   and nothing came back", and the two must not collapse into each other. */
+function peek(key, ttl = TTL) {
+  let hit = mem.get(key) || null;
+  if (!hit) try { hit = JSON.parse(sessionStorage.getItem('atlas:' + key) || 'null'); } catch {}
+  return hit && Date.now() - hit.t < ttl ? hit.v : undefined;
+}
+function put(key, v) {
+  const rec = { t: Date.now(), v };
+  mem.set(key, rec);
+  try { sessionStorage.setItem('atlas:' + key, JSON.stringify(rec)); } catch {}
+}
+
 function cache(key, ttl, fn) {
   if (inflight.has(key)) return inflight.get(key);
   let hit = mem.get(key) || null;
@@ -1354,6 +1440,7 @@ function cache(key, ttl, fn) {
    both as an em dash claimed data was missing when it was not. */
 const numN = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
+// every row's fallback tile colour, so a row built outside this file matches
 const colorOf = s => `hsl(${hue(s)} 72% 62%)`;
 const title = s => s.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()).replace(/\bV(\d)/g, 'v$1');
 
@@ -1631,16 +1718,20 @@ function loadPools() {
     const rows = (pools?.data || []).filter(p => BY_LLAMA[p.chain]);
     const lending = rows
       .map(p => [p, lb[p.pool] || borrowOf(p)])
-      .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 5e5)
+      /* Ingest keeps what protects the payload and nothing more. A value floor
+         here decided the same question the junk rule decides, and decided it
+         first \u2014 so a $220k market somebody is using was gone before anything
+         could ask whether it was real. The cap stays; the floor does not. */
+      .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 0)
       .map(([p, b]) => pool(p, b))
       .sort((a, b) => b.supplyUsd - a.supplyUsd)
-      .slice(0, 1200);
+      .slice(0, 4000);
     const borrowed = new Set(lending.map(l => l.pool));
     const yields = rows
-      .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 1e6 && num(p.apy ?? p.apyBase) > 0)
+      .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 0 && num(p.apy ?? p.apyBase) > 0)
       .map(farm)
       .sort((a, b) => b.tvl - a.tvl)
-      .slice(0, 1200);
+      .slice(0, 4000);
     return { lending, yields };
   });
 }
@@ -1816,11 +1907,16 @@ const addSym = (set, sym, chain) => sym && set.add(`${String(sym).toUpperCase()}
 
 async function uniswapList() {
   const j = await get(UNI, { tries: 1, timeout: 20000 }).catch(() => null);
-  const out = { syms: new Set(), addrs: new Set() };
+  const out = { syms: new Set(), addrs: new Set(), at: new Map() };
   for (const t of j?.tokens || []) {
     const chain = EVM[t.chainId];
     if (chain) addSym(out.syms, t.symbol, chain);
     if (t.address) out.addrs.add(String(t.address).toLowerCase());
+    /* The same list that says a token is real also says where it lives, which
+       is what turns "trade BTC" into a route: an asset row carries a ticker
+       and no address, and this is the only place the two are joined. */
+    if (chain && t.symbol && t.address)
+      out.at.set(`${String(t.symbol).toUpperCase()}@${chain}`, String(t.address).toLowerCase());
   }
   return out;
 }
@@ -1828,12 +1924,13 @@ async function uniswapList() {
 async function jupiterList() {
   const j = await get(`${JUP}/tokens/v2/tag?query=verified`, { tries: 1, timeout: 20000 })
     .catch(() => null);
-  const out = { syms: new Set(), addrs: new Set() };
+  const out = { syms: new Set(), addrs: new Set(), at: new Map() };
   // the field carrying the mint has moved between versions; accept any of them
   for (const t of Array.isArray(j) ? j : j?.tokens || []) {
     addSym(out.syms, t.symbol, 'sol');
     const mint = t.id || t.address || t.mint;
     if (mint) out.addrs.add(String(mint).toLowerCase());
+    if (t.symbol && mint) out.at.set(`${String(t.symbol).toUpperCase()}@sol`, String(mint));
   }
   return out;
 }
@@ -2197,6 +2294,139 @@ function loadTrendingPairs() {
   });
 }
 
+/* ---------- what the contract itself says ----------
+   Liquidity, volume and a listing are what a market looks like from the
+   outside. The contract is the inside, and it holds the answers no price feed
+   carries: whether more supply can be minted, whether an owner can move or
+   freeze somebody's balance, whether an address can be blacklisted out of
+   selling. A token can look perfectly healthy on every number Atlas shows and
+   still be a contract that will not let you leave.
+
+   GoPlus publishes exactly that, keyless and CORS-open, under two endpoints
+   with two different vocabularies \u2014 one for EVM chains, one for Solana. Both
+   are normalised into one list of flags here, so the sheet renders one thing
+   and a new chain is a row in a table rather than a branch in the UI. */
+const GOPLUS = 'https://api.gopluslabs.io/api/v1';
+const GP_ID = Object.fromEntries(Object.entries(EVM).map(([id, c]) => [c, id]));
+
+/* [field, severity, label, what it means to somebody about to trade]. `bad` is
+   a reason not to; `warn` is a reason to look closer first. */
+const GP_EVM = [
+  ['is_honeypot', 'bad', 'Honeypot', 'This contract has been seen refusing to let holders sell.'],
+  ['cannot_sell_all', 'bad', 'Cannot sell all', 'Holders are blocked from selling their whole balance.'],
+  ['is_blacklisted', 'bad', 'Blacklist', 'The owner can block chosen addresses from trading.'],
+  ['owner_change_balance', 'bad', 'Controllable supply', "The owner can change any holder's balance."],
+  ['hidden_owner', 'bad', 'Hidden owner', 'Ownership is disguised inside the contract.'],
+  ['can_take_back_ownership', 'bad', 'Ownership reclaimable', 'A renounced owner can take control back.'],
+  ['selfdestruct', 'bad', 'Self-destruct', 'The contract can delete itself.'],
+  ['is_whitelisted', 'warn', 'Whitelist', 'Only chosen addresses are allowed to trade.'],
+  ['is_mintable', 'warn', 'Mintable', 'The supply is not fixed \u2014 more can be created.'],
+  ['transfer_pausable', 'warn', 'Pausable', 'Transfers can be switched off.'],
+  ['slippage_modifiable', 'warn', 'Changeable tax', 'The trading tax can be raised after you buy.'],
+  ['trading_cooldown', 'warn', 'Trading cooldown', 'The contract enforces a wait between trades.'],
+  ['is_anti_whale', 'warn', 'Max wallet', 'The contract caps how much one address may hold.'],
+  ['is_proxy', 'warn', 'Upgradeable', 'The code behind this address can be replaced.'],
+];
+const GP_SOL = [
+  ['freezable', 'bad', 'Freezable', 'The issuer can freeze your token account.'],
+  ['closable', 'bad', 'Closable', 'The issuer can close your token account.'],
+  ['balance_mutable_authority', 'bad', 'Controllable supply', "An authority can change any holder's balance."],
+  ['non_transferable', 'bad', 'Non-transferable', 'The token cannot be sent anywhere.'],
+  ['mintable', 'warn', 'Mintable', 'The supply is not fixed \u2014 more can be created.'],
+  ['metadata_mutable', 'warn', 'Mutable metadata', 'The name, symbol and image can be changed later.'],
+  ['transfer_hook', 'warn', 'Transfer hook', 'Custom code runs on every transfer.'],
+  ['default_account_state_upgradable', 'warn', 'Account state changeable', 'New holders can be frozen by default.'],
+];
+/* Both endpoints answer "1"/"0" for EVM and {status:"1"} for Solana, and a
+   missing field means "not checked" rather than "no" \u2014 which must not read as
+   a clean bill of health. */
+const gpOn = v => (v && typeof v === 'object' ? v.status : v) === '1';
+const gpSaw = (o, f) => o[f] !== undefined && o[f] !== null;
+
+function gpFlags(o, table) {
+  const out = [];
+  for (const [field, sev, label, why] of table)
+    if (gpSaw(o, field) && gpOn(o[field])) out.push({ id: field, sev, label, why });
+  return out;
+}
+
+/** Can this row be checked at all? */
+const scannable = it => !!(String(it?.addr || '').trim() &&
+  (it.chain === 'sol' || GP_ID[it.chain]));
+
+/* Both endpoints take a comma-separated list, which is what makes a warning on
+   the row affordable: one request covers a page of them rather than one each. */
+const SEC_BATCH = 25;
+function gpUrl(chain, addrs) {
+  const list = addrs.map(a => encodeURIComponent(a)).join(',');
+  return chain === 'sol'
+    ? `${GOPLUS}/solana/token_security?contract_addresses=${list}`
+    : `${GOPLUS}/token_security/${GP_ID[chain]}?contract_addresses=${list}`;
+}
+/** Reads one batch and hands back a Map keyed by the address asked for. */
+async function gpBatch(chain, addrs) {
+  const sol = chain === 'sol';
+  const out = new Map();
+  const j = await get(gpUrl(chain, addrs), { tries: 1, timeout: 20000 }).catch(() => null);
+  const res = j?.result || {};
+  // the API answers in whichever case it prefers, so index both ways once
+  const lower = new Map(Object.entries(res).map(([k, v]) => [k.toLowerCase(), v]));
+  for (const a of addrs) {
+    const row = res[a] || lower.get(a.toLowerCase());
+    out.set(a, row ? readSecurity(row, sol) : null);
+  }
+  return out;
+}
+
+/** Contract risk for many rows at once, cached per address. */
+async function loadSecurityMany(chain, addrs) {
+  const out = new Map(), miss = [];
+  for (const a of addrs) {
+    const hit = peek(`sec:${chain}:${a}`, 6 * TTL);
+    if (hit !== undefined) out.set(a, hit); else miss.push(a);
+  }
+  for (let i = 0; i < miss.length; i += SEC_BATCH) {
+    const slice = miss.slice(i, i + SEC_BATCH);
+    const got = await gpBatch(chain, slice).catch(() => new Map());
+    for (const a of slice) {
+      const v = got.get(a) ?? null;
+      put(`sec:${chain}:${a}`, v);
+      out.set(a, v);
+    }
+  }
+  return out;
+}
+
+function readSecurity(row, sol) {
+  {
+    const flags = gpFlags(row, sol ? GP_SOL : GP_EVM);
+    if (!sol) {
+      // open source is the one field where the *absence* of the property is
+      // the finding, so it cannot go in the table above
+      if (gpSaw(row, 'is_open_source') && !gpOn(row.is_open_source))
+        flags.push({ id: 'closed', sev: 'bad', label: 'Unverified contract',
+          why: 'The source code behind this address has never been published.' });
+      const tax = Math.max(num(row.buy_tax) * 100, num(row.sell_tax) * 100);
+      if (tax >= 10) flags.push({ id: 'tax', sev: tax >= 25 ? 'bad' : 'warn',
+        label: `${tax.toFixed(0)}% trading tax`,
+        why: 'That much of every trade is taken by the contract.' });
+    }
+    return {
+      flags, checked: true, source: 'GoPlus',
+      holders: num(row.holder_count), lp: num(row.lp_holder_count),
+      // a token a registry vouches for is one GoPlus also knows by name
+      trusted: gpOn(row.trust_list) || gpOn(row.trusted_token),
+    };
+  }
+}
+
+/** Every risk one contract carries. null when nothing can check it. */
+async function loadSecurity(it) {
+  if (!scannable(it)) return null;
+  const addr = String(it.addr).trim();
+  return (await loadSecurityMany(it.chain, [addr]).catch(() => new Map())).get(addr) ?? null;
+}
+
 /* ---------- NFTs ----------
    Keyless, CORS-open NFT data is thin on the ground. DeFiLlama covers the EVM
    marketplaces broadly; Magic Eden adds Solana and Bitcoin Ordinals. Floors
@@ -2212,10 +2442,26 @@ const NFT_UNIT = { eth: 'ETH', base: 'ETH', arb: 'ETH', op: 'ETH', blast: 'ETH',
    is also the one most likely to hand back a row with no image and no history.
    Where it does, the collection is still real \u2014 so the gaps are filled from the
    marketplace that actually holds the collection rather than left blank.
-   OpenSea's endpoints need a key; its CDN does not, and neither does the slug
-   its own URLs use. */
-const osImage = slug => slug
-  ? `https://i.seadn.io/gcs/${encodeURIComponent(slug)}` : null;
+   OpenSea has the image, under the collection slug, and there is no keyless
+   path to it \u2014 a seadn.io URL is an opaque hash, not something a slug can be
+   turned into. So this is a key-gated fill rather than a guess: with a key the
+   blanks are filled, without one they stay blank and say why. */
+async function nftImages(rows, key) {
+  if (!key) return new Map();
+  const out = new Map();
+  const want = rows.filter(n => !n.img && (n.cid || n.slug)).slice(0, 12);
+  for (const n of want) {
+    const slug = n.slug || n.cid;
+    const hit = peek(`nftimg:${slug}`, 12 * TTL);
+    if (hit !== undefined) { if (hit) out.set(n.id, hit); continue; }
+    const j = await get(`https://api.opensea.io/api/v2/collections/${encodeURIComponent(slug)}`,
+      { tries: 1, timeout: 12000, headers: { 'x-api-key': key } }).catch(() => null);
+    const img = safeUrl(j?.image_url || j?.banner_image_url) || '';
+    put(`nftimg:${slug}`, img);
+    if (img) out.set(n.id, img);
+  }
+  return out;
+}
 
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
@@ -2269,10 +2515,27 @@ function meItem(l) {
     id: t.mintAddress || t.mint || l.tokenMint || '',
     name: t.name || '#?',
     img: safeUrl(t.image) || null,
-    price, unit: 'SOL',
+    price, unit: 'SOL', order: '',
     traits: (t.attributes || []).slice(0, 3)
       .map(a => `${a.trait_type}: ${a.value}`).filter(x => !/undefined/.test(x)),
     url: t.mintAddress ? `https://magiceden.io/item-details/${encodeURIComponent(t.mintAddress)}` : '',
+  };
+}
+
+/* A listing is an item plus the two things needed to buy it: what it costs and
+   the hash of the order that sells it. */
+function osListing(l, slug) {
+  const t = l.protocol_data?.parameters?.offer?.[0] || {};
+  const price = Number(l.price?.current?.value) || 0;
+  const dec = Number(l.price?.current?.decimals) || 18;
+  const id = String(t.identifierOrCriteria || '');
+  return {
+    id, name: `#${id}`, img: null,
+    price: price / 10 ** dec, unit: l.price?.current?.currency || 'ETH',
+    traits: [], order: l.order_hash || '', chain: l.chain || 'ethereum',
+    protocol: l.protocol_address || '',
+    url: `https://opensea.io/assets/${encodeURIComponent(l.chain || 'ethereum')}/${
+      encodeURIComponent(t.token || slug)}/${encodeURIComponent(id)}`,
   };
 }
 
@@ -2281,8 +2544,7 @@ function osItem(n, slug) {
     id: n.identifier || '',
     name: n.name || `#${n.identifier}`,
     img: safeUrl(n.display_image_url || n.image_url) || null,
-    price: 0, unit: '',
-    traits: [],
+    price: 0, unit: '', traits: [], order: '',
     url: safeUrl(n.opensea_url)
       || `https://opensea.io/assets/${encodeURIComponent(n.contract || slug)}/${encodeURIComponent(n.identifier || '')}`,
   };
@@ -2316,6 +2578,14 @@ function loadNftItems(n, { openseaKey } = {}) {
       return { items, why: items.length ? '' : 'nothing listed right now' };
     }
     if (!openseaKey) return { items: [], why: 'needs an OpenSea key' };
+    /* The best listing per token rather than the token list: same request
+       count, and it carries the price and the order hash \u2014 which is the
+       difference between showing an item and being able to buy it. */
+    const slug = n.slug || n.cid;
+    const l = await get(`https://api.opensea.io/api/v2/listings/collection/${encodeURIComponent(slug)}/best?limit=24`,
+      { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
+    const listed = (l?.listings || []).map(x => osListing(x, slug)).filter(x => x.id);
+    if (listed.length) return { items: listed, why: '' };
     const j = await get(`https://api.opensea.io/api/v2/collection/${encodeURIComponent(n.cid)}/nfts?limit=24`,
       { tries: 1, timeout: 15000, headers: { 'x-api-key': openseaKey } }).catch(() => null);
     const items = (j?.nfts || []).map(x => osItem(x, n.cid)).filter(x => x.id);
@@ -2499,9 +2769,9 @@ function actions(i) {
   return out;
 }
 
-return { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions };
+return { CHAINS, CH, ApiError, flags, clearCache, colorOf, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, scannable, loadSecurityMany, loadSecurity, nftImages, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions };
 })();
-window.__ATLAS_MODULES__ = { config: (() => {
+const __cfg = (() => {
 /* config.js \u2014 the credentials Atlas needs to do more than read.
 
    Searching, charting and every link out of a sheet work with this file empty:
@@ -2516,8 +2786,9 @@ window.__ATLAS_MODULES__ = { config: (() => {
    this file: they belong on a server you control, and a browser has no way to
    keep one.
 
-   Every feature checks its own key and falls back to the link it used before,
-   so a half-filled file degrades one feature at a time rather than breaking. */
+   Every feature checks its own key and says plainly what it cannot do without
+   one, so a half-filled file degrades one feature at a time rather than
+   breaking \u2014 and no feature quietly turns into a link to somewhere else. */
 
 /* Obfuscation, not encryption \u2014 see the note on privyAppId below. */
 const CLOAK = 'atlas-privy-v1';
@@ -2572,20 +2843,33 @@ const config = {
      marketplace as before. */
   crossmint: { clientId: '', collectionId: '', environment: 'production' },
 
-  /* Trading venues. Jupiter needs no key and is wired end to end. The others
-     quote through APIs that require one; without it each is a hand-off link,
-     which is what they were. */
+  /* Trading venues. Two of them need nothing at all: Jupiter quotes and builds
+     the transaction on Solana, and Uniswap v3 is quoted and executed straight
+     against its on-chain Quoter and Router, so an EVM swap works with this
+     whole block empty. A key only ever adds a route, never unlocks the basics. */
   venues: {
     jupiter: { enabled: true, slippageBps: 50 },
-    // https://cloud.uniswap.org \u2014 Trading API key. Returns ready-to-sign
-    // calldata, which is the only responsible way to build a swap here.
-    uniswap: { apiKey: '' },
-    // https://docs.opensea.io/reference/api-keys
+    /* 0x powers Matcha. With a key here, an EVM swap is routed by 0x \u2014 which
+       aggregates every DEX rather than only Uniswap's own pools \u2014 and comes
+       back as a ready-to-sign transaction. Without one, Uniswap v3 direct is
+       the route. https://dashboard.0x.org */
+    zeroex: { apiKey: '' },
+    // https://docs.opensea.io/reference/api-keys \u2014 needed to buy a listing and
+    // to read a collection's items and images
     opensea: { apiKey: '' },
-    // Hyperliquid needs no key to *read*. Placing an order is off by default:
-    // it is an EIP-712 action this build cannot test against a live exchange.
-    hyperliquid: { read: true, trade: false },
+    /* Hyperliquid needs no key to read: positions, mids and the book are live
+       for anyone. `transfer` allows the EIP-712 actions (moving USDC out);
+       order placement is not wired at all \u2014 see the header of trade.js. */
+    hyperliquid: { read: true, transfer: false },
   },
+
+  /* CoinGecko's MCP server, which is how the search bar asks a question in
+     words rather than in filters. The public endpoint below needs no key and
+     is rate-limited; a Pro key raises that and switches to the pro host.
+     Whether a browser may call it at all is a CORS decision on their side \u2014
+     the app tries once and falls back to its own parser, which needs nothing.
+     https://docs.coingecko.com/reference/mcp-server */
+  mcp: { endpoint: 'https://mcp.api.coingecko.com/mcp', apiKey: '', timeout: 15000 },
 
   /* An OpenAI-compatible chat endpoint, which is what every open-source runner
      speaks: Ollama (http://localhost:11434/v1), llama.cpp, LM Studio, vLLM, and
@@ -2612,7 +2896,8 @@ if (typeof window !== 'undefined' && window.ATLAS_CONFIG)
 const walletReady = () => !!config.privyAppId;
 
 return { config, walletReady };
-})(), nl: (() => {
+})();
+window.__ATLAS_MODULES__ = { config: __cfg, nl: (() => {
 /* nl.js \u2014 reading a sentence as a query.
 
    "cat meme coin on base up 50% or more in the past 24 hours" names four things:
@@ -2793,6 +3078,149 @@ function sanitise(x, { tabs, chainIds, fields }) {
 }
 
 return { parse, askAI, sanitise };
+})(), mcp: (() => {
+const { config } = __cfg;
+/* mcp.js \u2014 the search bar asking CoinGecko a question directly.
+
+   Atlas indexes the top few hundred assets. CoinGecko knows about seventeen
+   thousand, and publishes an MCP server over them: a JSON-RPC endpoint with a
+   handful of tools \u2014 search, market data, a coin's own page. This file is a
+   client for exactly that, in about a hundred lines, because MCP over HTTP is
+   three methods and a session header.
+
+   Two rules, and they are the same two the AI parser follows:
+
+     1. It never gates the search box. The local index answers first, always,
+        and whatever comes back from here is added to that answer rather than
+        replacing it. A search engine that stops working when somebody else's
+        server is down is not a search engine.
+     2. What it returns is rows, in the same shape as every other row, so they
+        sort, filter, open and star like anything else. Nothing arrives as an
+        opaque answer nobody can check.
+
+   Whether a browser may call it at all is CORS, which is their decision and
+   not visible from here. One attempt, a short timeout, and the app carries on. */
+
+
+
+let session = null, ready = null, tools = null, dead = false;
+
+const endpoint = () => String(config.mcp?.endpoint || '').replace(/\/$/, '');
+const mcpReady = () => !!endpoint() && !dead;
+
+/* Streamable HTTP: POST JSON-RPC, accept either JSON or an SSE frame back, and
+   carry the session id the server hands out on initialize. */
+async function rpc(method, params) {
+  const url = endpoint();
+  if (!url) throw new Error('No MCP endpoint configured.');
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      ...(session ? { 'mcp-session-id': session } : {}),
+      ...(config.mcp?.apiKey ? { 'x-cg-pro-api-key': config.mcp.apiKey } : {}),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+    signal: AbortSignal.timeout(config.mcp?.timeout || 15000),
+  });
+  const sid = r.headers.get('mcp-session-id');
+  if (sid) session = sid;
+  if (!r.ok) throw new Error(`MCP returned HTTP ${r.status}`);
+  const text = await r.text();
+  // an SSE reply is one or more `data:` lines; the last one carries the result
+  const body = text.startsWith('data:')
+    ? text.split('\n').filter(l => l.startsWith('data:')).pop().slice(5).trim()
+    : text;
+  const j = JSON.parse(body);
+  if (j.error) throw new Error(j.error.message || 'MCP error');
+  return j.result;
+}
+
+async function handshake() {
+  await rpc('initialize', {
+    protocolVersion: '2025-06-18',
+    capabilities: {},
+    clientInfo: { name: 'atlas', version: '1' },
+  });
+  const list = await rpc('tools/list', {});
+  tools = (list?.tools || []).map(t => t.name);
+  return tools;
+}
+
+/** The tool list, fetched once. Null when the server cannot be reached. */
+function mcpTools() {
+  if (!mcpReady()) return Promise.resolve(null);
+  ready ||= handshake().catch(e => { dead = true; throw e; });
+  return ready.catch(() => null);
+}
+
+/* Tool names are the server's to change, so they are matched rather than
+   hard-coded: whichever tool has "search" in its name is the search tool. */
+const pick = (names, ...want) =>
+  names.find(n => want.every(w => n.toLowerCase().includes(w))) || null;
+
+/** Calls a tool and unwraps whatever it wrapped its JSON in. */
+async function mcpCall(name, args) {
+  const r = await rpc('tools/call', { name, arguments: args });
+  const parts = r?.content || [];
+  for (const c of parts) {
+    if (c?.type !== 'text' || !c.text) continue;
+    try { return JSON.parse(c.text); } catch { return c.text; }
+  }
+  return r?.structuredContent ?? null;
+}
+
+/* ---------- what the app asks for ---------- */
+
+/** Coins matching a query, straight from CoinGecko's own index. */
+async function mcpSearch(q) {
+  const names = await mcpTools();
+  if (!names?.length) return [];
+  const tool = pick(names, 'search');
+  if (!tool) return [];
+  const r = await mcpCall(tool, { query: String(q).slice(0, 60) }).catch(() => null);
+  const coins = r?.coins || r?.data?.coins || (Array.isArray(r) ? r : []);
+  return (coins || []).slice(0, 12).map(c => ({
+    id: c.id || c.api_symbol || '', sym: String(c.symbol || '').toUpperCase(),
+    name: c.name || c.id || '', img: c.large || c.thumb || c.image || null,
+    rank: Number(c.market_cap_rank) || 0,
+  })).filter(c => c.id && c.sym);
+}
+
+/** Live market rows for ids the search returned, so a row has numbers on it. */
+async function mcpMarkets(ids) {
+  const names = await mcpTools();
+  if (!names?.length || !ids.length) return [];
+  const tool = pick(names, 'markets') || pick(names, 'coins', 'market');
+  if (!tool) return [];
+  const r = await mcpCall(tool, {
+    vs_currency: 'usd', ids: ids.join(','), per_page: ids.length, page: 1,
+  }).catch(() => null);
+  const rows = Array.isArray(r) ? r : r?.data || [];
+  return rows.filter(x => x && (x.id || x.symbol));
+}
+
+/** Everything CoinGecko's own page says about one coin, for the asset sheet. */
+async function mcpCoin(id) {
+  const names = await mcpTools();
+  if (!names?.length || !id) return null;
+  const tool = pick(names, 'coin', 'data') || pick(names, 'id', 'coins');
+  if (!tool) return null;
+  const r = await mcpCall(tool, { id }).catch(() => null);
+  const c = Array.isArray(r) ? r[0] : r;
+  if (!c) return null;
+  return {
+    categories: (c.categories || []).filter(Boolean).slice(0, 6),
+    homepage: (c.links?.homepage || []).filter(Boolean)[0] || '',
+    sentiment: Number(c.sentiment_votes_up_percentage) || null,
+    watchlist: Number(c.watchlist_portfolio_users) || null,
+    rank: Number(c.market_cap_rank) || null,
+    genesis: c.genesis_date || '',
+  };
+}
+
+return { mcpReady, mcpTools, mcpCall, mcpSearch, mcpMarkets, mcpCoin };
 })() };
 /* Atlas \u2014 search across chains. Live data via data.js; this file is UI only. */
 
@@ -2865,6 +3293,8 @@ const S = {
   // might be wrong; they are audited per kind now, and a control that everyone
   // leaves in one position is furniture.
   safe: true,
+  // coins CoinGecko answered for, for this exact query
+  gecko: { q: '', rows: [] },
   sort: null, facets: new Set(), limit: 40,
   // what was typed, what it was read as, and the numeric constraints it named
   nl: null, where: [],
@@ -2935,7 +3365,10 @@ async function third() {
   if (thirded) return; thirded = true;
   // the data layer does not import config; the app hands it what it needs
   loadModule('config', './config.js')
-    .then(({ config }) => setOpenseaKey(config.venues?.opensea?.apiKey)).catch(() => {});
+    .then(({ config }) => {
+      setOpenseaKey(config.venues?.opensea?.apiKey);
+      rememberOpenseaKey(config.venues?.opensea?.apiKey);
+    }).catch(() => {});
   const [v, m] = await Promise.allSettled([loadVerified(), loadMorpho()]);
   if (v.status === 'fulfilled') S.verified = v.value;
   if (m.status === 'fulfilled' && m.value.length) {
@@ -3057,10 +3490,61 @@ const stableQuotes = () => {
   return set;
 };
 
+/* ---------- what is wrong with this row ----------
+   Junk is four things and only four: a duplicate, a scam, a zero where an
+   activity number belongs, and volume that is a machine trading with itself.
+   Those are hidden. Everything else a person might want to know before
+   trading \u2014 thin liquidity, an unlisted contract, a supply somebody can mint \u2014
+   is a warning on the row, because hiding it is answering a question that was
+   never asked. A $200k token somebody is actually buying is a real answer to a
+   search for it; a size floor would have thrown it away. */
+let PEG = new Set();                         // refreshed by sift, read by botted
+
+/* Volume far larger than the pool that produced it is not trading, it is the
+   same coins going round. A real pool turns over a few times a day at most;
+   forty times is a bot, and the number it prints is not a price anyone paid. */
+const WASH = 40;
+function botted(i) {
+  if (i.kind === 'pair') return i.liq > 0 && i.vol24 / i.liq > WASH;
+  // a dollar token legitimately turns over many times its own float
+  if (i.kind === 'asset') return i.mcap > 0 && !PEG.has(i.sym) && i.vol / i.mcap > 8;
+  return false;
+}
+
+/* Everything the row itself can tell you, with no extra request. The contract
+   scan in the sheet adds to this list; it does not replace it. */
+function localFlags(i) {
+  const f = [];
+  // whatever the contract itself said, if it has already been read
+  if (scannable(i)) for (const x of SEC.get(secKey(i))?.flags || []) f.push(x);
+  if (botted(i)) f.push({ id: 'wash', sev: 'bad', label: 'Artificial volume',
+    why: 'Volume is many times the liquidity behind it, which is what wash trading looks like.' });
+  if (i.kind === 'pair') {
+    if (i.liq > 0 && i.liq < 25e3) f.push({ id: 'thin', sev: 'warn', label: 'Low liquidity',
+      why: `Only ${usd(i.liq)} backs this pool \u2014 a normal-sized trade would move the price against you.` });
+    if (S.verified?.count && !isReal(i)) f.push({ id: 'unlisted', sev: 'note', label: 'Unlisted token',
+      why: 'No token registry Atlas checks names this contract. That is not proof of anything, but nobody has vouched for it either.' });
+    if (listedSyms().has(i.sym) && !isReal(i)) f.push({ id: 'ticker', sev: 'bad', label: 'Borrowed ticker',
+      why: `${i.sym} is a listed asset, and this is not its contract.` });
+  }
+  if (i.kind === 'asset' && i.mcap > 0 && i.vol / i.mcap < 0.001)
+    f.push({ id: 'quiet', sev: 'warn', label: 'Barely traded',
+      why: 'Under a tenth of a percent of the supply changed hands in a day.' });
+  if (i.kind === 'stablecoin' && Math.abs(i.price - 1) > 0.02)
+    f.push({ id: 'peg', sev: 'warn', label: 'Off peg',
+      why: `It is trading at ${usd(i.price)} against a dollar.` });
+  return f;
+}
+let symCache = null, symAt = 0;
+const listedSyms = () => {
+  if (!symCache || symAt !== S.assets.length) { symCache = new Set(S.assets.map(x => x.sym)); symAt = S.assets.length; }
+  return symCache;
+};
+
 function sift(rows) {
   if (!S.safe) return rows;
-  const listed = new Set(S.assets.map(x => x.sym));
-  const pegged = stableQuotes();
+  const listed = listedSyms();
+  const pegged = PEG = stableQuotes();
   const deepest = new Map();                 // ticker on one network -> real pool
   for (const i of rows) {
     if (i.kind !== 'pair') continue;
@@ -3071,9 +3555,11 @@ function sift(rows) {
     const ok = KIND[i.kind].ok;
     if (ok && !ok(i)) return false;
     if (i.kind !== 'pair') return true;
-    // priced against something that moves: the number is not comparable to any
-    // other row, so it is not a price this table can show
-    if (i.quote && !pegged.has(i.quote)) return false;
+    /* Priced against something that moves \u2014 WETH, SOL, another memecoin \u2014 the
+       number is not comparable to any other row, so it is not a price this
+       table can show. A pair whose quote leg could not be read at all is the
+       same problem wearing a blank: it used to be waved through. */
+    if (!i.quote || !pegged.has(i.quote)) return false;
     // a registry naming this exact token settles it; the guesses below do not apply
     if (isReal(i)) return true;
     // A ticker repeated on one network is usually copies of one token \u2014 but two
@@ -3101,7 +3587,7 @@ const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
 if (typeof window !== 'undefined')
   window.__ATLAS_RAWCOUNTS__ = () =>
     Object.fromEntries(TABS.map(([t]) => [t, rowsFor(t).filter(onChain).length]));
-let hidden = 0, base = [];   // base: the category before its facets, for the chip counts
+let base = [];               // the category before its facets, for the chip counts
 /* Facets narrow together: a row has to answer every question that is on. */
 const facetPred = (skip) => {
   const on = facetsFor(S.tab).filter(f => f !== skip && facetOn(f));
@@ -3110,7 +3596,6 @@ const facetPred = (skip) => {
 function scope() {
   const all = rowsFor(S.tab).filter(onChain);
   const keep = S.where.length ? sift(all).filter(meets) : sift(all);
-  hidden = all.length - keep.length;         // never filter silently
   base = keep;
   const p = facetPred();
   return p ? keep.filter(p) : keep;
@@ -3221,7 +3706,10 @@ const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-
 const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
 let mode = '';   // '' = cards, else the kind whose columns are on screen
-const sigOf = it => `${mode}|${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
+/* The badge is rendered into the row, so how many warnings it carries is part
+   of what makes a cached node stale. */
+const sigOf = it => `${mode}|${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}|${
+  localFlags(it).filter(x => x.sev !== 'note').length}`;
 
 /* Ranges a sheet offers, and how its chart reads a value back. */
 const R = { price: [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']],
@@ -3236,9 +3724,9 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, global: true,
     chart: [loadAssetChart, 1, R.price, usd],
-    // nothing traded, nothing priced, or a market cap so thin the price is
-    // whatever the last trade said it was
-    ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
+    // nothing traded and nothing priced. Size is not junk: a $200k asset
+    // somebody is buying is a real answer to a search for it.
+    ok: i => i.vol > 0 && i.price > 0 && i.mcap > 0 && !botted(i),
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
@@ -3260,7 +3748,9 @@ const KIND = {
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
-    ok: i => i.supplyUsd >= 1e6 && i.sup >= 0,
+    // a market with nothing in it is not a market; how much is in it is not
+    // the app's business to judge
+    ok: i => i.supplyUsd > 0 && i.sup >= 0,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
       ['Borrow APY', i => i.bor == null ? '\u2014' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
@@ -3274,7 +3764,7 @@ const KIND = {
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     // four-figure APY on a small pool is the oldest farm scam there is, and a
     // rate five times its own 30-day mean is the same trick told quietly
-    ok: i => i.tvl >= 1e6 && i.apy > 0 && i.apy <= 1000 && !i.outlier && i.spike <= 5,
+    ok: i => i.tvl > 0 && i.apy > 0 && i.apy <= 1000 && !i.outlier && i.spike <= 5,
     cols: [['APY', i => apy(i.apy), 'apy', 'up'], ['Base', i => apy(i.apyBase), 'apyBase'],
       ['Rewards', i => i.apyReward ? apy(i.apyReward) : '\u2014', 'apyReward'],
       ['30d avg', i => i.mean30 ? apy(i.mean30) : '\u2014', 'mean30'],
@@ -3286,8 +3776,8 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
-    // a protocol with no TVL and no volume is a listing, not a business
-    ok: i => i.tvl >= 1e6 || i.vol24 > 0 || i.fees24 > 0,
+    // a protocol with no TVL, no volume and no fees is a listing, not a business
+    ok: i => i.tvl > 0 || i.vol24 > 0 || i.fees24 > 0,
     cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '\u2014', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '\u2014', 'fees24'],
@@ -3318,7 +3808,9 @@ const KIND = {
     cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
-    ok: i => i.vol24 >= 1000 && i.liq >= 5000,
+    // no volume or no liquidity is not a market. Thin is not fake \u2014 it is
+    // flagged on the row instead, where a person can weigh it.
+    ok: i => i.vol24 > 0 && i.liq > 0 && !botted(i),
     cols: [['Price', i => i.price ? usd(i.price) : '\u2014', 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['Liquidity', i => money(i.liq), 'liq'], ['Volume 24h', i => money(i.vol24), 'vol24'],
       ['FDV', i => i.fdv ? money(i.fdv) : '\u2014', 'fdv']],
@@ -3333,13 +3825,13 @@ const KIND = {
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
     // a coin claiming a dollar peg while trading at 40 cents is not a stablecoin
     // any more, and one nobody holds was never one
-    ok: i => i.circulating >= 1e6 && i.price > 0.5 && i.price < 1.8,
+    ok: i => i.circulating > 0 && i.price > 0.5 && i.price < 1.8,
     cols: [['Circulating', i => money(i.circulating), 'circulating'], ['Peg', i => usd(i.price), 'price'],
       ['Mechanism', i => i.mech || '\u2014', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
     meta: i => i.mech || 'Pegged', tail: i => `${usd(i.price)} against its peg`,
-    n1: i => '$' + compact(i.circulating), n2: i => 'circulating', cls: () => 'mute' },
+    n1: i => '$' + compact(i.circulating), n2: () => 'circulating', cls: () => 'mute' },
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
     chart: [loadBridgeChart, 90, R.long, money],
@@ -3484,6 +3976,18 @@ function applySort(list) {
   return [...list].sort((a, b) => dir * ((+a[key] || 0) - (+b[key] || 0)));
 }
 
+/* A warning belongs where the decision is made, which is the list \u2014 not only
+   in a sheet somebody has to open first. One mark, its severity in its colour,
+   and the reasons spelled out when the row is opened. */
+function warnBadge(it) {
+  const f = localFlags(it).filter(x => x.sev !== 'note');
+  if (!f.length) return '';
+  const bad = f.some(x => x.sev === 'bad');
+  return ` <span class="warnb ${bad ? 'bad' : ''}" title="${esc(f.map(x => x.label).join(' \u00b7 '))}"
+    aria-label="${esc(f.length)} warning${f.length === 1 ? '' : 's'}: ${esc(f.map(x => x.label).join(', '))}"
+    >!${f.length > 1 ? `<i>${f.length}</i>` : ''}</span>`;
+}
+
 function rowHTML(it) {
   const k = KIND[it.kind];
   if (mode) {
@@ -3494,15 +3998,16 @@ function rowHTML(it) {
     return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"
       style="--cols:${gridFor(k.cols)}">
       <div class="name">${tok(it, k.sq)}<div class="body">
-        <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}</div>
+        <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}${warnBadge(it)}</div>
         <div class="t2">${esc(k.meta?.(it) || '')}</div></div></div>
       ${cells}${star(it)}</div>`;
   }
   const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
+  const warn = warnBadge(it);
   return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
     ${tok(it, k.sq)}
     <div class="body">
-      <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}</div>
+      <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}${warn}</div>
       <div class="t2">${tag ? `<span class="tag">${esc(tag)}</span> ` : ''}${meta ? `<span class="mi">${esc(meta)}</span>` : ''}
         ${tail ? `<span class="tail">${meta ? '<span class="sep">\u00b7</span> ' : ''}${esc(tail)}</span>` : ''}</div>
     </div>
@@ -3693,13 +4198,22 @@ function render() {
     el.meta.innerHTML = `<span class="mtext">Everything onchain, by category \u00b7 updated ${ago(S.at)}</span>`;
     el.facetbar.replaceChildren(); el.sortbar.replaceChildren();
     el.res.className = 'results home';
-    el.res.innerHTML = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
+    /* A grid of tiles is a wall to read. The same categories as a column of
+       cards that keeps moving is something to watch until one goes past that
+       you want \u2014 so the column loops, and the loop is seamless because the
+       list is rendered twice and the track travels exactly one copy.
+       Hovering stops it, because a card you are reaching for must hold still. */
+    const cards = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
       const k = TAB_KIND[t], n = countOf(t);
-      return `<button class="tile" data-go="${esc(t)}">
-        <div class="tl">${esc(label)}</div>
-        <div class="tn">${n ? esc(count(n)) : '\u2014'}</div>
-        <div class="tw">${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</div></button>`;
-    }).join('');
+      return [t, `<div class="hi">${esc((label[0] || '?').toUpperCase())}</div>
+        <div class="ht"><b>${esc(label)}</b><em>${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</em></div>
+        <div class="hn">${n ? esc(count(n)) : '\u2014'}</div>
+        <div class="hgo" aria-hidden="true">\u2192</div>`];
+    });
+    const set = (dup) => cards.map(([t, inner]) =>
+      `<button class="hcard" data-go="${esc(t)}"${dup ? ' tabindex="-1" aria-hidden="true"' : ''}>${inner}</button>`).join('');
+    el.res.innerHTML = `<div class="loop"><div class="track" style="--n:${cards.length}">${
+      set(false)}${set(true)}</div></div>`;
     nodes.clear();
     return;
   }
@@ -3748,12 +4262,74 @@ function render() {
   }
   el.res.replaceChildren(frag);
   paintSel();
+  scanRows(list);
+  fillImages(list);
+}
+
+/* DeFiLlama's collection list is the widest one without a key and the one most
+   likely to hand back a row with no image. OpenSea has the image; there is no
+   keyless way to it, so this fills what it can when a key is set and leaves the
+   initials alone when it is not. */
+const IMG = new Map();
+let imgT = 0;
+function fillImages(list) {
+  if (!nftKey()) return;
+  clearTimeout(imgT);
+  imgT = setTimeout(async () => {
+    const want = list.filter(i => i.kind === 'nft' && !i.img && !IMG.has(i.id));
+    if (!want.length) return;
+    const got = await nftImages(want, nftKey()).catch(() => new Map());
+    let any = false;
+    for (const i of want) { const u = got.get(i.id) || ''; IMG.set(i.id, u); if (u) { i.img = u; any = true; } }
+    if (any) { nodes.clear(); render(); }
+  }, 500);
+}
+let osKey = '';
+const nftKey = () => osKey;
+const rememberOpenseaKey = k => { osKey = k || ''; };
+
+/* ---------- contract scan, for the rows on screen ----------
+   A warning nobody sees until they open the row is a warning that arrives
+   after the decision. Both GoPlus endpoints take a comma-separated list, so a
+   page of rows costs one request per chain rather than one per row \u2014 which is
+   what makes a mark on the row affordable at all. What comes back is kept in
+   SEC and folded into the same flag list the sheet uses. */
+const SEC = new Map();
+const secKey = i => `${i.chain}:${i.addr}`;
+let scanT = 0;
+function scanRows(list) {
+  clearTimeout(scanT);
+  scanT = setTimeout(async () => {
+    const want = new Map();
+    for (const i of list) {
+      if (!scannable(i) || SEC.has(secKey(i))) continue;
+      if (!want.has(i.chain)) want.set(i.chain, []);
+      const l = want.get(i.chain);
+      if (l.length < 25 && !l.includes(i.addr)) l.push(i.addr);
+    }
+    if (!want.size) return;
+    let found = 0;
+    for (const [chain, addrs] of want) {
+      // one chain failing says nothing about the next
+      const got = await loadSecurityMany(chain, addrs).catch(() => new Map());
+      for (const a of addrs) {
+        const v = got.get(a) ?? null;
+        SEC.set(`${chain}:${a}`, v);
+        if (v?.flags?.length) found++;
+      }
+    }
+    // only redraw when something came back that changes a row
+    if (found) render();
+  }, 400);
 }
 
 /** Fold live DEX results into the local list, next to any pairs already there
     so the group heading is never emitted twice. A category that pins a different
     kind does not take them: searching on Exploits should not return memecoins. */
 function withRemote(list) {
+  return withGecko(withPairs(list));
+}
+function withPairs(list) {
   if (!S.remote.q || S.remote.q !== term()) return list;
   const k = TAB_KIND[S.tab];
   if (k && k !== 'pair') return list;
@@ -3762,6 +4338,20 @@ function withRemote(list) {
   if (!extra.length) return list;
   const at = list.map(i => i.kind).lastIndexOf('pair');
   return at === -1 ? [...list, ...extra]
+    : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
+}
+/* Coins CoinGecko knows and the local index does not, folded in beside the
+   assets rather than under a heading of their own \u2014 a token is a token however
+   Atlas came to hear about it. */
+function withGecko(list) {
+  if (!S.gecko.q || S.gecko.q !== term()) return list;
+  const k = TAB_KIND[S.tab];
+  if (k && k !== 'asset') return list;
+  const have = new Set(list.map(i => i.id));
+  const extra = sift(S.gecko.rows.filter(r => !have.has(r.id)));
+  if (!extra.length) return list;
+  const at = list.map(i => i.kind).lastIndexOf('asset');
+  return at === -1 ? [...extra, ...list]
     : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
 }
 
@@ -3817,6 +4407,89 @@ const ABOUT = {
       + `, with ${S.pools.filter(p => p.chain === i.chain).length} lending markets on it.`;
   },
 };
+/* ---------- perps ----------
+   Hyperliquid publishes every mid price and every account's positions without
+   a key, so an asset sheet can say what the perp is trading at and what the
+   connected wallet holds of it. Placing an order is the one thing it will not
+   do, and it says which \u2014 a venue link in its place would be the app admitting
+   it cannot, dressed as a feature. */
+const perpBox = it => it.kind !== 'asset' ? '' :
+  `<div class="sec perp" data-perp="${esc(it.sym)}" hidden><h3>Perps</h3>
+    <div class="stats" data-pstats></div>
+    <div class="note l" data-pnote></div></div>`;
+
+async function fillPerp(box, it) {
+  const host = box.querySelector('[data-perp]'); if (!host) return;
+  let t; try { t = await loadTrade(); } catch { return; }
+  const [mids, acct] = await Promise.all([
+    t.hyperliquidMids().catch(() => null),
+    wallet.evm ? t.hyperliquidState().catch(() => null) : null,
+  ]);
+  if (!box.isConnected) return;
+  const mid = Number(mids?.[it.sym]) || 0;
+  const pos = (acct?.positions || []).find(p => p.coin === it.sym);
+  if (!mid && !pos) return;                       // not listed there; say nothing
+  host.querySelector('[data-pstats]').innerHTML = [
+    mid ? stat('Perp mid', usd(mid)) : '',
+    pos ? stat('Your position', `${pos.size > 0 ? '+' : ''}${pos.size}`) : '',
+    pos ? stat('Entry', usd(pos.entry)) : '',
+    pos ? stat('Unrealised', usd(pos.pnl), '', pos.pnl >= 0 ? 'up' : 'down') : '',
+    !pos && acct ? stat('Account value', usd(acct.value)) : '',
+  ].filter(Boolean).join('');
+  host.querySelector('[data-pnote]').textContent = t.hyperliquidOrderSupported()
+    ? '' : `Live from Hyperliquid. ${t.hyperliquidWhy}`;
+  host.hidden = false;
+}
+
+/* ---------- risk ----------
+   The row's own numbers can say a market is thin or that its volume is a
+   machine. Only the contract can say whether the supply is fixed, whether an
+   owner can freeze a balance, or whether an address can be blacklisted out of
+   selling \u2014 so where there is an address, it is read, once, when the sheet is
+   opened. Nothing is claimed before the answer arrives: an unscanned contract
+   says "not checked", never "clean". */
+/* Three tiers, and the third exists because of what it would do to the list:
+   most of the DEX long tail is in no registry, so "unlisted" on every row is
+   noise that teaches people to ignore the mark. It belongs in the sheet, where
+   somebody is already reading, and nowhere else. */
+const SEV = { bad: 3, warn: 2, note: 1 };
+const riskBox = it => !RISKY.has(it.kind) ? '' :
+  `<div class="sec risk" data-risk="${esc(it.id)}"><h3>Risk</h3>
+    <div class="flags" data-flags></div>
+    <div class="note l" data-rwhy></div></div>`;
+const RISKY = new Set(['pair', 'asset', 'stock', 'stablecoin']);
+
+const flagHTML = f => `<div class="flag ${esc(f.sev)}">
+  <span class="fl">${esc(f.label)}</span><span class="fw">${esc(f.why)}</span></div>`;
+
+async function fillRisk(box, it) {
+  const host = box.querySelector('[data-risk]'); if (!host) return;
+  const list = host.querySelector('[data-flags]'), why = host.querySelector('[data-rwhy]');
+  const local = localFlags(it);
+  const paint = (flags, note) => {
+    flags.sort((a, b) => SEV[b.sev] - SEV[a.sev]);
+    list.innerHTML = flags.map(flagHTML).join('');
+    why.textContent = note;
+  };
+  paint(local, it.addr ? 'Checking the contract\u2026' : 'No contract address on this row to check.');
+  if (!it.addr) { if (!local.length) host.remove(); return; }
+  const sec = await loadSecurity(it).catch(() => null);
+  if (!box.isConnected) return;
+  if (!sec) {
+    paint(local, 'The contract could not be checked from here \u2014 treat this as unknown, not as clean.');
+    return;
+  }
+  /* The list may already have scanned this contract, in which case its flags
+     are in `local` too \u2014 one finding, said once. */
+  const all = [...local];
+  for (const f of sec.flags) if (!all.some(x => x.id === f.id)) all.push(f);
+  const read = `${sec.source} read the contract${sec.holders ? `, held by ${count(sec.holders)} addresses` : ''}${
+    sec.trusted ? ', and knows this token by name' : ''}.`;
+  paint(all, sec.flags.length
+    ? `${sec.flags.length} of the above ${sec.flags.length === 1 ? 'is' : 'are'} in the contract itself. ${read}`
+    : `Nothing in the contract itself was flagged. ${read} That is not a guarantee.`);
+}
+
 const aboutBox = it => `<div class="sec about"><h3>About</h3>
   <div class="note l" data-about>${esc((ABOUT[it.kind] || (() => ''))(it))}</div>
   <div class="note l src" data-src hidden></div></div>`;
@@ -3827,9 +4500,35 @@ const aboutBox = it => `<div class="sec about"><h3>About</h3>
 async function fillAbout(box, it) {
   const el = box.querySelector('[data-src]'); if (!el) return;
   const text = await loadAbout(it).catch(() => '');
-  if (!text || !box.isConnected) return;
-  el.textContent = it.kind === 'pool' || it.kind === 'yield' ? `${it.proto}: ${text}` : text;
-  el.hidden = false;
+  if (text && box.isConnected) {
+    el.textContent = it.kind === 'pool' || it.kind === 'yield' ? `${it.proto}: ${text}` : text;
+    el.hidden = false;
+  }
+  fillGecko(box, it);
+}
+
+/* What CoinGecko's own page says that a markets row does not: which sectors it
+   is counted in, how many people are watching it, when it started. Asked over
+   MCP, added under the description, and absent without complaint. */
+async function fillGecko(box, it) {
+  if (it.kind !== 'asset' || !it.cg) return;
+  const host = box.querySelector('.sec.about'); if (!host) return;
+  let mcp;
+  try { mcp = await loadModule('mcp', './mcp.js'); } catch { return; }
+  if (!mcp.mcpReady()) return;
+  const c = await mcp.mcpCoin(it.cg).catch(() => null);
+  if (!c || !box.isConnected) return;
+  const bits = [
+    c.categories.length ? `Counted in ${listOf(c.categories, 3)}` : '',
+    c.watchlist ? `${count(c.watchlist)} watchlists` : '',
+    c.sentiment ? `${Math.round(c.sentiment)}% of votes bullish` : '',
+    c.genesis ? `since ${c.genesis.slice(0, 4)}` : '',
+  ].filter(Boolean);
+  if (!bits.length) return;
+  const n = document.createElement('div');
+  n.className = 'note l cg'; n.dataset.cg = '1';
+  n.textContent = `${bits.join(' \u00b7 ')}. Via CoinGecko.`;
+  host.appendChild(n);
 }
 
 /* ---------- detail sheet ---------- */
@@ -3855,14 +4554,51 @@ async function fillItems(box, it) {
     return;
   }
   why.hidden = true;
-  grid.innerHTML = items.map(x => `<a class="item" href="${esc(x.url)}" target="_blank"
-    rel="noopener noreferrer" title="${esc(x.name)}">
-    <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
-      referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
-    <div class="in"><div class="t">${esc(x.name)}</div>
-      ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
-    ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>`).join('');
+  grid.innerHTML = items.map(x => `<div class="item">
+    <a class="ilink" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" title="${esc(x.name)}">
+      <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
+        referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
+      <div class="in"><div class="t">${esc(x.name)}</div>
+        ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
+      ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>
+    ${x.order ? `<button class="buy" data-buy="${esc(x.order)}" data-chain="${esc(x.chain || '')}"
+      data-proto="${esc(x.protocol || '')}">Buy</button>` : ''}</div>`).join('');
   grid.hidden = false;
+
+  /* An order hash is what makes a listing buyable: OpenSea builds the
+     fulfilment transaction for it and the wallet signs that. No hash, no
+     button \u2014 rather than a button that opens a marketplace. */
+  grid.addEventListener('click', async e => {
+    const b = e.target.closest('[data-buy]'); if (!b) return;
+    e.preventDefault();
+    const was = b.textContent; b.disabled = true; b.textContent = '\u2026';
+    try {
+      const t = await loadTrade();
+      const r = await t.openseaBuy({ orderHash: b.dataset.buy,
+        chain: b.dataset.chain || 'ethereum', protocolAddress: b.dataset.proto });
+      b.textContent = 'Sent';
+      why.hidden = false; why.textContent = `Sent \u2014 ${r.hash}`;
+    } catch (err) {
+      b.disabled = false; b.textContent = was;
+      why.hidden = false; why.textContent = err?.message || String(err);
+    }
+  });
+
+  fillCard(host);
+}
+
+/* Crossmint sells the same NFT for a card payment and delivers it to the
+   wallet Atlas just generated \u2014 no chain, no gas, no bridge. It is a hosted
+   checkout, so this is the one place a link is the integration rather than an
+   evasion of one. */
+async function fillCard(host) {
+  let m; try { m = await loadWallet(); } catch { return; }
+  const url = m.crossmintCheckout({ recipient: wallet.evm });
+  if (!url || !host.isConnected) return;
+  const a = document.createElement('a');
+  a.className = 's card'; a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.textContent = 'Buy with a card \u2197';
+  host.appendChild(a);
 }
 
 function chartBox(it) {
@@ -3913,7 +4649,7 @@ function sheetHTML(it) {
         ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} \u2013 ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '\u2014')}
         ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
-      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
+      ${riskBox(it)}${perpBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -3933,7 +4669,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
-      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
+      ${riskBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -4332,6 +5068,8 @@ function open(id, { push = true } = {}) {
   store.set('atlas:seen', JSON.stringify(S.seen));
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
+  fillRisk(el.sheet, it);
+  fillPerp(el.sheet, it);
   fillTrade(el.sheet, it);
   fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
@@ -4384,7 +5122,11 @@ let dexT, dexSeq = 0;
 function askDex() {
   clearTimeout(dexT);
   const q = term();
-  if (q.length < 2) { S.remote = { q: '', rows: [], busy: false, errors: [] }; return; }
+  if (q.length < 2) {
+    S.remote = { q: '', rows: [], busy: false, errors: [] };
+    S.gecko = { q: '', rows: [] };
+    return;
+  }
   if (S.remote.q === q) return;
   dexT = setTimeout(async () => {
     const seq = ++dexSeq;
@@ -4397,7 +5139,53 @@ function askDex() {
     const known = new Set(S.list.map(i => i.id));
     S.remote = { q, rows: res.rows.filter(r => !known.has(r.id)), busy: false, errors: res.errors };
     render();
+    askGecko(q, seq);
   }, 300);
+}
+
+/* ---------- CoinGecko, asked directly ----------
+   The local index is the top few hundred assets. CoinGecko knows seventeen
+   thousand of them and answers questions about all of them over MCP, so a
+   search that found nothing here can still be a search that finds something.
+   What comes back is turned into ordinary asset rows \u2014 they sort, filter, open
+   and star like every other row \u2014 and it is always additive: this runs after
+   the local answer is already on screen, and failing costs nothing. */
+async function askGecko(q, seq) {
+  let mcp;
+  try { mcp = await loadModule('mcp', './mcp.js'); } catch { return; }
+  if (!mcp.mcpReady() || seq !== dexSeq) return;
+  const hits = await mcp.mcpSearch(q).catch(() => []);
+  if (!hits.length || seq !== dexSeq || term() !== q) return;
+  const known = new Set(everything().map(i => i.id));
+  const fresh = hits.filter(h => !known.has(`a:${h.id}`)).slice(0, 8);
+  if (!fresh.length) return;
+  // a row with no numbers on it is a name, so the markets call is what makes
+  // these rows rather than suggestions
+  const mk = await mcp.mcpMarkets(fresh.map(h => h.id)).catch(() => []);
+  if (seq !== dexSeq || term() !== q) return;
+  const rows = mk.map(geckoRow).filter(Boolean);
+  if (!rows.length) return;
+  S.gecko = { q, rows };
+  render();
+}
+
+/** One CoinGecko markets row in the shape every asset row already has. */
+function geckoRow(c) {
+  const sym = String(c.symbol || '').toUpperCase();
+  if (!c.id || !sym) return null;
+  return {
+    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym,
+    img: c.image || null, chain: null, price: Number(c.current_price) || 0,
+    chg: Number(c.price_change_percentage_24h) || 0, chg7d: null, chg30d: null,
+    mcap: Number(c.market_cap) || 0, vol: Number(c.total_volume) || 0,
+    rank: Number(c.market_cap_rank) || 0, fdv: Number(c.fully_diluted_valuation) || 0,
+    supply: Number(c.circulating_supply) || 0, maxSupply: Number(c.max_supply) || 0,
+    high24: Number(c.high_24h) || 0, low24: Number(c.low_24h) || 0,
+    ath: Number(c.ath) || 0, athChg: Number(c.ath_change_percentage) || 0,
+    turn: c.market_cap ? (Number(c.total_volume) || 0) / c.market_cap * 100 : 0,
+    spark: [], color: colorOf(sym), via: 'CoinGecko',
+    key: `${sym} ${c.name || ''} token coin asset price`,
+  };
 }
 
 /* ---------- url state ---------- */
@@ -4614,7 +5402,7 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
-  const tile = e.target.closest('.tile[data-go]');
+  const tile = e.target.closest('[data-go]');
   if (tile) return goTab(tile.dataset.go);
   // recently viewed lives in an empty state, and was rendered but inert
   const mini = e.target.closest('.mini[data-id]');
@@ -4734,7 +5522,7 @@ async function readQuery(q) {
         via = `read by ${config.ai.model || 'the model'}`;
       }
     }
-  } catch (e) { via = 'read locally \u2014 the AI endpoint did not answer'; }
+  } catch (e) { via = `read locally \u2014 ${e?.message || 'the AI endpoint did not answer'}`; }
   return { ...r, via, original: q };
 }
 
@@ -4799,7 +5587,8 @@ const short = a => !a ? '' : a.length > 12 ? `${a.slice(0, 6)}\u2026${a.slice(-4
 function paintConnect() {
   const b = $('#connect'); if (!b) return;
   const addr = wallet.evm || wallet.sol;
-  b.querySelector('span').textContent = wallet.signedIn ? (short(addr) || wallet.label) : 'Connect';
+  // "Connect" names the mechanism; "Trade" names the reason anyone would
+  b.querySelector('span').textContent = wallet.signedIn ? (short(addr) || wallet.label) : 'Trade';
   b.classList.toggle('on', !!wallet.signedIn);
 }
 
@@ -4947,56 +5736,137 @@ async function onWalletAction(e) {
 const open2 = url => { const w = window.open(url, '_blank', 'noopener,noreferrer'); if (!w) location.href = url; };
 
 /* ---------- trade ----------
-   A quote is a read, so it is fetched and shown. The send is the venue's, and
-   the link carries the wallet into it. */
-const TRADE = {
-  pair: it => it.chain === 'sol'
-    ? [['Swap on Jupiter', t => t.jupiterLink(it.addr)]]
-    : [['Trade on Uniswap', t => t.uniswapLink({ chainId: EVM_ID[it.chain], tokenOut: it.addr })]],
-  asset: it => [['Trade on Uniswap', t => t.uniswapLink({ tokenOut: it.sym })],
-    ['Perps on Hyperliquid', t => t.hyperliquidLink(it.sym)]],
-  nft: it => [['Buy on OpenSea', t => t.openseaLink(it.cid, it.net?.toLowerCase() || 'ethereum')]],
-};
+   The old shape was a row of links: "Trade on Uniswap \u2197". A link is the app
+   saying it knows what you want and cannot do it. This is the doing \u2014 one
+   amount, one quote from the venue that would fill it, and one button that
+   signs with the wallet already in the header. Nothing is sent that was not
+   quoted, and the panel says which venue answered and what the worst case is
+   before anything is signed. */
 const EVM_ID = { eth: 1, base: 8453, arb: 42161, op: 10, poly: 137, bnb: 56, avax: 43114 };
+const TRADEABLE = new Set(['pair', 'asset', 'stock']);
+// what a person is spending: dollars on an EVM chain, SOL on Solana
+const SPEND = { sol: ['SOL', 9], evm: ['USDC', 6] };
 
 function tradeBox(it) {
-  if (!TRADE[it.kind]) return '';
+  if (!TRADEABLE.has(it.kind)) return '';
+  const sol = tradeRoute(it)?.chain === 'sol';
+  const [unit] = sol ? SPEND.sol : SPEND.evm;
   return `<div class="sec trade" data-trade="${esc(it.id)}"><h3>Trade</h3>
+    <div class="tform">
+      <label class="tamt"><span>Spend</span>
+        <input type="text" inputmode="decimal" data-amt value="${sol ? '1' : '100'}" aria-label="Amount to spend">
+        <b>${esc(unit)}</b></label>
+      <button class="p" data-tquote>Get quote</button>
+    </div>
     <div class="quote" data-quote hidden></div>
-    <div class="cta venues" data-venues></div></div>`;
+    <div class="note l" data-tnote></div>
+    <div class="cta" data-tgo hidden></div></div>`;
 }
+
+/* An asset row carries a ticker and no address \u2014 BTC is not a contract. The
+   token registries the app already loads carry both, so a listed ticker
+   resolves to the chain and address it trades at, and only a ticker no
+   registry names has nowhere to go. */
+function addressFor(it) {
+  if (it.addr) return { chain: it.chain, addr: it.addr };
+  const v = S.verified;
+  if (!v?.by?.length) return null;
+  const chains = it.chain ? [it.chain] : ['eth', 'base', 'arb', 'op', 'poly', 'bnb', 'sol'];
+  for (const c of chains)
+    for (const [, set] of v.by) {
+      const a = set.at?.get(`${it.sym}@${c}`);
+      if (a) return { chain: c, addr: a };
+    }
+  return null;
+}
+
+/** Which venue, which pair of tokens, and in whose smallest unit. */
+function tradeRoute(it) {
+  const at = addressFor(it);
+  if (!at) return null;
+  if (at.chain === 'sol')
+    return { chain: 'sol', tokenIn: WSOL_MINT, tokenOut: at.addr, dec: 9, on: at.chain };
+  const chainId = EVM_ID[at.chain];
+  if (!chainId) return null;
+  return { chain: 'evm', chainId, tokenIn: null, tokenOut: at.addr, dec: 6, on: at.chain };
+}
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 async function fillTrade(box, it) {
   const host = box.querySelector('[data-trade]'); if (!host) return;
+  const note = host.querySelector('[data-tnote]');
+  const qbox = host.querySelector('[data-quote]');
+  const go = host.querySelector('[data-tgo]');
+  const amt = host.querySelector('[data-amt]');
   let t; try { t = await loadTrade(); } catch { host.remove(); return; }
-  const venues = host.querySelector('[data-venues]');
-  venues.innerHTML = (TRADE[it.kind](it) || [])
-    .map(([label, url]) => { const u = url(t); return u
-      ? `<a class="s" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(label)} \u2197</a>` : ''; })
-    .join('');
-  if (wallet.evm || wallet.sol) {
-    const who = document.createElement('div');
-    who.className = 'note l';
-    who.textContent = `Trades will be signed by ${short(it.chain === 'sol' ? wallet.sol : wallet.evm)}.`;
-    host.appendChild(who);
+  if (!host.isConnected) return;
+
+  const route = tradeRoute(it);
+  if (!route) {
+    host.querySelector('.tform').remove();
+    note.textContent = it.kind === 'stock'
+      ? 'Tokenized equities settle with their issuer rather than on a public router, so Atlas does not route a trade for one.'
+      : `No token registry Atlas checks names a contract for ${it.sym}, so there is nothing to route a trade against.`;
+    return;
   }
-  // a live route, priced now, before anyone commits to anything
-  if (it.kind === 'pair' && it.chain === 'sol' && it.addr && !flags.sample) {
-    const q = host.querySelector('[data-quote]');
+  if (route.chain === 'evm') route.tokenIn = t.USD[route.chainId];
+  // spending a token to buy the same token is not a trade
+  if (String(route.tokenIn).toLowerCase() === String(route.tokenOut).toLowerCase()) {
+    host.querySelector('.tform').remove();
+    note.textContent = `${it.sym} is what a trade here is priced in, so there is nothing to swap it for.`;
+    return;
+  }
+
+  const wallet_ = wallet.evm || wallet.sol;
+  if (!wallet_) note.textContent = 'Connect a wallet with Trade, above, and this becomes one button.';
+  else note.textContent = `Signed by ${short(route.chain === 'sol' ? wallet.sol : wallet.evm)}.`;
+
+  let last = null;
+  const units = v => BigInt(Math.round(Number(v) * 10 ** route.dec));
+
+  host.querySelector('[data-tquote]').addEventListener('click', async () => {
+    const v = Number(amt.value);
+    if (!(v > 0)) { note.textContent = 'Enter an amount to spend.'; return; }
+    qbox.hidden = true; go.hidden = true;
+    note.textContent = 'Asking the venue\u2026';
     try {
-      const [r, dec] = await Promise.all([
-        t.jupiterQuote({ inputMint: t.WSOL, outputMint: it.addr, amount: 1e9 }),
-        t.tokenDecimals(it.addr),
-      ]);
-      // a route with no decimals is a number of unknown magnitude \u2014 say nothing
-      if (!host.isConnected || dec == null) return;
-      const out = r.out / 10 ** dec;
-      q.innerHTML = `<div class="qline"><b>1 SOL</b> \u2192 <b>${esc(out >= 1 ? compact(out) : tiny(out))}</b> ${esc(it.sym)}</div>
-        <div class="qmeta">${esc(r.impact.toFixed(2))}% price impact${
-          r.via.length ? ` \u00b7 via ${esc(listOf(r.via, 2))}` : ''} \u00b7 live from Jupiter</div>`;
-      q.hidden = false;
-    } catch { /* a quote is an extra, never a gate */ }
-  }
+      const q = await t.quote({ ...route, amount: units(v).toString() });
+      const dec = route.chain === 'sol' ? await t.tokenDecimals(route.tokenOut) : null;
+      const out = route.chain === 'sol'
+        ? (dec == null ? null : Number(q.out) / 10 ** dec)
+        : null;
+      last = { q, v };
+      qbox.innerHTML = `<div class="qline"><b>${esc(v)} ${esc(route.chain === 'sol' ? 'SOL' : 'USDC')}</b> \u2192 <b>${
+        esc(out == null ? compact(Number(q.out)) : (out >= 1 ? compact(out) : tiny(out)))}</b> ${esc(it.sym)}${
+        out == null ? ' <span class="mute">(smallest unit)</span>' : ''}</div>
+        <div class="qmeta">via ${esc(q.venue)}${q.fee ? ` \u00b7 ${q.fee / 10000}% pool` : ''}${
+          q.impact != null ? ` \u00b7 ${esc(q.impact.toFixed(2))}% price impact` : ''}${
+          q.via?.length ? ` \u00b7 ${esc(listOf(q.via, 2))}` : ''}</div>`;
+      qbox.hidden = false;
+      note.textContent = wallet_
+        ? `Quoted by ${q.venue}. Signing sends the transaction from ${short(route.chain === 'sol' ? wallet.sol : wallet.evm)}.`
+        : `Quoted by ${q.venue}. Connect a wallet to sign it.`;
+      go.innerHTML = `<button class="p" data-tswap${wallet_ ? '' : ' disabled'}>Swap ${esc(v)} ${
+        esc(route.chain === 'sol' ? 'SOL' : 'USDC')}</button>`;
+      go.hidden = false;
+    } catch (e) {
+      note.textContent = e?.message || String(e);
+    }
+  });
+
+  go.addEventListener('click', async e => {
+    if (!e.target.closest('[data-tswap]') || !last) return;
+    const b = e.target.closest('[data-tswap]');
+    b.disabled = true; b.textContent = 'Signing\u2026';
+    try {
+      const r = await t.swap({ ...route, amount: units(last.v).toString(), quote: last.q });
+      note.textContent = `Sent \u2014 ${r.hash}`;
+      b.textContent = 'Sent';
+    } catch (err) {
+      note.textContent = err?.message || String(err);
+      b.disabled = false; b.textContent = 'Try again';
+    }
+  });
 }
 
 /* ---------- go ---------- */

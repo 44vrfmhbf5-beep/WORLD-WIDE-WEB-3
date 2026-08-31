@@ -2,9 +2,9 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout,
+  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout, loadSecurity, loadSecurityMany, scannable, colorOf,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
-  loadVerified, loadMorpho, loadBridgeChart, loadNftItems, setOpenseaKey,
+  loadVerified, loadMorpho, loadBridgeChart, loadNftItems, setOpenseaKey, nftImages,
   links, actions, flags, clearCache } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -74,6 +74,8 @@ const S = {
   // might be wrong; they are audited per kind now, and a control that everyone
   // leaves in one position is furniture.
   safe: true,
+  // coins CoinGecko answered for, for this exact query
+  gecko: { q: '', rows: [] },
   sort: null, facets: new Set(), limit: 40,
   // what was typed, what it was read as, and the numeric constraints it named
   nl: null, where: [],
@@ -144,7 +146,10 @@ async function third() {
   if (thirded) return; thirded = true;
   // the data layer does not import config; the app hands it what it needs
   loadModule('config', './config.js')
-    .then(({ config }) => setOpenseaKey(config.venues?.opensea?.apiKey)).catch(() => {});
+    .then(({ config }) => {
+      setOpenseaKey(config.venues?.opensea?.apiKey);
+      rememberOpenseaKey(config.venues?.opensea?.apiKey);
+    }).catch(() => {});
   const [v, m] = await Promise.allSettled([loadVerified(), loadMorpho()]);
   if (v.status === 'fulfilled') S.verified = v.value;
   if (m.status === 'fulfilled' && m.value.length) {
@@ -266,10 +271,61 @@ const stableQuotes = () => {
   return set;
 };
 
+/* ---------- what is wrong with this row ----------
+   Junk is four things and only four: a duplicate, a scam, a zero where an
+   activity number belongs, and volume that is a machine trading with itself.
+   Those are hidden. Everything else a person might want to know before
+   trading — thin liquidity, an unlisted contract, a supply somebody can mint —
+   is a warning on the row, because hiding it is answering a question that was
+   never asked. A $200k token somebody is actually buying is a real answer to a
+   search for it; a size floor would have thrown it away. */
+let PEG = new Set();                         // refreshed by sift, read by botted
+
+/* Volume far larger than the pool that produced it is not trading, it is the
+   same coins going round. A real pool turns over a few times a day at most;
+   forty times is a bot, and the number it prints is not a price anyone paid. */
+const WASH = 40;
+function botted(i) {
+  if (i.kind === 'pair') return i.liq > 0 && i.vol24 / i.liq > WASH;
+  // a dollar token legitimately turns over many times its own float
+  if (i.kind === 'asset') return i.mcap > 0 && !PEG.has(i.sym) && i.vol / i.mcap > 8;
+  return false;
+}
+
+/* Everything the row itself can tell you, with no extra request. The contract
+   scan in the sheet adds to this list; it does not replace it. */
+function localFlags(i) {
+  const f = [];
+  // whatever the contract itself said, if it has already been read
+  if (scannable(i)) for (const x of SEC.get(secKey(i))?.flags || []) f.push(x);
+  if (botted(i)) f.push({ id: 'wash', sev: 'bad', label: 'Artificial volume',
+    why: 'Volume is many times the liquidity behind it, which is what wash trading looks like.' });
+  if (i.kind === 'pair') {
+    if (i.liq > 0 && i.liq < 25e3) f.push({ id: 'thin', sev: 'warn', label: 'Low liquidity',
+      why: `Only ${usd(i.liq)} backs this pool — a normal-sized trade would move the price against you.` });
+    if (S.verified?.count && !isReal(i)) f.push({ id: 'unlisted', sev: 'note', label: 'Unlisted token',
+      why: 'No token registry Atlas checks names this contract. That is not proof of anything, but nobody has vouched for it either.' });
+    if (listedSyms().has(i.sym) && !isReal(i)) f.push({ id: 'ticker', sev: 'bad', label: 'Borrowed ticker',
+      why: `${i.sym} is a listed asset, and this is not its contract.` });
+  }
+  if (i.kind === 'asset' && i.mcap > 0 && i.vol / i.mcap < 0.001)
+    f.push({ id: 'quiet', sev: 'warn', label: 'Barely traded',
+      why: 'Under a tenth of a percent of the supply changed hands in a day.' });
+  if (i.kind === 'stablecoin' && Math.abs(i.price - 1) > 0.02)
+    f.push({ id: 'peg', sev: 'warn', label: 'Off peg',
+      why: `It is trading at ${usd(i.price)} against a dollar.` });
+  return f;
+}
+let symCache = null, symAt = 0;
+const listedSyms = () => {
+  if (!symCache || symAt !== S.assets.length) { symCache = new Set(S.assets.map(x => x.sym)); symAt = S.assets.length; }
+  return symCache;
+};
+
 function sift(rows) {
   if (!S.safe) return rows;
-  const listed = new Set(S.assets.map(x => x.sym));
-  const pegged = stableQuotes();
+  const listed = listedSyms();
+  const pegged = PEG = stableQuotes();
   const deepest = new Map();                 // ticker on one network -> real pool
   for (const i of rows) {
     if (i.kind !== 'pair') continue;
@@ -280,9 +336,11 @@ function sift(rows) {
     const ok = KIND[i.kind].ok;
     if (ok && !ok(i)) return false;
     if (i.kind !== 'pair') return true;
-    // priced against something that moves: the number is not comparable to any
-    // other row, so it is not a price this table can show
-    if (i.quote && !pegged.has(i.quote)) return false;
+    /* Priced against something that moves — WETH, SOL, another memecoin — the
+       number is not comparable to any other row, so it is not a price this
+       table can show. A pair whose quote leg could not be read at all is the
+       same problem wearing a blank: it used to be waved through. */
+    if (!i.quote || !pegged.has(i.quote)) return false;
     // a registry naming this exact token settles it; the guesses below do not apply
     if (isReal(i)) return true;
     // A ticker repeated on one network is usually copies of one token — but two
@@ -310,7 +368,7 @@ const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
 if (typeof window !== 'undefined')
   window.__ATLAS_RAWCOUNTS__ = () =>
     Object.fromEntries(TABS.map(([t]) => [t, rowsFor(t).filter(onChain).length]));
-let hidden = 0, base = [];   // base: the category before its facets, for the chip counts
+let base = [];               // the category before its facets, for the chip counts
 /* Facets narrow together: a row has to answer every question that is on. */
 const facetPred = (skip) => {
   const on = facetsFor(S.tab).filter(f => f !== skip && facetOn(f));
@@ -319,7 +377,6 @@ const facetPred = (skip) => {
 function scope() {
   const all = rowsFor(S.tab).filter(onChain);
   const keep = S.where.length ? sift(all).filter(meets) : sift(all);
-  hidden = all.length - keep.length;         // never filter silently
   base = keep;
   const p = facetPred();
   return p ? keep.filter(p) : keep;
@@ -430,7 +487,10 @@ const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-
 const optId = it => 'o-' + it.id.replace(/[^\w:.-]/g, '_');
 // volatile fields only: a row is reused across renders unless its numbers moved
 let mode = '';   // '' = cards, else the kind whose columns are on screen
-const sigOf = it => `${mode}|${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}`;
+/* The badge is rendered into the row, so how many warnings it carries is part
+   of what makes a cached node stale. */
+const sigOf = it => `${mode}|${size(it)}|${it.chg ?? it.chg1d ?? it.apy ?? it.sup ?? 0}|${!!it.protocol}|${
+  localFlags(it).filter(x => x.sev !== 'note').length}`;
 
 /* Ranges a sheet offers, and how its chart reads a value back. */
 const R = { price: [[1, '1D'], [7, '1W'], [30, '1M'], [365, '1Y']],
@@ -445,9 +505,9 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
 const KIND = {
   asset: { group: 'Assets', size: i => i.mcap, spark: true, global: true,
     chart: [loadAssetChart, 1, R.price, usd],
-    // nothing traded, nothing priced, or a market cap so thin the price is
-    // whatever the last trade said it was
-    ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
+    // nothing traded and nothing priced. Size is not junk: a $200k asset
+    // somebody is buying is a real answer to a search for it.
+    ok: i => i.vol > 0 && i.price > 0 && i.mcap > 0 && !botted(i),
     cols: [['Price', i => usd(i.price), 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['30d', i => move(i.chg30d), 'chg30d', 'sgn'],
       ['Market cap', i => money(i.mcap), 'mcap'], ['Volume 24h', i => money(i.vol), 'vol']],
@@ -469,7 +529,9 @@ const KIND = {
     n1: i => usd(i.price), n2: i => pct(i.chg), cls: i => i.chg >= 0 ? 'up' : 'down' },
 
   pool: { group: 'Lending markets', size: i => i.supplyUsd, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
-    ok: i => i.supplyUsd >= 1e6 && i.sup >= 0,
+    // a market with nothing in it is not a market; how much is in it is not
+    // the app's business to judge
+    ok: i => i.supplyUsd > 0 && i.sup >= 0,
     cols: [['Supply APY', i => apy(i.sup), 'sup', 'up'],
       ['Borrow APY', i => i.bor == null ? '—' : apy(i.bor), 'bor'],
       ['Supplied', i => money(i.supplyUsd), 'supplyUsd'], ['Borrowed', i => money(i.borrowUsd), 'borrowUsd'],
@@ -483,7 +545,7 @@ const KIND = {
   yield: { group: 'Yield', size: i => i.tvl, sq: true, chart: [loadPoolChart, 30, R.mid, apy],
     // four-figure APY on a small pool is the oldest farm scam there is, and a
     // rate five times its own 30-day mean is the same trick told quietly
-    ok: i => i.tvl >= 1e6 && i.apy > 0 && i.apy <= 1000 && !i.outlier && i.spike <= 5,
+    ok: i => i.tvl > 0 && i.apy > 0 && i.apy <= 1000 && !i.outlier && i.spike <= 5,
     cols: [['APY', i => apy(i.apy), 'apy', 'up'], ['Base', i => apy(i.apyBase), 'apyBase'],
       ['Rewards', i => i.apyReward ? apy(i.apyReward) : '—', 'apyReward'],
       ['30d avg', i => i.mean30 ? apy(i.mean30) : '—', 'mean30'],
@@ -495,8 +557,8 @@ const KIND = {
     n2: i => i.apyReward ? `${apy(i.apyBase)} + rewards` : 'APY', cls: () => 'mute' },
 
   protocol: { group: 'Protocols', size: i => i.tvl, sq: true, chart: [loadProtocolChart, 90, R.long, money],
-    // a protocol with no TVL and no volume is a listing, not a business
-    ok: i => i.tvl >= 1e6 || i.vol24 > 0 || i.fees24 > 0,
+    // a protocol with no TVL, no volume and no fees is a listing, not a business
+    ok: i => i.tvl > 0 || i.vol24 > 0 || i.fees24 > 0,
     cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => move(i.chg1d), 'chg1d', 'sgn'],
       ['7d', i => move(i.chg7d), 'chg7d', 'sgn'], ['Volume 24h', i => i.vol24 ? money(i.vol24) : '—', 'vol24'],
       ['Fees 24h', i => i.fees24 ? money(i.fees24) : '—', 'fees24'],
@@ -527,7 +589,9 @@ const KIND = {
     cls: i => i.chg1d == null ? 'mute' : i.chg1d >= 0 ? 'up' : 'down' },
 
   pair: { group: 'DEX pairs', size: i => i.liq, chart: [loadPairChart, 7, R.price, usd],
-    ok: i => i.vol24 >= 1000 && i.liq >= 5000,
+    // no volume or no liquidity is not a market. Thin is not fake — it is
+    // flagged on the row instead, where a person can weigh it.
+    ok: i => i.vol24 > 0 && i.liq > 0 && !botted(i),
     cols: [['Price', i => i.price ? usd(i.price) : '—', 'price'], ['24h', i => pct(i.chg), 'chg', 'sgn'],
       ['Liquidity', i => money(i.liq), 'liq'], ['Volume 24h', i => money(i.vol24), 'vol24'],
       ['FDV', i => i.fdv ? money(i.fdv) : '—', 'fdv']],
@@ -542,13 +606,13 @@ const KIND = {
   stablecoin: { group: 'Stablecoins', size: i => i.circulating, chart: [loadStableChart, 90, R.long, money],
     // a coin claiming a dollar peg while trading at 40 cents is not a stablecoin
     // any more, and one nobody holds was never one
-    ok: i => i.circulating >= 1e6 && i.price > 0.5 && i.price < 1.8,
+    ok: i => i.circulating > 0 && i.price > 0.5 && i.price < 1.8,
     cols: [['Circulating', i => money(i.circulating), 'circulating'], ['Peg', i => usd(i.price), 'price'],
       ['Mechanism', i => i.mech || '—', null, 'txt'], ['Chains', i => String(i.chains.length), null]],
     label: i => i.sym.length <= 4 ? i.sym : i.sym.slice(0, 3),
     title: i => i.name, sub: i => i.sym, tag: () => 'Stablecoin',
     meta: i => i.mech || 'Pegged', tail: i => `${usd(i.price)} against its peg`,
-    n1: i => '$' + compact(i.circulating), n2: i => 'circulating', cls: () => 'mute' },
+    n1: i => '$' + compact(i.circulating), n2: () => 'circulating', cls: () => 'mute' },
 
   bridge: { group: 'Bridges', size: i => i.vol24, sq: true,
     chart: [loadBridgeChart, 90, R.long, money],
@@ -693,6 +757,18 @@ function applySort(list) {
   return [...list].sort((a, b) => dir * ((+a[key] || 0) - (+b[key] || 0)));
 }
 
+/* A warning belongs where the decision is made, which is the list — not only
+   in a sheet somebody has to open first. One mark, its severity in its colour,
+   and the reasons spelled out when the row is opened. */
+function warnBadge(it) {
+  const f = localFlags(it).filter(x => x.sev !== 'note');
+  if (!f.length) return '';
+  const bad = f.some(x => x.sev === 'bad');
+  return ` <span class="warnb ${bad ? 'bad' : ''}" title="${esc(f.map(x => x.label).join(' · '))}"
+    aria-label="${esc(f.length)} warning${f.length === 1 ? '' : 's'}: ${esc(f.map(x => x.label).join(', '))}"
+    >!${f.length > 1 ? `<i>${f.length}</i>` : ''}</span>`;
+}
+
 function rowHTML(it) {
   const k = KIND[it.kind];
   if (mode) {
@@ -703,15 +779,16 @@ function rowHTML(it) {
     return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"
       style="--cols:${gridFor(k.cols)}">
       <div class="name">${tok(it, k.sq)}<div class="body">
-        <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}</div>
+        <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}${warnBadge(it)}</div>
         <div class="t2">${esc(k.meta?.(it) || '')}</div></div></div>
       ${cells}${star(it)}</div>`;
   }
   const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
+  const warn = warnBadge(it);
   return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
     ${tok(it, k.sq)}
     <div class="body">
-      <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}</div>
+      <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}${warn}</div>
       <div class="t2">${tag ? `<span class="tag">${esc(tag)}</span> ` : ''}${meta ? `<span class="mi">${esc(meta)}</span>` : ''}
         ${tail ? `<span class="tail">${meta ? '<span class="sep">·</span> ' : ''}${esc(tail)}</span>` : ''}</div>
     </div>
@@ -902,13 +979,22 @@ function render() {
     el.meta.innerHTML = `<span class="mtext">Everything onchain, by category · updated ${ago(S.at)}</span>`;
     el.facetbar.replaceChildren(); el.sortbar.replaceChildren();
     el.res.className = 'results home';
-    el.res.innerHTML = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
+    /* A grid of tiles is a wall to read. The same categories as a column of
+       cards that keeps moving is something to watch until one goes past that
+       you want — so the column loops, and the loop is seamless because the
+       list is rendered twice and the track travels exactly one copy.
+       Hovering stops it, because a card you are reaching for must hold still. */
+    const cards = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
       const k = TAB_KIND[t], n = countOf(t);
-      return `<button class="tile" data-go="${esc(t)}">
-        <div class="tl">${esc(label)}</div>
-        <div class="tn">${n ? esc(count(n)) : '—'}</div>
-        <div class="tw">${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</div></button>`;
-    }).join('');
+      return [t, `<div class="hi">${esc((label[0] || '?').toUpperCase())}</div>
+        <div class="ht"><b>${esc(label)}</b><em>${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</em></div>
+        <div class="hn">${n ? esc(count(n)) : '—'}</div>
+        <div class="hgo" aria-hidden="true">→</div>`];
+    });
+    const set = (dup) => cards.map(([t, inner]) =>
+      `<button class="hcard" data-go="${esc(t)}"${dup ? ' tabindex="-1" aria-hidden="true"' : ''}>${inner}</button>`).join('');
+    el.res.innerHTML = `<div class="loop"><div class="track" style="--n:${cards.length}">${
+      set(false)}${set(true)}</div></div>`;
     nodes.clear();
     return;
   }
@@ -957,12 +1043,74 @@ function render() {
   }
   el.res.replaceChildren(frag);
   paintSel();
+  scanRows(list);
+  fillImages(list);
+}
+
+/* DeFiLlama's collection list is the widest one without a key and the one most
+   likely to hand back a row with no image. OpenSea has the image; there is no
+   keyless way to it, so this fills what it can when a key is set and leaves the
+   initials alone when it is not. */
+const IMG = new Map();
+let imgT = 0;
+function fillImages(list) {
+  if (!nftKey()) return;
+  clearTimeout(imgT);
+  imgT = setTimeout(async () => {
+    const want = list.filter(i => i.kind === 'nft' && !i.img && !IMG.has(i.id));
+    if (!want.length) return;
+    const got = await nftImages(want, nftKey()).catch(() => new Map());
+    let any = false;
+    for (const i of want) { const u = got.get(i.id) || ''; IMG.set(i.id, u); if (u) { i.img = u; any = true; } }
+    if (any) { nodes.clear(); render(); }
+  }, 500);
+}
+let osKey = '';
+const nftKey = () => osKey;
+const rememberOpenseaKey = k => { osKey = k || ''; };
+
+/* ---------- contract scan, for the rows on screen ----------
+   A warning nobody sees until they open the row is a warning that arrives
+   after the decision. Both GoPlus endpoints take a comma-separated list, so a
+   page of rows costs one request per chain rather than one per row — which is
+   what makes a mark on the row affordable at all. What comes back is kept in
+   SEC and folded into the same flag list the sheet uses. */
+const SEC = new Map();
+const secKey = i => `${i.chain}:${i.addr}`;
+let scanT = 0;
+function scanRows(list) {
+  clearTimeout(scanT);
+  scanT = setTimeout(async () => {
+    const want = new Map();
+    for (const i of list) {
+      if (!scannable(i) || SEC.has(secKey(i))) continue;
+      if (!want.has(i.chain)) want.set(i.chain, []);
+      const l = want.get(i.chain);
+      if (l.length < 25 && !l.includes(i.addr)) l.push(i.addr);
+    }
+    if (!want.size) return;
+    let found = 0;
+    for (const [chain, addrs] of want) {
+      // one chain failing says nothing about the next
+      const got = await loadSecurityMany(chain, addrs).catch(() => new Map());
+      for (const a of addrs) {
+        const v = got.get(a) ?? null;
+        SEC.set(`${chain}:${a}`, v);
+        if (v?.flags?.length) found++;
+      }
+    }
+    // only redraw when something came back that changes a row
+    if (found) render();
+  }, 400);
 }
 
 /** Fold live DEX results into the local list, next to any pairs already there
     so the group heading is never emitted twice. A category that pins a different
     kind does not take them: searching on Exploits should not return memecoins. */
 function withRemote(list) {
+  return withGecko(withPairs(list));
+}
+function withPairs(list) {
   if (!S.remote.q || S.remote.q !== term()) return list;
   const k = TAB_KIND[S.tab];
   if (k && k !== 'pair') return list;
@@ -971,6 +1119,20 @@ function withRemote(list) {
   if (!extra.length) return list;
   const at = list.map(i => i.kind).lastIndexOf('pair');
   return at === -1 ? [...list, ...extra]
+    : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
+}
+/* Coins CoinGecko knows and the local index does not, folded in beside the
+   assets rather than under a heading of their own — a token is a token however
+   Atlas came to hear about it. */
+function withGecko(list) {
+  if (!S.gecko.q || S.gecko.q !== term()) return list;
+  const k = TAB_KIND[S.tab];
+  if (k && k !== 'asset') return list;
+  const have = new Set(list.map(i => i.id));
+  const extra = sift(S.gecko.rows.filter(r => !have.has(r.id)));
+  if (!extra.length) return list;
+  const at = list.map(i => i.kind).lastIndexOf('asset');
+  return at === -1 ? [...extra, ...list]
     : [...list.slice(0, at + 1), ...extra, ...list.slice(at + 1)];
 }
 
@@ -1026,6 +1188,89 @@ const ABOUT = {
       + `, with ${S.pools.filter(p => p.chain === i.chain).length} lending markets on it.`;
   },
 };
+/* ---------- perps ----------
+   Hyperliquid publishes every mid price and every account's positions without
+   a key, so an asset sheet can say what the perp is trading at and what the
+   connected wallet holds of it. Placing an order is the one thing it will not
+   do, and it says which — a venue link in its place would be the app admitting
+   it cannot, dressed as a feature. */
+const perpBox = it => it.kind !== 'asset' ? '' :
+  `<div class="sec perp" data-perp="${esc(it.sym)}" hidden><h3>Perps</h3>
+    <div class="stats" data-pstats></div>
+    <div class="note l" data-pnote></div></div>`;
+
+async function fillPerp(box, it) {
+  const host = box.querySelector('[data-perp]'); if (!host) return;
+  let t; try { t = await loadTrade(); } catch { return; }
+  const [mids, acct] = await Promise.all([
+    t.hyperliquidMids().catch(() => null),
+    wallet.evm ? t.hyperliquidState().catch(() => null) : null,
+  ]);
+  if (!box.isConnected) return;
+  const mid = Number(mids?.[it.sym]) || 0;
+  const pos = (acct?.positions || []).find(p => p.coin === it.sym);
+  if (!mid && !pos) return;                       // not listed there; say nothing
+  host.querySelector('[data-pstats]').innerHTML = [
+    mid ? stat('Perp mid', usd(mid)) : '',
+    pos ? stat('Your position', `${pos.size > 0 ? '+' : ''}${pos.size}`) : '',
+    pos ? stat('Entry', usd(pos.entry)) : '',
+    pos ? stat('Unrealised', usd(pos.pnl), '', pos.pnl >= 0 ? 'up' : 'down') : '',
+    !pos && acct ? stat('Account value', usd(acct.value)) : '',
+  ].filter(Boolean).join('');
+  host.querySelector('[data-pnote]').textContent = t.hyperliquidOrderSupported()
+    ? '' : `Live from Hyperliquid. ${t.hyperliquidWhy}`;
+  host.hidden = false;
+}
+
+/* ---------- risk ----------
+   The row's own numbers can say a market is thin or that its volume is a
+   machine. Only the contract can say whether the supply is fixed, whether an
+   owner can freeze a balance, or whether an address can be blacklisted out of
+   selling — so where there is an address, it is read, once, when the sheet is
+   opened. Nothing is claimed before the answer arrives: an unscanned contract
+   says "not checked", never "clean". */
+/* Three tiers, and the third exists because of what it would do to the list:
+   most of the DEX long tail is in no registry, so "unlisted" on every row is
+   noise that teaches people to ignore the mark. It belongs in the sheet, where
+   somebody is already reading, and nowhere else. */
+const SEV = { bad: 3, warn: 2, note: 1 };
+const riskBox = it => !RISKY.has(it.kind) ? '' :
+  `<div class="sec risk" data-risk="${esc(it.id)}"><h3>Risk</h3>
+    <div class="flags" data-flags></div>
+    <div class="note l" data-rwhy></div></div>`;
+const RISKY = new Set(['pair', 'asset', 'stock', 'stablecoin']);
+
+const flagHTML = f => `<div class="flag ${esc(f.sev)}">
+  <span class="fl">${esc(f.label)}</span><span class="fw">${esc(f.why)}</span></div>`;
+
+async function fillRisk(box, it) {
+  const host = box.querySelector('[data-risk]'); if (!host) return;
+  const list = host.querySelector('[data-flags]'), why = host.querySelector('[data-rwhy]');
+  const local = localFlags(it);
+  const paint = (flags, note) => {
+    flags.sort((a, b) => SEV[b.sev] - SEV[a.sev]);
+    list.innerHTML = flags.map(flagHTML).join('');
+    why.textContent = note;
+  };
+  paint(local, it.addr ? 'Checking the contract…' : 'No contract address on this row to check.');
+  if (!it.addr) { if (!local.length) host.remove(); return; }
+  const sec = await loadSecurity(it).catch(() => null);
+  if (!box.isConnected) return;
+  if (!sec) {
+    paint(local, 'The contract could not be checked from here — treat this as unknown, not as clean.');
+    return;
+  }
+  /* The list may already have scanned this contract, in which case its flags
+     are in `local` too — one finding, said once. */
+  const all = [...local];
+  for (const f of sec.flags) if (!all.some(x => x.id === f.id)) all.push(f);
+  const read = `${sec.source} read the contract${sec.holders ? `, held by ${count(sec.holders)} addresses` : ''}${
+    sec.trusted ? ', and knows this token by name' : ''}.`;
+  paint(all, sec.flags.length
+    ? `${sec.flags.length} of the above ${sec.flags.length === 1 ? 'is' : 'are'} in the contract itself. ${read}`
+    : `Nothing in the contract itself was flagged. ${read} That is not a guarantee.`);
+}
+
 const aboutBox = it => `<div class="sec about"><h3>About</h3>
   <div class="note l" data-about>${esc((ABOUT[it.kind] || (() => ''))(it))}</div>
   <div class="note l src" data-src hidden></div></div>`;
@@ -1036,9 +1281,35 @@ const aboutBox = it => `<div class="sec about"><h3>About</h3>
 async function fillAbout(box, it) {
   const el = box.querySelector('[data-src]'); if (!el) return;
   const text = await loadAbout(it).catch(() => '');
-  if (!text || !box.isConnected) return;
-  el.textContent = it.kind === 'pool' || it.kind === 'yield' ? `${it.proto}: ${text}` : text;
-  el.hidden = false;
+  if (text && box.isConnected) {
+    el.textContent = it.kind === 'pool' || it.kind === 'yield' ? `${it.proto}: ${text}` : text;
+    el.hidden = false;
+  }
+  fillGecko(box, it);
+}
+
+/* What CoinGecko's own page says that a markets row does not: which sectors it
+   is counted in, how many people are watching it, when it started. Asked over
+   MCP, added under the description, and absent without complaint. */
+async function fillGecko(box, it) {
+  if (it.kind !== 'asset' || !it.cg) return;
+  const host = box.querySelector('.sec.about'); if (!host) return;
+  let mcp;
+  try { mcp = await loadModule('mcp', './mcp.js'); } catch { return; }
+  if (!mcp.mcpReady()) return;
+  const c = await mcp.mcpCoin(it.cg).catch(() => null);
+  if (!c || !box.isConnected) return;
+  const bits = [
+    c.categories.length ? `Counted in ${listOf(c.categories, 3)}` : '',
+    c.watchlist ? `${count(c.watchlist)} watchlists` : '',
+    c.sentiment ? `${Math.round(c.sentiment)}% of votes bullish` : '',
+    c.genesis ? `since ${c.genesis.slice(0, 4)}` : '',
+  ].filter(Boolean);
+  if (!bits.length) return;
+  const n = document.createElement('div');
+  n.className = 'note l cg'; n.dataset.cg = '1';
+  n.textContent = `${bits.join(' · ')}. Via CoinGecko.`;
+  host.appendChild(n);
 }
 
 /* ---------- detail sheet ---------- */
@@ -1064,14 +1335,51 @@ async function fillItems(box, it) {
     return;
   }
   why.hidden = true;
-  grid.innerHTML = items.map(x => `<a class="item" href="${esc(x.url)}" target="_blank"
-    rel="noopener noreferrer" title="${esc(x.name)}">
-    <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
-      referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
-    <div class="in"><div class="t">${esc(x.name)}</div>
-      ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
-    ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>`).join('');
+  grid.innerHTML = items.map(x => `<div class="item">
+    <a class="ilink" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" title="${esc(x.name)}">
+      <div class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy"
+        referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div>
+      <div class="in"><div class="t">${esc(x.name)}</div>
+        ${x.price ? `<div class="p">${esc(x.price.toFixed(2))} ${esc(x.unit)}</div>` : ''}</div>
+      ${x.traits.length ? `<div class="tr">${esc(x.traits[0])}</div>` : ''}</a>
+    ${x.order ? `<button class="buy" data-buy="${esc(x.order)}" data-chain="${esc(x.chain || '')}"
+      data-proto="${esc(x.protocol || '')}">Buy</button>` : ''}</div>`).join('');
   grid.hidden = false;
+
+  /* An order hash is what makes a listing buyable: OpenSea builds the
+     fulfilment transaction for it and the wallet signs that. No hash, no
+     button — rather than a button that opens a marketplace. */
+  grid.addEventListener('click', async e => {
+    const b = e.target.closest('[data-buy]'); if (!b) return;
+    e.preventDefault();
+    const was = b.textContent; b.disabled = true; b.textContent = '…';
+    try {
+      const t = await loadTrade();
+      const r = await t.openseaBuy({ orderHash: b.dataset.buy,
+        chain: b.dataset.chain || 'ethereum', protocolAddress: b.dataset.proto });
+      b.textContent = 'Sent';
+      why.hidden = false; why.textContent = `Sent — ${r.hash}`;
+    } catch (err) {
+      b.disabled = false; b.textContent = was;
+      why.hidden = false; why.textContent = err?.message || String(err);
+    }
+  });
+
+  fillCard(host);
+}
+
+/* Crossmint sells the same NFT for a card payment and delivers it to the
+   wallet Atlas just generated — no chain, no gas, no bridge. It is a hosted
+   checkout, so this is the one place a link is the integration rather than an
+   evasion of one. */
+async function fillCard(host) {
+  let m; try { m = await loadWallet(); } catch { return; }
+  const url = m.crossmintCheckout({ recipient: wallet.evm });
+  if (!url || !host.isConnected) return;
+  const a = document.createElement('a');
+  a.className = 's card'; a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.textContent = 'Buy with a card ↗';
+  host.appendChild(a);
 }
 
 function chartBox(it) {
@@ -1122,7 +1430,7 @@ function sheetHTML(it) {
         ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
         ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
       </div>
-      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
+      ${riskBox(it)}${perpBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
         : `<div class="note l">${S.pools.length ? 'No lending market indexed for this asset.' : 'Lending data unavailable right now.'}</div>`}
@@ -1142,7 +1450,7 @@ function sheetHTML(it) {
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
       <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
-      ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
+      ${riskBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Networks</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -1541,6 +1849,8 @@ function open(id, { push = true } = {}) {
   store.set('atlas:seen', JSON.stringify(S.seen));
   showSheet(sheetHTML(it));
   fillAbout(el.sheet, it);
+  fillRisk(el.sheet, it);
+  fillPerp(el.sheet, it);
   fillTrade(el.sheet, it);
   fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
@@ -1593,7 +1903,11 @@ let dexT, dexSeq = 0;
 function askDex() {
   clearTimeout(dexT);
   const q = term();
-  if (q.length < 2) { S.remote = { q: '', rows: [], busy: false, errors: [] }; return; }
+  if (q.length < 2) {
+    S.remote = { q: '', rows: [], busy: false, errors: [] };
+    S.gecko = { q: '', rows: [] };
+    return;
+  }
   if (S.remote.q === q) return;
   dexT = setTimeout(async () => {
     const seq = ++dexSeq;
@@ -1606,7 +1920,53 @@ function askDex() {
     const known = new Set(S.list.map(i => i.id));
     S.remote = { q, rows: res.rows.filter(r => !known.has(r.id)), busy: false, errors: res.errors };
     render();
+    askGecko(q, seq);
   }, 300);
+}
+
+/* ---------- CoinGecko, asked directly ----------
+   The local index is the top few hundred assets. CoinGecko knows seventeen
+   thousand of them and answers questions about all of them over MCP, so a
+   search that found nothing here can still be a search that finds something.
+   What comes back is turned into ordinary asset rows — they sort, filter, open
+   and star like every other row — and it is always additive: this runs after
+   the local answer is already on screen, and failing costs nothing. */
+async function askGecko(q, seq) {
+  let mcp;
+  try { mcp = await loadModule('mcp', './mcp.js'); } catch { return; }
+  if (!mcp.mcpReady() || seq !== dexSeq) return;
+  const hits = await mcp.mcpSearch(q).catch(() => []);
+  if (!hits.length || seq !== dexSeq || term() !== q) return;
+  const known = new Set(everything().map(i => i.id));
+  const fresh = hits.filter(h => !known.has(`a:${h.id}`)).slice(0, 8);
+  if (!fresh.length) return;
+  // a row with no numbers on it is a name, so the markets call is what makes
+  // these rows rather than suggestions
+  const mk = await mcp.mcpMarkets(fresh.map(h => h.id)).catch(() => []);
+  if (seq !== dexSeq || term() !== q) return;
+  const rows = mk.map(geckoRow).filter(Boolean);
+  if (!rows.length) return;
+  S.gecko = { q, rows };
+  render();
+}
+
+/** One CoinGecko markets row in the shape every asset row already has. */
+function geckoRow(c) {
+  const sym = String(c.symbol || '').toUpperCase();
+  if (!c.id || !sym) return null;
+  return {
+    kind: 'asset', id: `a:${c.id}`, cg: c.id, sym, name: c.name || sym,
+    img: c.image || null, chain: null, price: Number(c.current_price) || 0,
+    chg: Number(c.price_change_percentage_24h) || 0, chg7d: null, chg30d: null,
+    mcap: Number(c.market_cap) || 0, vol: Number(c.total_volume) || 0,
+    rank: Number(c.market_cap_rank) || 0, fdv: Number(c.fully_diluted_valuation) || 0,
+    supply: Number(c.circulating_supply) || 0, maxSupply: Number(c.max_supply) || 0,
+    high24: Number(c.high_24h) || 0, low24: Number(c.low_24h) || 0,
+    ath: Number(c.ath) || 0, athChg: Number(c.ath_change_percentage) || 0,
+    turn: c.market_cap ? (Number(c.total_volume) || 0) / c.market_cap * 100 : 0,
+    spark: [], color: colorOf(sym), via: 'CoinGecko',
+    key: `${sym} ${c.name || ''} token coin asset price`,
+  };
 }
 
 /* ---------- url state ---------- */
@@ -1823,7 +2183,7 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
-  const tile = e.target.closest('.tile[data-go]');
+  const tile = e.target.closest('[data-go]');
   if (tile) return goTab(tile.dataset.go);
   // recently viewed lives in an empty state, and was rendered but inert
   const mini = e.target.closest('.mini[data-id]');
@@ -1943,7 +2303,7 @@ async function readQuery(q) {
         via = `read by ${config.ai.model || 'the model'}`;
       }
     }
-  } catch (e) { via = 'read locally — the AI endpoint did not answer'; }
+  } catch (e) { via = `read locally — ${e?.message || 'the AI endpoint did not answer'}`; }
   return { ...r, via, original: q };
 }
 
@@ -2008,7 +2368,8 @@ const short = a => !a ? '' : a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}`
 function paintConnect() {
   const b = $('#connect'); if (!b) return;
   const addr = wallet.evm || wallet.sol;
-  b.querySelector('span').textContent = wallet.signedIn ? (short(addr) || wallet.label) : 'Connect';
+  // "Connect" names the mechanism; "Trade" names the reason anyone would
+  b.querySelector('span').textContent = wallet.signedIn ? (short(addr) || wallet.label) : 'Trade';
   b.classList.toggle('on', !!wallet.signedIn);
 }
 
@@ -2156,56 +2517,137 @@ async function onWalletAction(e) {
 const open2 = url => { const w = window.open(url, '_blank', 'noopener,noreferrer'); if (!w) location.href = url; };
 
 /* ---------- trade ----------
-   A quote is a read, so it is fetched and shown. The send is the venue's, and
-   the link carries the wallet into it. */
-const TRADE = {
-  pair: it => it.chain === 'sol'
-    ? [['Swap on Jupiter', t => t.jupiterLink(it.addr)]]
-    : [['Trade on Uniswap', t => t.uniswapLink({ chainId: EVM_ID[it.chain], tokenOut: it.addr })]],
-  asset: it => [['Trade on Uniswap', t => t.uniswapLink({ tokenOut: it.sym })],
-    ['Perps on Hyperliquid', t => t.hyperliquidLink(it.sym)]],
-  nft: it => [['Buy on OpenSea', t => t.openseaLink(it.cid, it.net?.toLowerCase() || 'ethereum')]],
-};
+   The old shape was a row of links: "Trade on Uniswap ↗". A link is the app
+   saying it knows what you want and cannot do it. This is the doing — one
+   amount, one quote from the venue that would fill it, and one button that
+   signs with the wallet already in the header. Nothing is sent that was not
+   quoted, and the panel says which venue answered and what the worst case is
+   before anything is signed. */
 const EVM_ID = { eth: 1, base: 8453, arb: 42161, op: 10, poly: 137, bnb: 56, avax: 43114 };
+const TRADEABLE = new Set(['pair', 'asset', 'stock']);
+// what a person is spending: dollars on an EVM chain, SOL on Solana
+const SPEND = { sol: ['SOL', 9], evm: ['USDC', 6] };
 
 function tradeBox(it) {
-  if (!TRADE[it.kind]) return '';
+  if (!TRADEABLE.has(it.kind)) return '';
+  const sol = tradeRoute(it)?.chain === 'sol';
+  const [unit] = sol ? SPEND.sol : SPEND.evm;
   return `<div class="sec trade" data-trade="${esc(it.id)}"><h3>Trade</h3>
+    <div class="tform">
+      <label class="tamt"><span>Spend</span>
+        <input type="text" inputmode="decimal" data-amt value="${sol ? '1' : '100'}" aria-label="Amount to spend">
+        <b>${esc(unit)}</b></label>
+      <button class="p" data-tquote>Get quote</button>
+    </div>
     <div class="quote" data-quote hidden></div>
-    <div class="cta venues" data-venues></div></div>`;
+    <div class="note l" data-tnote></div>
+    <div class="cta" data-tgo hidden></div></div>`;
 }
+
+/* An asset row carries a ticker and no address — BTC is not a contract. The
+   token registries the app already loads carry both, so a listed ticker
+   resolves to the chain and address it trades at, and only a ticker no
+   registry names has nowhere to go. */
+function addressFor(it) {
+  if (it.addr) return { chain: it.chain, addr: it.addr };
+  const v = S.verified;
+  if (!v?.by?.length) return null;
+  const chains = it.chain ? [it.chain] : ['eth', 'base', 'arb', 'op', 'poly', 'bnb', 'sol'];
+  for (const c of chains)
+    for (const [, set] of v.by) {
+      const a = set.at?.get(`${it.sym}@${c}`);
+      if (a) return { chain: c, addr: a };
+    }
+  return null;
+}
+
+/** Which venue, which pair of tokens, and in whose smallest unit. */
+function tradeRoute(it) {
+  const at = addressFor(it);
+  if (!at) return null;
+  if (at.chain === 'sol')
+    return { chain: 'sol', tokenIn: WSOL_MINT, tokenOut: at.addr, dec: 9, on: at.chain };
+  const chainId = EVM_ID[at.chain];
+  if (!chainId) return null;
+  return { chain: 'evm', chainId, tokenIn: null, tokenOut: at.addr, dec: 6, on: at.chain };
+}
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 async function fillTrade(box, it) {
   const host = box.querySelector('[data-trade]'); if (!host) return;
+  const note = host.querySelector('[data-tnote]');
+  const qbox = host.querySelector('[data-quote]');
+  const go = host.querySelector('[data-tgo]');
+  const amt = host.querySelector('[data-amt]');
   let t; try { t = await loadTrade(); } catch { host.remove(); return; }
-  const venues = host.querySelector('[data-venues]');
-  venues.innerHTML = (TRADE[it.kind](it) || [])
-    .map(([label, url]) => { const u = url(t); return u
-      ? `<a class="s" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>` : ''; })
-    .join('');
-  if (wallet.evm || wallet.sol) {
-    const who = document.createElement('div');
-    who.className = 'note l';
-    who.textContent = `Trades will be signed by ${short(it.chain === 'sol' ? wallet.sol : wallet.evm)}.`;
-    host.appendChild(who);
+  if (!host.isConnected) return;
+
+  const route = tradeRoute(it);
+  if (!route) {
+    host.querySelector('.tform').remove();
+    note.textContent = it.kind === 'stock'
+      ? 'Tokenized equities settle with their issuer rather than on a public router, so Atlas does not route a trade for one.'
+      : `No token registry Atlas checks names a contract for ${it.sym}, so there is nothing to route a trade against.`;
+    return;
   }
-  // a live route, priced now, before anyone commits to anything
-  if (it.kind === 'pair' && it.chain === 'sol' && it.addr && !flags.sample) {
-    const q = host.querySelector('[data-quote]');
+  if (route.chain === 'evm') route.tokenIn = t.USD[route.chainId];
+  // spending a token to buy the same token is not a trade
+  if (String(route.tokenIn).toLowerCase() === String(route.tokenOut).toLowerCase()) {
+    host.querySelector('.tform').remove();
+    note.textContent = `${it.sym} is what a trade here is priced in, so there is nothing to swap it for.`;
+    return;
+  }
+
+  const wallet_ = wallet.evm || wallet.sol;
+  if (!wallet_) note.textContent = 'Connect a wallet with Trade, above, and this becomes one button.';
+  else note.textContent = `Signed by ${short(route.chain === 'sol' ? wallet.sol : wallet.evm)}.`;
+
+  let last = null;
+  const units = v => BigInt(Math.round(Number(v) * 10 ** route.dec));
+
+  host.querySelector('[data-tquote]').addEventListener('click', async () => {
+    const v = Number(amt.value);
+    if (!(v > 0)) { note.textContent = 'Enter an amount to spend.'; return; }
+    qbox.hidden = true; go.hidden = true;
+    note.textContent = 'Asking the venue…';
     try {
-      const [r, dec] = await Promise.all([
-        t.jupiterQuote({ inputMint: t.WSOL, outputMint: it.addr, amount: 1e9 }),
-        t.tokenDecimals(it.addr),
-      ]);
-      // a route with no decimals is a number of unknown magnitude — say nothing
-      if (!host.isConnected || dec == null) return;
-      const out = r.out / 10 ** dec;
-      q.innerHTML = `<div class="qline"><b>1 SOL</b> → <b>${esc(out >= 1 ? compact(out) : tiny(out))}</b> ${esc(it.sym)}</div>
-        <div class="qmeta">${esc(r.impact.toFixed(2))}% price impact${
-          r.via.length ? ` · via ${esc(listOf(r.via, 2))}` : ''} · live from Jupiter</div>`;
-      q.hidden = false;
-    } catch { /* a quote is an extra, never a gate */ }
-  }
+      const q = await t.quote({ ...route, amount: units(v).toString() });
+      const dec = route.chain === 'sol' ? await t.tokenDecimals(route.tokenOut) : null;
+      const out = route.chain === 'sol'
+        ? (dec == null ? null : Number(q.out) / 10 ** dec)
+        : null;
+      last = { q, v };
+      qbox.innerHTML = `<div class="qline"><b>${esc(v)} ${esc(route.chain === 'sol' ? 'SOL' : 'USDC')}</b> → <b>${
+        esc(out == null ? compact(Number(q.out)) : (out >= 1 ? compact(out) : tiny(out)))}</b> ${esc(it.sym)}${
+        out == null ? ' <span class="mute">(smallest unit)</span>' : ''}</div>
+        <div class="qmeta">via ${esc(q.venue)}${q.fee ? ` · ${q.fee / 10000}% pool` : ''}${
+          q.impact != null ? ` · ${esc(q.impact.toFixed(2))}% price impact` : ''}${
+          q.via?.length ? ` · ${esc(listOf(q.via, 2))}` : ''}</div>`;
+      qbox.hidden = false;
+      note.textContent = wallet_
+        ? `Quoted by ${q.venue}. Signing sends the transaction from ${short(route.chain === 'sol' ? wallet.sol : wallet.evm)}.`
+        : `Quoted by ${q.venue}. Connect a wallet to sign it.`;
+      go.innerHTML = `<button class="p" data-tswap${wallet_ ? '' : ' disabled'}>Swap ${esc(v)} ${
+        esc(route.chain === 'sol' ? 'SOL' : 'USDC')}</button>`;
+      go.hidden = false;
+    } catch (e) {
+      note.textContent = e?.message || String(e);
+    }
+  });
+
+  go.addEventListener('click', async e => {
+    if (!e.target.closest('[data-tswap]') || !last) return;
+    const b = e.target.closest('[data-tswap]');
+    b.disabled = true; b.textContent = 'Signing…';
+    try {
+      const r = await t.swap({ ...route, amount: units(last.v).toString(), quote: last.q });
+      note.textContent = `Sent — ${r.hash}`;
+      b.textContent = 'Sent';
+    } catch (err) {
+      note.textContent = err?.message || String(err);
+      b.disabled = false; b.textContent = 'Try again';
+    }
+  });
 }
 
 /* ---------- go ---------- */

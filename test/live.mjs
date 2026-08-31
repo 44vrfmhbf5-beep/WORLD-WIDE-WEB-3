@@ -91,9 +91,14 @@ const llamaPools = { status: 'success', data: [
     poolMeta: 'main', apyBaseBorrow: 8.91, apyRewardBorrow: 0, totalSupplyUsd: 8.4e8, totalBorrowUsd: 6e8, ltv: 0.75 },
   { pool: 'cc33', chain: 'Fantom', project: 'x', symbol: 'FTM', tvlUsd: 9e8, apy: 5, apyBase: 5,
     totalSupplyUsd: 9e8, totalBorrowUsd: 1e8, ltv: .5 },   // unsupported chain, must drop
-  // clears the ingest floor, but nobody is using it
-  { pool: 'dd44', chain: 'Ethereum', project: 'deadpool-fi', symbol: 'DEADPOOL', tvlUsd: 6e5,
-    apy: 1, apyBase: 1, apyBaseBorrow: 2, totalSupplyUsd: 6e5, totalBorrowUsd: 1e4, ltv: .5 },
+  /* Nothing supplied at all. Small is not junk — a $600k market somebody is
+     using is a real answer — so this one has a zero where the activity goes. */
+  { pool: 'dd44', chain: 'Ethereum', project: 'deadpool-fi', symbol: 'DEADPOOL', tvlUsd: 0,
+    apy: 0, apyBase: 0, apyBaseBorrow: 0, totalSupplyUsd: 0, totalBorrowUsd: 0, ltv: .5 },
+  /* Small, and perfectly real. It used to be hidden by a $1M floor, which is
+     the app deciding for somebody that they did not mean it. */
+  { pool: 'zz01', chain: 'Ethereum', project: 'small-fi', symbol: 'SMALLPOOL', tvlUsd: 2.2e5,
+    apy: 4.4, apyBase: 4.4, apyBaseBorrow: 6, totalSupplyUsd: 2.2e5, totalBorrowUsd: 4e4, ltv: .6 },
   // 5000% APY on a small pool is the oldest farm scam there is
   { pool: 'ee55', chain: 'Ethereum', project: 'scamfarm', symbol: 'SCAMFARM', tvlUsd: 2e6,
     apy: 5000, apyBase: 5000, apyReward: 0 },
@@ -124,7 +129,8 @@ const protocols = [
     tvl: 2.4e9, change_1d: -0.7, change_7d: 5.1, url: 'https://app.kamino.finance',
     // an upstream string that ends up in a src, like every other one
     logo: 'javascript:alert(document.domain)' },
-  { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },  // below the floor
+  // small and real: it is indexed, and there is no floor to fall under any more
+  { id: '3', name: 'Tiny', slug: 'tiny', category: 'Yield', chains: ['Ethereum'], tvl: 1e5 },
   // listed, and doing nothing: no value locked, no volume, no fees
   { id: '5', name: 'Dormant Labs', slug: 'dormant', category: 'Yield', chains: ['Ethereum'], tvl: 0 },
 ];
@@ -279,7 +285,19 @@ R('https://api.dexscreener.com/**', r => {
     // wearing a listed ticker without the liquidity to be it
     chainId: 'solana', dexId: 'raydium', pairAddress: 'FAKEBTC',
     baseToken: { address: 'fk', name: 'Bitcoin', symbol: 'BTC' }, quoteToken: { symbol: 'USDC' },
-    priceUsd: '0.004', liquidity: { usd: 9e3 }, volume: { h24: 5e3 } }] }) });
+    priceUsd: '0.004', liquidity: { usd: 9e3 }, volume: { h24: 5e3 } }, {
+    /* A deep pool, heavy volume, a dollar quote — every number Atlas can see
+       says healthy market, and the contract will not let you sell. Only
+       reading the contract catches this one. */
+    chainId: 'ethereum', dexId: 'uniswap', pairAddress: 'HONEYPAIR',
+    baseToken: { address: '0xhoneypot1', name: 'HoneyCat', symbol: 'HONEYCAT' },
+    quoteToken: { symbol: 'USDC' },
+    priceUsd: '0.02', liquidity: { usd: 1.4e6 }, volume: { h24: 3e6 } }, {
+    // volume forty times the pool that produced it: the same coins going round
+    chainId: 'ethereum', dexId: 'uniswap', pairAddress: 'WASHPAIR',
+    baseToken: { address: '0xwash1', name: 'WashCat', symbol: 'WASHCAT' },
+    quoteToken: { symbol: 'USDC' },
+    priceUsd: '0.5', liquidity: { usd: 3e5 }, volume: { h24: 6e7 } }] }) });
 });
 R('https://api.geckoterminal.com/**', r => {
   const u = r.request().url(); seen.push(u);
@@ -387,6 +405,33 @@ R('https://en.wikipedia.org/api/rest_v1/page/summary/**', r => {
   const title = decodeURIComponent(r.request().url().split('/').pop());
   r.fulfill({ contentType: 'application/json', body: JSON.stringify(
     { type: 'standard', title, extract: `${title} is a company described by Wikipedia. It does things.` }) });
+});
+/* GoPlus, in both its vocabularies. The address decides the answer, so one
+   route covers a clean token, a honeypot and an address it has never seen. */
+R('https://api.gopluslabs.io/**', r => {
+  const u = r.request().url(); seen.push(u);
+  /* The endpoint takes a comma-separated list and answers one entry per
+     address — which is the whole reason a warning on the row is affordable, so
+     the fixture has to answer that way rather than as one blob. */
+  const list = (new URL(u).searchParams.get('contract_addresses') || '').toLowerCase()
+    .split(',').filter(Boolean);
+  const sol = u.includes('/solana/');
+  const on = v => v ? '1' : '0';
+  const result = {};
+  for (const a of list) {
+    const evil = /honey|scam|fake/.test(a), mint = /trend|cash/.test(a);
+    result[a] = sol
+      ? { mintable: { status: on(mint) }, freezable: { status: on(evil) },
+          balance_mutable_authority: { status: on(evil) }, metadata_mutable: { status: on(mint) },
+          trusted_token: on(!evil), holder_count: '41200' }
+      : { is_open_source: on(!evil), is_mintable: on(mint), owner_change_balance: on(evil),
+          is_honeypot: on(evil), is_blacklisted: on(evil), transfer_pausable: on(evil),
+          is_whitelisted: '0', hidden_owner: '0', selfdestruct: '0', is_proxy: '0',
+          buy_tax: evil ? '0.15' : '0', sell_tax: evil ? '0.35' : '0',
+          trust_list: on(!evil), holder_count: '88400', lp_holder_count: '640' };
+  }
+  r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify({ code: 1, message: 'OK', result }) });
 });
 R('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
@@ -513,7 +558,8 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   await p.waitForSelector('.row[data-id^="r:"]', { timeout: 20000 }).catch(() => {});
   const body = await p.locator('#results').textContent();
   ok(body.includes('Aave V3'), 'protocols render as their own kind');
-  ok(!body.includes('Tiny'), 'protocol under the TVL floor is dropped');
+  ok(body.includes('Tiny'), 'a small protocol is small, not junk');
+  ok(!body.includes('Dormant'), 'and one with no TVL, no volume and no fees is dropped');
   await p.click('[data-tab=networks]');
   await p.waitForSelector('.row[data-id^="c:"]', { timeout: 20000 }).catch(() => {});
   ok((await p.locator('#results').textContent()).includes('Ethereum'), 'networks render with live TVL');
@@ -618,7 +664,7 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
 
   // on All the list is a ranked mix, where the heading carries the meaning
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
-  ok(await p.locator('#results.home .tile').count() > 0, 'All with nothing typed is the category home');
+  ok(await p.locator('#results.home .hcard').count() > 0, 'All with nothing typed is the category home');
   ok(await p.locator('#results.table').count() === 0, 'a ranked mix of kinds is never a table');
   await p.fill('#q', 'aave'); await p.waitForTimeout(700);
   ok(await p.locator('.gtitle').count() > 0, 'and keeps the group heading that names each kind');
@@ -654,7 +700,7 @@ console.log('\n# things that do not trade, or are not what they say, never show'
   };
   const junk = [
     ['ghostcoin', 'a:ghostcoin', 'an asset nothing has traded'],
-    ['deadpool', 'p:dd44', 'a lending market nobody is using'],
+    ['deadpool', 'p:dd44', 'a lending market with nothing in it'],
     ['scamfarm', 'y:ee55', 'a four-figure APY on a small pool'],
     ['twincat', 'd:TWINSHALLOW', 'the shallower copy of a duplicated ticker'],
     ['bitcoin', 'd:FAKEBTC', 'a pair wearing a listed ticker it cannot back'],
@@ -665,6 +711,10 @@ console.log('\n# things that do not trade, or are not what they say, never show'
   }
   // the deep half of the duplicate is the one that survives
   ok((await shown('twincat')).includes('d:TWINDEEP'), 'and keeps the real one');
+  /* Junk is duplicates, scams, zeroes and bots — never size. A $220k market is
+     a real answer to somebody searching for it, and a floor was throwing away
+     exactly the long tail this app exists to index. */
+  ok((await shown('smallpool')).includes('p:zz01'), 'and keeps a small market that is simply small');
   // and cashcat, the long tail this app exists for, is not collateral damage
   // two indexes carry this same token; neither may be mistaken for a copy
   const cc = await shown('cashcat');
@@ -930,6 +980,76 @@ console.log('\n# a price is only a price if the other side holds still');
   ok(!shown.includes('d:chainaddr3'), 'and one quoted in a token that moves is not');
   await p.click('[data-chain=""]'); await p.waitForTimeout(900);
   await p.fill('#q', ''); await p.waitForTimeout(700);
+}
+
+console.log('\n# junk is four things, and size is not one of them');
+{
+  const ids = async q => { await p.fill('#q', q); await p.waitForTimeout(1500);
+    return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id)); };
+  /* Volume many times the pool that produced it is the same coins going round.
+     Nothing else on the row says so: the price, the liquidity and the volume
+     are each individually plausible. */
+  const wash = await ids('washcat');
+  ok(!wash.includes('d:WASHPAIR'), 'hides volume forty times its own liquidity');
+  ok((await ids('cashcat')).includes('d:PAIR1'), 'and leaves a busy pool that is simply busy');
+  await p.fill('#q', ''); await p.waitForTimeout(500);
+}
+
+console.log('\n# the contract itself, read before anyone trades on it');
+{
+  /* HoneyCat has a deep pool, heavy volume and a dollar quote. Every number
+     Atlas can see says healthy market. The contract says otherwise, and the
+     only way to know that is to read it. */
+  await p.fill('#q', 'honeycat'); await p.waitForTimeout(2500);
+  const row = p.locator('.row[data-id="d:HONEYPAIR"]');
+  ok(await row.count() === 1, 'a token no price feed can fault is still listed');
+  ok(hit(/gopluslabs\.io\/api\/v1\/token_security\/\d+\?contract_addresses=/),
+    'and its contract is read, by chain id, from the row itself');
+  await p.waitForTimeout(1500);
+  ok(await p.locator('.row[data-id="d:HONEYPAIR"] .warnb.bad').count() === 1,
+    'the row carries the warning, not only the sheet');
+  await row.evaluate(el => el.click());
+  await p.waitForSelector('.sheet-in[data-kind="pair"]', { timeout: 8000 });
+  await p.waitForTimeout(1500);
+  const risk = await p.locator('[data-risk]').textContent();
+  for (const f of ['Honeypot', 'Blacklist', 'Controllable supply', 'Unverified contract'])
+    ok(risk.includes(f), `the sheet names it: ${f}`);
+  ok(/GoPlus/.test(risk), 'and says who read the contract');
+  const dup = (risk.match(/Honeypot/g) || []).length;
+  ok(dup === 1, `each finding is said once (${dup})`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+
+  // a contract with nothing against it must read as "nothing found", never as safe
+  await p.fill('#q', 'twincat'); await p.waitForTimeout(2000);
+  await p.locator('.row[data-id="d:TWINDEEP"]').evaluate(el => el.click());
+  await p.waitForSelector('.sheet-in[data-kind="pair"]', { timeout: 8000 });
+  await p.waitForTimeout(1800);
+  const clean = await p.locator('[data-risk]').textContent();
+  ok(/Nothing in the contract itself was flagged/.test(clean) && /not a guarantee/.test(clean),
+    `a clean scan is reported as a clean scan, not as safety (${clean.replace(/\s+/g, ' ').slice(-60)})`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await p.fill('#q', ''); await p.waitForTimeout(500);
+}
+
+console.log('\n# a trade is made here, not somewhere else');
+{
+  await p.click('[data-tab=dex]'); await p.waitForTimeout(900);
+  await p.locator('#results .row').first().evaluate(el => el.click());
+  await p.waitForSelector('.sec.trade', { timeout: 8000 });
+  ok(await p.locator('.sec.trade a[href^="http"]').count() === 0,
+    'the sheet has no link out to a venue to finish the job');
+  ok(await p.locator('.sec.trade [data-amt]').count() === 1, 'it asks how much instead');
+  await p.click('[data-tquote]'); await p.waitForTimeout(2500);
+  const note = await p.locator('[data-tnote]').textContent();
+  const priced = await p.locator('.sec.trade .quote').isVisible();
+  ok(priced || /HTTP|reach|route|registry/.test(note),
+    `it prices the trade itself, or says why it cannot (${note.slice(0, 70)})`);
+  if (priced) {
+    ok(/via /.test(await p.locator('.qmeta').textContent()), 'and names the venue that priced it');
+    ok(/Connect a wallet|Signing sends/.test(note), 'and says what signing it would do');
+  }
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
 
 console.log('\n# every kind says what junk means for it');

@@ -12,8 +12,9 @@
    this file: they belong on a server you control, and a browser has no way to
    keep one.
 
-   Every feature checks its own key and falls back to the link it used before,
-   so a half-filled file degrades one feature at a time rather than breaking. */
+   Every feature checks its own key and says plainly what it cannot do without
+   one, so a half-filled file degrades one feature at a time rather than
+   breaking — and no feature quietly turns into a link to somewhere else. */
 
 /* Obfuscation, not encryption — see the note on privyAppId below. */
 const CLOAK = 'atlas-privy-v1';
@@ -68,20 +69,33 @@ export const config = {
      marketplace as before. */
   crossmint: { clientId: '', collectionId: '', environment: 'production' },
 
-  /* Trading venues. Jupiter needs no key and is wired end to end. The others
-     quote through APIs that require one; without it each is a hand-off link,
-     which is what they were. */
+  /* Trading venues. Two of them need nothing at all: Jupiter quotes and builds
+     the transaction on Solana, and Uniswap v3 is quoted and executed straight
+     against its on-chain Quoter and Router, so an EVM swap works with this
+     whole block empty. A key only ever adds a route, never unlocks the basics. */
   venues: {
     jupiter: { enabled: true, slippageBps: 50 },
-    // https://cloud.uniswap.org — Trading API key. Returns ready-to-sign
-    // calldata, which is the only responsible way to build a swap here.
-    uniswap: { apiKey: '' },
-    // https://docs.opensea.io/reference/api-keys
+    /* 0x powers Matcha. With a key here, an EVM swap is routed by 0x — which
+       aggregates every DEX rather than only Uniswap's own pools — and comes
+       back as a ready-to-sign transaction. Without one, Uniswap v3 direct is
+       the route. https://dashboard.0x.org */
+    zeroex: { apiKey: '' },
+    // https://docs.opensea.io/reference/api-keys — needed to buy a listing and
+    // to read a collection's items and images
     opensea: { apiKey: '' },
-    // Hyperliquid needs no key to *read*. Placing an order is off by default:
-    // it is an EIP-712 action this build cannot test against a live exchange.
-    hyperliquid: { read: true, trade: false },
+    /* Hyperliquid needs no key to read: positions, mids and the book are live
+       for anyone. `transfer` allows the EIP-712 actions (moving USDC out);
+       order placement is not wired at all — see the header of trade.js. */
+    hyperliquid: { read: true, transfer: false },
   },
+
+  /* CoinGecko's MCP server, which is how the search bar asks a question in
+     words rather than in filters. The public endpoint below needs no key and
+     is rate-limited; a Pro key raises that and switches to the pro host.
+     Whether a browser may call it at all is a CORS decision on their side —
+     the app tries once and falls back to its own parser, which needs nothing.
+     https://docs.coingecko.com/reference/mcp-server */
+  mcp: { endpoint: 'https://mcp.api.coingecko.com/mcp', apiKey: '', timeout: 15000 },
 
   /* An OpenAI-compatible chat endpoint, which is what every open-source runner
      speaks: Ollama (http://localhost:11434/v1), llama.cpp, LM Studio, vLLM, and
