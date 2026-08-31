@@ -499,6 +499,56 @@ console.log('\n# the chart readout sits on the line it is reading');
   await q.close();
 }
 
+console.log('\n# a host that serves the file badly is not a missing file');
+if (!SOLO) {
+  /* Two things real hosts do, both of which the browser reports as "Importing a
+     module script failed" — a sentence with no subject. One is survivable and
+     the other is not, and telling them apart is the whole job. */
+  const http = await import('node:http');
+  const fsx = await import('node:fs');
+  const pathx = await import('node:path');
+  const ROOT = pathx.join(HERE, '..');
+  const serve = (mode, port) => http.createServer((req, res) => {
+    const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const f = pathx.join(ROOT, rel === '/' ? 'index.html' : rel);
+    const lazy = /\/(config|wallet|trade|mcp|nl)\.js$/.test(rel);
+    if (mode === 'html' && lazy) {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end('<!doctype html><title>404</title><h1>Not found</h1>');
+    }
+    if (!f.startsWith(ROOT) || !fsx.existsSync(f)) { res.writeHead(404); return res.end('no'); }
+    const ext = pathx.extname(f);
+    const type = (mode === 'octet' && lazy) ? 'application/octet-stream'
+      : { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' }[ext] || 'text/plain';
+    res.writeHead(200, { 'content-type': type });
+    res.end(fsx.readFileSync(f));
+  }).listen(port);
+
+  // 1. served with a type the browser will not import — the file is really there
+  {
+    const s1 = serve('octet', 8912);
+    const q = await b.newPage();
+    await q.goto('http://127.0.0.1:8912/index.html?tab=assets', { waitUntil: 'domcontentloaded' });
+    await q.waitForTimeout(3000);
+    await q.click('#connect'); await q.waitForTimeout(4500);
+    ok(await q.locator('#wemail').count() === 1,
+      'a module served as octet-stream is fetched and run anyway');
+    await q.close(); s1.close();
+  }
+  // 2. a missing file answered with an HTML page and a 200, which is worse
+  {
+    const s2 = serve('html', 8913);
+    const q = await b.newPage();
+    await q.goto('http://127.0.0.1:8913/index.html?tab=assets', { waitUntil: 'domcontentloaded' });
+    await q.waitForTimeout(3000);
+    await q.click('#connect'); await q.waitForTimeout(4500);
+    const said = (await q.locator('[data-werr]').textContent()).replace(/\s+/g, ' ');
+    ok(/(config|wallet)\.js is not on this host/.test(said) && /HTML page/.test(said),
+      `and one that is not there says so, with the status (${said.slice(0, 70)})`);
+    await q.close(); s2.close();
+  }
+}
+
 console.log('\n# the build says what it carries, and carries what it says');
 {
   /* "Wallet js is missing" is a real report, and the only way to answer it is

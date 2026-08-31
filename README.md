@@ -119,6 +119,18 @@ hands them to the app the same way it hands it Fuse. **Until it did,
 natural-language search was silently dead in every published build**, which is a
 worse bug than the error that led me to it.
 
+**A host that serves a file badly is not a missing file.** Two things real
+hosts do, and the browser reports both as *"Importing a module script failed"* —
+a sentence with no subject. One is answering with a content type the browser
+will not import, which GitHub Pages does for extensions it does not recognise;
+the other is answering a missing file with an HTML error page and a 200. The
+first is survivable: the file is fetched, handed to the browser through a Blob
+with the type it should have had, and the app carries on — its own relative
+imports rewritten to blobs of their dependencies, depth first, or fixing one
+file would break the three that import it. The second is not survivable, and
+now says so with the status code. Both are in the suite, each against a server
+that misbehaves in exactly that way.
+
 **And a deployment can be checked.** Five of the modules load only when
 somebody uses the thing that needs them — the wallet arrives when Trade is
 clicked, which is hours after the deploy that forgot to copy it. The browser

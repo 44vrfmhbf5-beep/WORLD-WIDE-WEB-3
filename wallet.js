@@ -24,7 +24,17 @@ const vendor = () => (typeof window !== 'undefined' && window.__ATLAS_VENDOR__)
   ? Promise.resolve(window.__ATLAS_VENDOR__)
   // next to this file, not next to the document — a host that sets <base href>
   // would otherwise send this somewhere the SDK has never been
-  : import(new URL('./vendor/privy.mjs', import.meta.url).href);
+  : import(new URL('./vendor/privy.mjs', import.meta.url).href)
+      /* Same hazard as every other module: a host that serves .mjs as
+         octet-stream leaves the browser unable to import a file it can fetch
+         perfectly well. */
+      .catch(async () => {
+        const url = new URL('./vendor/privy.mjs', import.meta.url).href;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`The wallet SDK is not on this host: ${url} answered HTTP ${r.status}.`);
+        const blob = URL.createObjectURL(new Blob([await r.text()], { type: 'text/javascript' }));
+        try { return await import(blob); } finally { setTimeout(() => URL.revokeObjectURL(blob), 60000); }
+      });
 
 async function boot() {
   if (!config.privyAppId) throw new Error('No Privy app id configured — see config.js.');

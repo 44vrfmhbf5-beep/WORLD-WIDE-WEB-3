@@ -2326,18 +2326,53 @@ const bundled = typeof window !== 'undefined' ? window.__ATLAS_MODULES__ : null;
 const near = path => {
   try { return new URL(path, import.meta.url).href; } catch { return path; }
 };
+/* A host can serve a file perfectly well and still leave the browser unable to
+   import it: GitHub Pages and friends hand back `application/octet-stream` for
+   an extension they do not know, and some hosts answer a missing file with an
+   HTML error page and a 200. Both make the browser say "Importing a module
+   script failed", which names neither the file nor the reason.
+
+   So when an import fails, the file is fetched instead. If it is really there,
+   it is handed to the browser through a Blob with the type it should have had,
+   and the app carries on. If it is not, the HTTP status says so — which is the
+   difference between a bug report and a diagnosis. */
+const blobs = new Map();                 // absolute url -> blob url, fetched once
+async function asBlob(url, file) {
+  if (blobs.has(url)) return blobs.get(url);
+  const r = await fetch(url, { cache: 'reload' }).catch(() => null);
+  if (!r) throw new Error(`${file} could not be fetched from ${url} — the request itself failed.`);
+  if (!r.ok) throw new Error(`${file} is not on this host: ${url} answered HTTP ${r.status}.`);
+  const text = await r.text();
+  if (/^\s*</.test(text))
+    throw new Error(`${file} is not on this host: ${url} answered HTTP ${r.status} with an HTML `
+      + `page rather than JavaScript, which is what a host does when the file is missing.`);
+  /* A blob has no directory, so every relative specifier inside has to be
+     rewritten — and rewriting it to the original host would walk straight back
+     into whatever made the import fail. Each dependency is turned into a blob
+     of its own, depth first, so the whole little graph comes across. */
+  const deps = [...text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)(['"])(\.\.?\/[^'"]+)\1/g)]
+    .map(m => m[2]);
+  const map = new Map();
+  for (const spec of new Set(deps)) {
+    const dep = new URL(spec, url).href;
+    map.set(spec, await asBlob(dep, spec.replace(/^\.\//, '')));
+  }
+  const rewritten = text.replace(/(\bfrom\s*|\bimport\s*\(\s*)(['"])(\.\.?\/[^'"]+)\2/g,
+    (whole, lead, q, spec) => map.has(spec) ? `${lead}${q}${map.get(spec)}${q}` : whole);
+  const blob = URL.createObjectURL(new Blob([rewritten], { type: 'text/javascript' }));
+  blobs.set(url, blob);
+  return blob;
+}
+const viaBlob = async (url, file) => import(await asBlob(url, file));
+
 const loadModule = (name, path) => {
   if (bundled) {
     return bundled[name] ? Promise.resolve(bundled[name])
       : Promise.reject(new Error(`This build was assembled without ${path.replace('./', '')} `
         + `(it carries: ${Object.keys(bundled).join(', ') || 'nothing'}).`));
   }
-  const url = near(path);
-  return import(/* @vite-ignore */ url).catch(e => {
-    // name the URL that failed: "a module script failed" says nothing about which
-    throw new Error(`${path.replace('./', '')} could not be loaded from ${url} — ${
-      e?.message || 'the browser would not fetch it'}`);
-  });
+  const url = near(path), file = path.replace('./', '');
+  return import(/* @vite-ignore */ url).catch(() => viaBlob(url, file));
 };
 
 let NL = null;
