@@ -1382,7 +1382,7 @@ function llamaNft(c) {
     slug: c.slug || c.collectionSlug || '', chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
-    floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
+    floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH', color: colorOf(name),
     chg1d: numN(c.floorPricePctChange1Day), chg7d: numN(c.floorPricePctChange7Day),
     volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
     key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
@@ -1396,6 +1396,7 @@ function meNft(c) {
     kind: 'nft', id: `n:me-${c.symbol || slugOf(name)}`, cid: c.symbol || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
     img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
+    color: colorOf(name),
     floorUsd: 0, floor: sol, unit: 'SOL',
     // Magic Eden's popular_collections carries neither a change nor a supply.
     // Zero is a claim; null is the truth, and the row reads as "—" instead of

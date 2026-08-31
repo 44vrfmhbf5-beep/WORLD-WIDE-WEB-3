@@ -776,7 +776,7 @@ function rowHTML(it) {
       const v = String(fn(it) ?? '');
       return `<div class="cell ${cellCls(cls, v)}">${esc(v)}</div>`;
     }).join('');
-    return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"
+    return `<div class="row" id="${optId(it)}" data-id="${esc(it.id)}"
       style="--cols:${gridFor(k.cols)}">
       <div class="name">${tok(it, k.sq)}<div class="body">
         <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}${warnBadge(it)}</div>
@@ -785,7 +785,7 @@ function rowHTML(it) {
   }
   const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
   const warn = warnBadge(it);
-  return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
+  return `<div class="row" id="${optId(it)}" data-id="${esc(it.id)}">
     ${tok(it, k.sq)}
     <div class="body">
       <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}${warn}</div>
@@ -821,15 +821,23 @@ function nodeFor(it, i) {
   return n;
 }
 
+/* The rows carry their own controls — a star, sometimes a buy button — which
+   rules out the listbox pattern this used to claim: an ARIA option may not
+   contain anything interactive, and a grid would mean maintaining cell
+   semantics for a layout that is not a table. So the list is a plain labelled
+   region, the cursor is `aria-current`, and what the cursor lands on is said
+   out loud in a live region — because focus stays in the search box, where
+   someone is still typing. */
 function paintSel(scroll) {
   const rows = el.res.querySelectorAll('.row');
-  if (!rows.length) return el.q.removeAttribute('aria-activedescendant');
+  const say = $('#selsay');
+  if (!rows.length) { if (say) say.textContent = ''; return; }
   rows.forEach((n, i) => {
     const on = i === S.sel;
     n.classList.toggle('sel', on);
-    n.setAttribute('aria-selected', on);
+    if (on) n.setAttribute('aria-current', 'true'); else n.removeAttribute('aria-current');
     if (on) {
-      el.q.setAttribute('aria-activedescendant', n.id);
+      if (say) say.textContent = `${n.textContent.replace(/\s+/g, ' ').trim()} — ${i + 1} of ${rows.length}`;
       if (scroll) n.scrollIntoView({ block: 'nearest' });
     }
   });
@@ -1007,7 +1015,7 @@ function render() {
             S.q ? ` matching “${esc(S.q.trim())}”` : ''}.<div class="cta one"><button class="p" data-facet="">Clear filters</button></div></div>`
       : S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.${
-            recent().length ? `<div class="seen"><h3>Recently viewed</h3>${recent().map(miniHTML).join('')}</div>` : ''}</div>`
+            recent().length ? `<div class="seen"><h2 class="seenh">Recently viewed</h2>${recent().map(miniHTML).join('')}</div>` : ''}</div>`
       : !S.q && S.chain
         ? `<div class="empty"><b>No ${esc(cat || 'results')} on ${esc(CH[S.chain].name)}</b>Nothing is indexed for this network yet. Newer chains often appear here before the aggregators cover them.<div class="cta one"><button class="p" data-allchains>Show all chains</button></div></div>`
       : !S.q

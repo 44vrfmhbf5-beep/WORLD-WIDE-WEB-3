@@ -11,7 +11,11 @@
 :root{
   --bg:#12121a; --bg2:#16161f; --surface:#1c1c27; --surface2:#22222f;
   --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
-  --text:#f4f3f8; --dim:#9a99ac; --faint:#67667a;
+  /* Both muted greys failed WCAG AA against every surface in the app &#8212; 994
+     elements of it &#8212; which is most of the secondary text on the page. Raised
+     until they pass at 4.5:1 on --surface, which is the darkest thing either
+     of them ever sits on. */
+  --text:#f4f3f8; --dim:#a8a7bb; --faint:#8f8ea6;
   /* American Express blue. It is darker than the violet it replaces, so
      anything sitting on it takes white rather than near-black. */
   --accent:#006fcf; --accent-dim:#3b8fdd; --on-accent:#fff;
@@ -97,13 +101,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .clear:hover{color:var(--text);background:rgba(255,255,255,.12)}
 
 /* filters */
-.filters{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 2px 4px}
-.tabs{display:flex;gap:3px;padding:3px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
 .tab{padding:6px 13px;border-radius:9px;font-size:13px;font-weight:600;color:var(--dim);transition:.16s var(--ease)}
 .tab:hover{color:var(--text)}
 .tab[aria-selected=true]{background:var(--surface2);color:var(--text);box-shadow:0 1px 8px rgba(0,0,0,.35)}
-.chains{display:flex;gap:6px;overflow-x:auto;flex:1;padding:2px 0 6px;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent)}
-.chains::-webkit-scrollbar{display:none}
 .chip{display:flex;align-items:center;gap:6px;padding:6px 11px 6px 7px;border-radius:999px;flex:none;
   background:var(--surface);border:1px solid var(--line);color:var(--dim);
   font-size:12.5px;font-weight:600;white-space:nowrap;transition:.16s var(--ease)}
@@ -120,6 +120,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 /* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
 .results .row,.results .hcard{scroll-margin-top:132px}
 .wrap>#banner{margin-top:14px}
+/* Announced, never shown: the keyboard cursor's position, for a reader that
+   cannot see which row is highlighted. */
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
   background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
   transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
@@ -316,7 +320,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.about .src{margin-top:9px;padding-left:11px;border-left:2px solid var(--line2);color:var(--faint)}
 .cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
-.cta.one button,.cta.one a{flex:0 0 auto;padding:11px 22px}
+.cta.one button{flex:0 0 auto;padding:11px 22px}
 .rangebar span{cursor:pointer}
 .rangebar span:hover{color:var(--dim)}
 .empty .cta{max-width:220px;margin-inline:auto}
@@ -343,7 +347,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   background:color-mix(in srgb,var(--accent) 78%,#000)}
 .ghost-btn.wallet span{font-variant-numeric:tabular-nums}
 .wsec{margin-top:22px}
-.wsec:first-of-type{margin-top:18px}
+[data-werr] + .wsec{margin-top:18px}
 .wsec h3{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);margin-bottom:9px}
 .wrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
@@ -435,7 +439,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .track>[aria-hidden=true]{display:none}
 }
 .pickgrid .chip.cat{justify-content:space-between}
-.pickgrid .chip.cat .ct{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.pickgrid .chip.cat .ct{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
 .pickgrid .chip.cat.on{background:color-mix(in srgb,var(--accent) 16%,var(--surface2));
   border-color:var(--accent-dim);color:var(--text)}
 .catbtn{display:flex;align-items:center;gap:7px;padding:9px 13px;border-radius:999px;
@@ -451,7 +455,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .more:hover{background:var(--surface2);color:var(--text);border-color:var(--line2)}
 /* the thing you most often want next is the thing you just looked at */
 .seen{margin-top:22px;text-align:left}
-.seen h3{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+.seen .seenh{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);margin-bottom:8px}
 
 /* ---- fluidity + focus ---- */
@@ -553,7 +557,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   padding-left:11px}
 /* a heading over each group: four things to scan instead of fourteen to read */
 .railk.nav{margin:13px 0 5px}
-.railnav>.railk.nav:first-child{margin-top:0}
 .railchains{display:flex;flex-direction:column;gap:2px;overflow-y:auto;padding-right:2px;
   max-height:min(42vh,340px);scrollbar-width:thin}
 .railchains .chip{border:0;background:none;border-radius:9px;padding:6px 10px;justify-content:flex-start}
@@ -576,10 +579,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
    from a figure that some other element is counting on being visible */
 .meta{display:flex;align-items:baseline;gap:8px;min-width:0}
 .mtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.link{flex:none;color:var(--dim);font:inherit;text-decoration:underline;text-underline-offset:2px;
-  text-decoration-color:var(--line2)}
-.link::before{content:"&#183; ";text-decoration:none;color:var(--faint);opacity:.6}
-.link:hover{color:var(--text)}
 
 /* ---- table view ----
    Grid rows, not <table>: the same .row nodes the card view uses, so the keyed
@@ -595,7 +594,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .results.table .cell{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;
   letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .results.table .cell.txt{font-weight:500;color:var(--dim);font-size:13px}
-.results.table .num,.results.table .spark{display:none}
 .results.table .star{margin-left:4px}
 
 .thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:0 12px 8px;
@@ -610,11 +608,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .thead button[aria-sort=descending]::after{content:" \2193"}
 
 /* compact = DefiLlama; comfortable = Aave. One class between them. */
-.results.compact .row{padding:8px 12px}
-.results.compact .tok{width:26px;height:26px;font-size:10px}
-.results.compact .t1{font-size:13px}
-.results.compact .t2{display:none}
-.results.compact .cell{font-size:13px}
 
 @media (max-width:900px){
   .app{grid-template-columns:minmax(0,1fr)}
@@ -629,7 +622,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .bar{order:4}
   #refine{order:5}
   #results{order:6}
-  .hero{display:none}
+  /* A phone has no room for the hero, but a page still needs its heading &#8212;
+     hiding it outright left the whole layout with no h1 at all. */
+  .hero,body.searching .hero,body.browsing .hero{position:absolute;width:1px;height:1px;
+    padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
   .top{padding:11px 14px}
   .railnav .tab{padding:8px 13px;font-size:13px}
@@ -789,7 +785,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 </header>
 
 <div class="app">
-<aside class="rail" id="rail">
+<aside class="rail" id="rail" aria-label="Categories and networks">
   <nav class="railnav" id="tabs" role="tablist" aria-label="Categories"></nav>
   <div class="railfoot">
     <div class="railk">Network</div>
@@ -807,13 +803,16 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
   <div class="searchbar" id="searchbar">
     <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-    <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits&#8230;" aria-label="Search assets and lending markets">
+    <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits&#8230;" aria-label="Search assets and lending markets">
     <button class="clear" id="clear" hidden aria-label="Clear search">
       <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
 
   <div id="banner"></div>
+  <!-- The keyboard cursor moves through the results while focus stays in the
+       search box, so what it lands on has to be said out loud somewhere. -->
+  <p id="selsay" class="sr" role="status" aria-live="polite"></p>
   <div class="bar">
     <div class="meta" id="meta"></div>
     <div class="viewtools">
@@ -829,11 +828,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
     <div class="facetbar" id="facetbar" aria-label="Filter"></div>
     <div class="sortbar" id="sortbar" aria-label="Sort"></div>
   </div>
-  <div id="results" class="results" role="listbox" aria-label="Results"></div>
+  <div id="results" class="results" role="region" aria-label="Results"></div>
 </main>
 </div>
 
-<aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1"></aside>
+<aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1" aria-label="Details"></aside>
 <div class="scrim" id="scrim"></div>
 
 <script type="module">
@@ -2515,7 +2514,7 @@ function llamaNft(c) {
     slug: c.slug || c.collectionSlug || '', chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
-    floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
+    floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH', color: colorOf(name),
     chg1d: numN(c.floorPricePctChange1Day), chg7d: numN(c.floorPricePctChange7Day),
     volUsd: num(c.dailyVolumeUSD ?? c.totalVolumeUSD), supply: num(c.totalSupply),
     key: `${name} ${c.symbol || ''} nft collection ${c.chain || ''} pfp art collectible`,
@@ -2529,6 +2528,7 @@ function meNft(c) {
     kind: 'nft', id: `n:me-${c.symbol || slugOf(name)}`, cid: c.symbol || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
     img: safeUrl(c.image) || null, chain: 'sol', net: 'Solana', market: 'Magic Eden',
+    color: colorOf(name),
     floorUsd: 0, floor: sol, unit: 'SOL',
     // Magic Eden's popular_collections carries neither a change nor a supply.
     // Zero is a claim; null is the truth, and the row reads as "\u2014" instead of
@@ -4681,7 +4681,7 @@ function rowHTML(it) {
       const v = String(fn(it) ?? '');
       return `<div class="cell ${cellCls(cls, v)}">${esc(v)}</div>`;
     }).join('');
-    return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}"
+    return `<div class="row" id="${optId(it)}" data-id="${esc(it.id)}"
       style="--cols:${gridFor(k.cols)}">
       <div class="name">${tok(it, k.sq)}<div class="body">
         <div class="t1">${esc(k.title(it))}${k.sub?.(it) ? ` <span class="sym">${esc(k.sub(it))}</span>` : ''}${warnBadge(it)}</div>
@@ -4690,7 +4690,7 @@ function rowHTML(it) {
   }
   const sub = k.sub?.(it), tag = k.tag?.(it), meta = k.meta?.(it), tail = k.tail?.(it);
   const warn = warnBadge(it);
-  return `<div class="row" role="option" aria-selected="false" id="${optId(it)}" data-id="${esc(it.id)}">
+  return `<div class="row" id="${optId(it)}" data-id="${esc(it.id)}">
     ${tok(it, k.sq)}
     <div class="body">
       <div class="t1">${esc(k.title(it))}${sub ? ` <span class="sym">${esc(sub)}</span>` : ''}${warn}</div>
@@ -4726,15 +4726,23 @@ function nodeFor(it, i) {
   return n;
 }
 
+/* The rows carry their own controls \u2014 a star, sometimes a buy button \u2014 which
+   rules out the listbox pattern this used to claim: an ARIA option may not
+   contain anything interactive, and a grid would mean maintaining cell
+   semantics for a layout that is not a table. So the list is a plain labelled
+   region, the cursor is `aria-current`, and what the cursor lands on is said
+   out loud in a live region \u2014 because focus stays in the search box, where
+   someone is still typing. */
 function paintSel(scroll) {
   const rows = el.res.querySelectorAll('.row');
-  if (!rows.length) return el.q.removeAttribute('aria-activedescendant');
+  const say = $('#selsay');
+  if (!rows.length) { if (say) say.textContent = ''; return; }
   rows.forEach((n, i) => {
     const on = i === S.sel;
     n.classList.toggle('sel', on);
-    n.setAttribute('aria-selected', on);
+    if (on) n.setAttribute('aria-current', 'true'); else n.removeAttribute('aria-current');
     if (on) {
-      el.q.setAttribute('aria-activedescendant', n.id);
+      if (say) say.textContent = `${n.textContent.replace(/\s+/g, ' ').trim()} \u2014 ${i + 1} of ${rows.length}`;
       if (scroll) n.scrollIntoView({ block: 'nearest' });
     }
   });
@@ -4912,7 +4920,7 @@ function render() {
             S.q ? ` matching \u201c${esc(S.q.trim())}\u201d` : ''}.<div class="cta one"><button class="p" data-facet="">Clear filters</button></div></div>`
       : S.tab === 'saved' && !S.q
         ? `<div class="empty"><b>Nothing saved yet</b>Tap the star on any asset or market to pin it here. Saved items persist in this browser.${
-            recent().length ? `<div class="seen"><h3>Recently viewed</h3>${recent().map(miniHTML).join('')}</div>` : ''}</div>`
+            recent().length ? `<div class="seen"><h2 class="seenh">Recently viewed</h2>${recent().map(miniHTML).join('')}</div>` : ''}</div>`
       : !S.q && S.chain
         ? `<div class="empty"><b>No ${esc(cat || 'results')} on ${esc(CH[S.chain].name)}</b>Nothing is indexed for this network yet. Newer chains often appear here before the aggregators cover them.<div class="cta one"><button class="p" data-allchains>Show all chains</button></div></div>`
       : !S.q

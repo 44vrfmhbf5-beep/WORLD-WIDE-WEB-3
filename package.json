@@ -8,9 +8,12 @@
     "fixtures": "node test/serve.mjs",
     "test": "node tools/audit-code.mjs && node build.mjs && node build.mjs --artifact && node test/e2e.mjs && PAGE=demo.html node test/e2e.mjs && PAGE=artifact.html node test/e2e.mjs && node test/live.mjs && PAGE=demo.html node test/live.mjs",
     "audit": "node tools/audit-code.mjs",
-    "lint": "oxlint app.js data.js nl.js mcp.js trade.js wallet.js config.js build.mjs"
+    "lint": "oxlint app.js data.js nl.js mcp.js trade.js wallet.js config.js build.mjs",
+    "audit:all": "node tools/audit-code.mjs && node tools/audit-a11y.mjs && node tools/audit-css.mjs && node tools/audit-api.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "axe-core": "^4.13.0",
     "oxlint": "^1.80.0",
     "playwright": "^1.56.1"
   }

@@ -227,10 +227,16 @@ await tag();
 await p.keyboard.press('ArrowDown'); await p.keyboard.press('ArrowDown'); await p.waitForTimeout(150);
 ok(await survivors() > 5, 'arrow keys do not rebuild the list');
 ok(await p.evaluate(() => document.querySelectorAll('.row.sel').length) === 1, 'exactly one row selected');
+/* The rows carry their own controls, which rules out the listbox pattern this
+   used to claim — an ARIA option may not contain anything interactive. The
+   cursor is `aria-current`, and because focus stays in the search box where
+   someone is still typing, where it lands is announced in a live region. */
+ok(await p.evaluate(() => document.querySelectorAll('.row[aria-current=true]').length) === 1,
+  'the keyboard cursor marks exactly one row');
 ok(await p.evaluate(() => {
-  const a = document.querySelector('#q').getAttribute('aria-activedescendant');
-  return !!a && document.getElementById(a)?.classList.contains('sel');
-}), 'aria-activedescendant tracks the selection');
+  const n = document.querySelector('.row[aria-current=true]');
+  return n?.classList.contains('sel') && /\d+ of \d+/.test(document.querySelector('#selsay').textContent);
+}), 'and what it lands on is announced, since focus stays in the search box');
 // The invariant is not "most rows survive" — a refined query may return a
 // disjoint set. It is that every row carried over reuses its existing node.
 const idsOf = () => p.evaluate(() => [...document.querySelectorAll('.row')].map(n => n.dataset.id));

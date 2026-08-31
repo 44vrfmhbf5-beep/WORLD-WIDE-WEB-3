@@ -40,7 +40,7 @@
 </header>
 
 <div class="app">
-<aside class="rail" id="rail">
+<aside class="rail" id="rail" aria-label="Categories and networks">
   <nav class="railnav" id="tabs" role="tablist" aria-label="Categories"></nav>
   <div class="railfoot">
     <div class="railk">Network</div>
@@ -58,13 +58,16 @@
 
   <div class="searchbar" id="searchbar">
     <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
-    <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits…" aria-label="Search assets and lending markets">
+    <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits…" aria-label="Search assets and lending markets">
     <button class="clear" id="clear" hidden aria-label="Clear search">
       <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
 
   <div id="banner"></div>
+  <!-- The keyboard cursor moves through the results while focus stays in the
+       search box, so what it lands on has to be said out loud somewhere. -->
+  <p id="selsay" class="sr" role="status" aria-live="polite"></p>
   <div class="bar">
     <div class="meta" id="meta"></div>
     <div class="viewtools">
@@ -80,11 +83,11 @@
     <div class="facetbar" id="facetbar" aria-label="Filter"></div>
     <div class="sortbar" id="sortbar" aria-label="Sort"></div>
   </div>
-  <div id="results" class="results" role="listbox" aria-label="Results"></div>
+  <div id="results" class="results" role="region" aria-label="Results"></div>
 </main>
 </div>
 
-<aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1"></aside>
+<aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1" aria-label="Details"></aside>
 <div class="scrim" id="scrim"></div>
 
 <script type="module" src="app.js"></script>

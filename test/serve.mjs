@@ -448,6 +448,19 @@ http.createServer(async (req,res)=>{
     {chainId:1,address:'0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',name:'Wrapped BTC',symbol:'WBTC',decimals:8},
     {chainId:8453,address:'0x4200000000000000000000000000000000000006',name:'Wrapped Ether',symbol:'WETH',decimals:18},
     {chainId:42161,address:'0x912CE59144191C1204E64559FE8253a0e49E6548',name:'Arbitrum',symbol:'ARB',decimals:18}]});
+  /* Jupiter quotes and builds the transaction, which is the only trade path
+     that needs no key and no wallet to price — so it is the one the fixture
+     has to answer, or the panel's success path is never once exercised. */
+  if(p==='/jup/swap/v1/quote'){
+    const inAmt=+(u.searchParams.get('amount')||1e9);
+    return json({ inputMint:u.searchParams.get('inputMint'), outputMint:u.searchParams.get('outputMint'),
+      inAmount:String(inAmt), outAmount:String(Math.round(inAmt*41.7)),
+      otherAmountThreshold:String(Math.round(inAmt*41.7*0.995)), priceImpactPct:'0.0042',
+      routePlan:[{swapInfo:{label:'Orca'}},{swapInfo:{label:'Meteora'}}] });
+  }
+  if(p==='/jup/swap/v1/swap') return json({ swapTransaction:'AQAAfixture' });
+  if(p==='/jup/tokens/v2/search') return json([
+    {id:u.searchParams.get('query'),symbol:'TOK',name:'Token',decimals:6}]);
   if(p==='/jup/tokens/v2/tag') return json([
     {id:'So11111111111111111111111111111111111111112',symbol:'SOL',name:'Wrapped SOL',isVerified:true},
     {id:'GTCASHaddr',symbol:'CASHCAT',name:'CashCat',isVerified:true},

@@ -935,14 +935,15 @@ both where the record is read and where the link is built.
 | `trade.js` | Quotes and swaps: Uniswap v3 direct, 0x, Jupiter, OpenSea |
 | `vendor/privy.mjs` | Privy JS SDK, pinned and inlined into single-file builds |
 | `test/` | Fixture server + end-to-end suite |
-| `tools/` | Seven audits that print what renders, so it can be looked at |
+| `tools/` | Ten audits: seven that print what renders, three that check the whole codebase |
 
 Fuse.js is the only runtime dependency, vendored as a single 19KB ES module so
 there is still nothing to install or build for the app itself. It gives typo
 tolerance — `kamnio` finds Kamino — and its scores are re-ranked afterwards so
-an exact ticker always wins. Two dev dependencies exist and never reach the
-browser: Playwright, for the suites, and oxlint, which `npm run audit` runs over
-every module.
+an exact ticker always wins. Three dev dependencies exist and none reaches the
+browser: Playwright for the suites, oxlint for the static pass, and axe-core —
+the rule set behind Lighthouse's accessibility score — for the 31-surface
+accessibility sweep.
 
 ## Interactions
 
@@ -967,9 +968,10 @@ blocks. `test/e2e.mjs` hangs the font host and asserts the app still boots.
 ## Tests
 
 ```
-npm install     # playwright and oxlint, for the checks only
-npm test        # the static audit, both builds, and every suite against all three
-npm run audit   # just the static pass: imports, exports, bundle coverage, lint
+npm install       # playwright, oxlint and axe-core, for the checks only
+npm test          # the static audit, both builds, and every suite against all three
+npm run audit     # imports, exports, bundle coverage, lint
+npm run audit:all # the above plus accessibility, dead CSS, and endpoint coverage
 ```
 
 Two suites, both offline:
@@ -1024,6 +1026,83 @@ It also asserts that a hostile token name from an API is rendered as text.
 Onchain token names and symbols are attacker-controlled strings; every
 interpolated value goes through `esc()` in `app.js`, and that fixture exists to
 keep it that way.
+
+## The audit, and what it found
+
+Four scripts read the app rather than the source, and one reads the source.
+Together they are `npm run audit:all`.
+
+| Script | Asks |
+| --- | --- |
+| `audit-code.mjs` | Does every import resolve, does the bundler carry every lazily-loaded export, is anything exported that nothing uses — then oxlint over every module |
+| `audit-a11y.mjs` | axe-core over 31 surfaces: the home loop, every category, a sheet of every kind, both pickers, the wallet, and the phone layout |
+| `audit-css.mjs` | Which of the stylesheet's 299 selectors can still match anything, across every state the app has — including one source down, both down, rate limited, and mid-skeleton |
+| `audit-api.mjs` | Every endpoint the code names against every request the app makes, plus anything answered with a 4xx or 5xx |
+| `audit-entities/filters/charts/controls/images/artifact` | What actually renders, per kind and per control |
+
+### What the accessibility pass found
+
+Six rules, and one of them was the app describing itself as something it is not.
+
+- **`aria-required-children`, critical, every surface.** `#results` claimed
+  `role="listbox"`, and a listbox may contain only options — not the group
+  headings, the category cards, the "show more" button or the skeletons it
+  actually holds.
+- **`nested-interactive`, serious, 876 nodes.** Every row was `role="option"`
+  with a star button inside it. An option may not contain a control. The rows
+  have carried a star since the first version, so this was never true.
+
+  Both come from the same wrong claim, and the fix is to stop making it. The
+  rows carry their own controls, which rules out listbox; a grid would mean
+  maintaining cell semantics for a layout that is not a table. So the list is a
+  plain labelled region, the keyboard cursor is `aria-current`, and — because
+  focus stays in the search box where somebody is still typing — what the
+  cursor lands on is announced in a live region: *"Bitcoin BTC $96,240 — 3 of
+  40"*. That is the thing `aria-activedescendant` was there to do, done in a
+  way that does not require lying about the widget.
+- **`color-contrast`, serious, 994 nodes.** `--dim` and `--faint` failed AA
+  against every surface — most of the secondary text on the page. Both raised
+  until they pass at 4.5:1 on the darkest surface either sits on.
+- **`landmark-unique`**: two `<aside>`s with no names. **`heading-order`**: an
+  `<h3>` under no `<h2>`. **`page-has-heading-one`**: the phone hid the hero
+  with `display:none`, so that layout had no `h1` at all — it is clipped to a
+  pixel now instead, and the rule had to out-specify the two rules that were
+  still applying padding to it, or a 1px-tall box still measured 26px.
+
+Then one more, which was a data bug wearing an accessibility violation:
+`style="--c:undefined"` on every NFT tile. Collections were the one kind that
+never carried a colour, so their tiles fell back to something unreadable. Both
+NFT sources set one now.
+
+**0 violations across 31 surfaces.**
+
+### What the stylesheet pass found
+
+81 selectors matched nothing on the first run. Most were the audit's own fault —
+it stripped `:focus-visible` as `:focus` and left `-visible` behind, and it
+never entered the loading, error or rate-limited states that half the stylesheet
+exists for. An audit that invents findings gets ignored, which is worse than
+not having one, so it learned those states.
+
+What survived was real: every rule for the density control removed two commits
+ago, three container classes not in the markup, the undo link beside a count
+that no longer exists, `.results.table .spark` for an element a table row has
+never contained, a `:first-child` on a heading that is never a first child, and
+`.wsec:first-of-type` — which selected nothing, because the first `<div>` in
+that sheet is not a `.wsec`. **0 dead selectors** now, and the twenty that a
+fixture genuinely cannot reach are listed with the state each one needs.
+
+### What the endpoint pass found
+
+51 endpoint shapes named across `data.js`, `mcp.js`, `trade.js` and `wallet.js`;
+all 51 reached in some flow; nothing answered with an error. It also caught
+itself: an early version filtered out every constant-based path and cheerfully
+reported a clean bill while checking eleven endpoints out of seventy-four.
+
+The one real gap was a fixture, not the app: nothing served Jupiter's quote or
+swap, so **the trade panel's success path had never been exercised** against
+the local server. It is served now, and the CSS pass confirms it — the quote
+block's selectors match something for the first time.
 
 ## A caveat on verification
 

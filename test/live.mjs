@@ -1606,7 +1606,12 @@ console.log('\n# mobile');
     'the page never scrolls sideways');
   ok(await q.locator('#results.table').count() === 0, 'a phone gets cards, not five numeric columns');
   ok(!await q.locator('#view').isVisible(), 'and is not offered a table toggle that cannot work');
-  ok(!await q.locator('.hero').isVisible(), 'the decorative hero does not cost a phone its first screen');
+  /* The hero is clipped to a pixel rather than removed: a page still needs its
+     h1, and display:none left the phone layout with no heading at all. What
+     matters here is that it costs no room, not that it is absent. */
+  ok(await q.locator('.hero').evaluate(e => e.getBoundingClientRect().height) <= 1,
+    'the decorative hero does not cost a phone its first screen');
+  ok(await q.locator('.hero h1').count() === 1, 'while the page keeps the heading it needs');
 
   ok(await q.locator('[data-unsafe]').count() === 0,
     'a phone is not asked to manage what it never sees');
