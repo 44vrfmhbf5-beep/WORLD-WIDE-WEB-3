@@ -343,8 +343,8 @@ something to filter, or a category word that means exactly one thing. A bare
 
 The filters were built one at a time, each correct on the tab it was written
 for. `tools/audit-controls.mjs` asks whether they *compose* — it walks all
-fourteen categories against the junk toggle, the network chip, sorting, facets,
-paging, density and view, and reports the combinations that do nothing or do the
+fourteen categories against the network chip, sorting, facets, paging and the
+table/cards switch, and reports the combinations that do nothing or do the
 wrong thing. Two real ones came out:
 
 - **A network chip emptied Tokenized stocks.** CoinGecko's markets call returns
@@ -352,9 +352,9 @@ wrong thing. Two real ones came out:
   on. Filtering by chain anyway left the category blank, which reads as a broken
   tab. A kind that carries no network is now exempt from the chip, and the
   results line says `not network-specific` rather than showing nothing.
-- **Density and view did nothing on an empty category.** Both classes were set
-  after the empty-state returned, so toggling them on a category with no rows
-  had no effect until you left it.
+- **The view switch did nothing on an empty category.** The class was set after
+  the empty-state returned, so toggling it on a category with no rows had no
+  effect until you left it.
 
 The audit also caught itself twice, which is the more useful lesson: it first
 counted the rows *on screen*, which is one page of a category and says "40"
@@ -363,29 +363,30 @@ sorting by clicking the column a list was already sorted by, which is a no-op by
 design. It now reads what matched, and compares the two sort directions against
 each other.
 
-### One filter
+### One rule, not a switch
 
-A single toggle, on by default, for the two things that make a large onchain
-index unusable: rows that no longer trade, and rows pretending to be something
-else. They share their tells, so they share a control.
+Two things make a large onchain index unusable: rows that no longer trade, and
+rows pretending to be something else. They share their tells, so they share one
+rule — and the rule is not a toggle. Nobody opens a search engine wanting the
+dead listings, and a switch that says "show me the junk" is a question with one
+sensible answer, asked of every visitor forever. It is applied, always, and the
+app does not report a tally of what it withheld.
 
 Each kind says what trading means for it, as one more field on the same `KIND`
-descriptor:
+descriptor. All twelve now do, and the fixture carries a specimen that violates
+each rule — a rule with nothing to catch cannot be seen working or seen
+breaking. Before that, the rule demonstrably changed four categories out of
+fourteen: six — protocols, stablecoins, bridges, funding rounds, exploits and
+networks — had no rule at all, so nothing in them could be junk.
 
-Every one of the twelve kinds now says what junk means for it, and the fixture
-carries a specimen that violates each rule — a rule with nothing to catch cannot
-be seen working or seen breaking. Before that, the toggle demonstrably changed
-four categories out of fourteen.
+Four more had their rule pre-empted by an **ingest floor**, which decided the
+same question twice: rows were dropped before anything could judge them. Ingest
+now keeps only what protects the payload, and the visible boundary is the
+rule's.
 
- Six of them —
-protocols, stablecoins, bridges, funding rounds, exploits and networks — had no
-rule at all, so nothing in them could be junk.
-
-Four more had their rule pre-empted by an **ingest floor**, which quietly made
-the toggle a lie for those kinds: the rows were dropped before anything could
-decide to show them, so turning the filter off revealed nothing. Ingest now
-keeps only what protects the payload; the visible boundary is the rule's, and
-the toggle governs it.
+`window.__ATLAS_RAWCOUNTS__()` reports what each category holds before the rule
+runs. With no toggle left to flip, comparing those two counts is how the tests
+check the rule still reaches every kind.
 
 | Kind | Kept when |
 | --- | --- |
@@ -432,25 +433,39 @@ count is a button that turns the filter off. The choice is in the URL
 ### Layout
 
 Two references, and they want opposite things. DefiLlama makes a large index
-navigable: a persistent category rail, aggregate totals across the top, and
-dense sortable tables. Aave makes one decision easy: generous rows, a primary
-number you can read across the room, and very little else competing with it.
+navigable: a persistent category rail and dense sortable tables. Aave makes one
+decision easy: generous rows, a primary number you can read across the room,
+and very little else competing with it.
 
-Both are on screen at once, and one control slides between them:
+Both are on screen at once:
 
 | | DefiLlama | Aave | Here |
 | --- | --- | --- | --- |
 | Navigation | category rail | a few big tabs | rail, every kind a destination with its row count |
-| Totals | aggregate header | per-market cards | aggregate bar, summed from data already loaded |
+| Landing | everything at once | one market | the categories themselves, with what each holds |
 | Rows | dense sortable table | tall calm cards | table when browsing a category, cards when ranking a mix |
-| Density | compact | comfortable | a toggle, remembered per browser |
+
+**All, with nothing typed, is the categories.** A ranked mix of twelve kinds is
+what you get *after* asking something; before that it is a wall that answers a
+question nobody put. So the landing screen is one tile per category with its
+count — the same thing the rail says, at the size of a decision — and typing or
+picking a category replaces it with rows. The stat bar that used to sit under
+the search box is gone with it: four totals nobody came for, above the answer
+they did.
 
 The rule for which shape you get needs no special cases: **a tab that pins one
 kind gets columns, a ranked mix of kinds gets cards.** On All and Saved the
 group heading is what separates an asset from a DEX pair of the same ticker,
 and columns cannot say that. Inside a category the heading says nothing the tab
 does not, so the columns earn the space — including under a search. Narrow
-viewports get cards regardless; five numeric columns do not fit on a phone.
+viewports get cards regardless; five numeric columns do not fit on a phone, and
+the switch that offers them is not shown there — nor on the category home,
+which is neither a table nor a list of cards.
+
+Filter and sort stack, one strip per line, rather than sharing a row: they are
+two different questions and reading them as one line asked people to parse
+where one ended. On a phone each strip is a scroller pinned to a single line —
+a wrapped filter row cost the first screen two rows of results.
 
 Columns are four fields on the same `KIND` descriptor that already drives the
 rows, headings and search scope, so a kind gets its table by describing it:
@@ -567,10 +582,10 @@ Counts are printed exactly rather than through the money formatter. `1K of 1K`
 hid the difference between 1,029 and 1,224, which is the entire thing the
 number was there to say.
 
-### Logos, and the four kinds that had one and were not using it
+### Logos, and the kinds that had one and were not using it
 
 An asset drew its CoinGecko logo and everything else drew coloured initials —
-including four kinds whose source already sends one, at no extra cost:
+including several kinds whose source already sends one, at no extra cost:
 
 - **Protocols.** DeFiLlama returns `logo` with every protocol; it was being read
   and thrown away.
@@ -583,6 +598,15 @@ including four kinds whose source already sends one, at no extra cost:
   back to initials.
 - **Stablecoins.** A stablecoin is nearly always also a top-100 asset, whose logo
   is loaded already. No request at all.
+- **Bridges, funding rounds and exploits.** DeFiLlama sends these no logo of
+  their own, so three whole categories rendered as initials. Most of them *are*
+  protocols it has an icon for, and the protocol index is already cached by the
+  time they load — one lookup by slug, no request. A bridge additionally names
+  its icon the way DeFiLlama writes it internally (`protocol:across`,
+  `chain:ethereum`) rather than as a URL, so that shorthand is expanded.
+
+A transparent logo used to sit on top of the initials it was meant to replace,
+which read as a smudge. The tile drops its text the moment the image loads.
 
 Every one of these is an upstream string reaching an `src`, so all of them go
 through the same `safeUrl()` as the links do.
@@ -674,6 +698,12 @@ never waits on that request. Searching `cashcat` finds a token no other source
 here carries. GeckoTerminal's trending pools seed the same kind so it has
 something to show before anyone types.
 
+Trending on its own is whichever chain is loud today, which left quieter chains
+absent from the category entirely. Seeding now also asks each of the six
+busiest networks for *its* busiest pools — a different question with a different
+answer — so every major chain is represented before a word is typed. Ten
+requests, one lane, and the typed search still jumps ahead of all of them.
+
 Results are filtered on the way in: pairs on unsupported chains and anything
 under $5k liquidity are dropped, so the long tail does not drown the index.
 
@@ -711,10 +741,20 @@ refetch fails, so a rate limit degrades instead of blanking the page.
 
 ### Rate limits, and the one thing to watch
 
-CoinGecko's keyless tier allows roughly 5–15 calls/minute. Normal browsing stays
-well inside that; hammering the chain chips will trip it, which surfaces as a
-"rate limited" notice rather than an error. Adding a demo key (`x-cg-demo-api-key`)
-in `data.js` raises it substantially.
+CoinGecko's keyless tier allows roughly 5–15 calls/minute, and Atlas can ask it
+for the market list, several equity categories, a description and a price
+history in the same second. Every request goes through a **per-host lane**: at
+most one in flight, with a floor on the gap between them (1.2s for CoinGecko,
+400ms for GeckoTerminal). That costs a few hundred milliseconds on a cold load
+and removes the rate-limit failure entirely. Adding a demo key
+(`x-cg-demo-api-key`) in `data.js` raises the ceiling substantially.
+
+A lane is a queue, which is its own hazard: a person typing could end up tenth
+in line behind an index warming itself up. So a lane has a front. A typed DEX
+search and a picked chain pass `urgent: true` and go to the head of the queue;
+background work waits. The live suite holds it to that — it aborts nothing,
+simply counts how many requests were ahead of the search when its answer
+arrived.
 
 Per-chain token lists come from GeckoTerminal, whose network slugs are mapped
 in `GT_NET` in `data.js`. If a chain chip comes up thin, that slug is the thing
@@ -793,18 +833,26 @@ percentage params, `/coins/{id}/market_chart?days=N`, `/pools`, `/lendBorrow`,
 shaped payloads back and checks they render. It runs twice: once against the
 source, once against the bundled `demo.html`.
 
-**`tools/`** is not a suite — it is three scripts that print what actually
+Both suites run against the single-file builds too (`PAGE=demo.html`,
+`PAGE=artifact.html`). Those builds differ in two ways the tests have to know
+about: they inline `config.js` and `nl.js`, so a section that replaces one over
+the wire is checking the served app rather than this one; and `artifact.html`
+carries a sample dataset, so a source going down is a fallback there, not a
+degraded state.
+
+**`tools/`** is not a suite — it is six scripts that print what actually
 renders, because the bugs that survive longest are the ones nothing asserts.
 `audit-entities.mjs` walks every kind and dumps its columns, facets, headline,
 stats and About line. `audit-filters.mjs` turns every chip on in turn and
 reports how much it leaves, which is how five filters that could only ever match
 everything were found. `audit-artifact.mjs` serves the built artifact with every
 host blocked. `audit-charts.mjs` opens every chart at every range and holds each
-headline to its row and each series to its unit. `audit-images.mjs` counts, per
-category, how many rows carry the logo their source sent and how many table
-cells are an em dash — which is how
-four kinds discarding a logo, and a whole column of zeroes printed as missing
-data, were found. What each one surfaced is now an assertion in the suites above —
+headline to its row and each series to its unit. `audit-controls.mjs` walks every
+control against every category and reports the combinations that do nothing.
+`audit-images.mjs` counts, per category, how many rows carry the logo their
+source sent and how many table cells are an em dash — which is how the kinds
+discarding a logo, and a whole column of zeroes printed as missing data, were
+found. What each one surfaced is now an assertion in the suites above —
 including the one that holds every sheet's headline to the row it came from,
 since the chart rewrites that headline with its own last point and a loader
 keyed on the wrong entity would otherwise show one thing's price under another

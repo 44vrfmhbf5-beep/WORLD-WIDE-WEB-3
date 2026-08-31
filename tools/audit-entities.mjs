@@ -9,7 +9,7 @@ const c = await b.newContext({ viewport: { width: 1440, height: 1000 } });
 const p = await c.newPage();
 const errs = [];
 p.on('pageerror', e => errs.push(`PAGEERROR ${e.message}`));
-await p.goto('http://127.0.0.1:8899/', { waitUntil: 'domcontentloaded' });
+await p.goto('http://127.0.0.1:8899/?tab=assets', { waitUntil: 'domcontentloaded' });
 await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
 await p.waitForTimeout(2500);
 
@@ -32,7 +32,7 @@ for (const t of TABS) {
   if (!info.head.length) console.log('  first :', info.first);
 
   if (info.n && t !== 'saved') {
-    await p.click('#results .row:not(.sk)'); await p.waitForTimeout(1800);
+    await p.locator('#results .row:not(.sk)').first().evaluate(el => el.click()); await p.waitForTimeout(1800);
     const sheet = await p.evaluate(() => {
       const s = document.querySelector('.sheet-in'); if (!s) return null;
       return { kind: s.dataset.kind,

@@ -13,7 +13,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const D = path.join(HERE, 'shots') + path.sep;
 const PORT = 8899;
 const PAGE = process.env.PAGE || 'index.html';
+/* A single-file build carries the app but not the 900KB wallet SDK, and inlines
+   the modules a served build fetches — so anything that swaps one out is a
+   check on the served app, not on this one. */
+const SOLO = PAGE !== 'index.html';
 const U = `http://localhost:${PORT}/${PAGE}`;
+/* All, with nothing typed, is the category home now — a grid of tiles, no
+   rows. Anything here that wants the mixed list has to ask for it, which is
+   what a person does too. */
+const UROWS = U + '?tab=assets';
 fs.mkdirSync(D, { recursive: true });
 
 let srv;
@@ -31,6 +39,10 @@ await serve('ok');
 const b = await chromium.launch();
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fail++; };
+/** Clicks past the sticky search bar, which overlays what scrolls under it.
+    A forced click still lands at the element's coordinates, so the bar would
+    receive it; dispatching on the element itself does not have that problem. */
+const clickRow = (pg, sel = '.row') => pg.locator(sel).first().evaluate(el => el.click());
 const page = async () => {
   const p = await b.newPage({ viewport: { width: 1200, height: 900 }, deviceScaleFactor: 2 });
   p.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
@@ -41,17 +53,32 @@ console.log('\n# load + render');
 let p = await page();
 let logoReqs = 0;
 p.on('request', r => { if (r.url().includes('assets.coingecko.com')) logoReqs++; });
-await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
-ok(await p.locator('.row:not(.sk)').count() > 10, 'rows render from live shapes');
-// phase two (protocols, networks) lands after first paint
-await p.waitForSelector('.row[data-id^="f:"]', { timeout: 25000 }).catch(() => {});
-const groups = (await p.locator('.gtitle').allTextContents());
-// pinned on purpose: group order comes from the KIND table, so a reorder should
-// be a deliberate edit here rather than something that slips through
-const want = 'Assets,Tokenized stocks,Lending markets,Yield,Protocols,NFT collections,DEX pairs,Stablecoins,Bridges,Funding rounds,Exploits,Networks';
-ok(groups.join() === want, `every kind grouped, once each, in table order (${groups.length}) — got ${groups.join()}`);
-ok(new Set(groups).size === groups.length, 'no group heading repeats');
+/* All, with nothing typed, is a way in rather than a sample of everything: one
+   tile per category, in the order the KIND table declares. Pinned on purpose —
+   a reorder should be a deliberate edit here rather than something that slips
+   through. */
+await p.goto(U); await p.waitForSelector('#results .tile', { timeout: 20000 });
+await p.waitForTimeout(2500);
+const tiles = await p.locator('#results .tile .tl').allTextContents();
+const want = 'Assets,Tokenized stocks,DEX pairs,NFT collections,Lending markets,Yield,Protocols,Stablecoins,Bridges,Networks,Funding rounds,Exploits,Saved';
+ok(tiles.join() === want, `every category is a tile, in rail order (${tiles.length}) — got ${tiles.join()}`);
+ok(new Set(tiles).size === tiles.length, 'no category listed twice');
+ok(await p.locator('#results .row').count() === 0, 'and nothing is listed before it is asked for');
 ok(/updated/.test(await p.locator('#meta').textContent()), 'freshness shown');
+
+// a tile is the way in, and the category it opens is the one it named
+await p.locator('#results .tile').first().click(); await p.waitForTimeout(900);
+ok(await p.locator('#tabs .tab[aria-selected=true]').getAttribute('data-tab') === 'assets',
+  'clicking a tile opens that category');
+ok(await p.locator('#results .row:not(.sk)').count() > 5, 'which has rows in it');
+
+// the grouped, mixed list is what a search across kinds produces
+await p.click('[data-tab=all]'); await p.waitForTimeout(700);
+await p.fill('#q', 'usdc'); await p.waitForTimeout(1600);
+const groups = await p.locator('.gtitle').allTextContents();
+ok(groups.length >= 2, `a search across kinds groups them (${groups.join(', ')})`);
+ok(new Set(groups).size === groups.length, 'no group heading repeats');
+await p.fill('#q', ''); await p.waitForTimeout(600);
 ok(logoReqs > 0, 'logo URLs from the API are requested');
 
 console.log('\n# XSS: hostile token name from the API must not execute');
@@ -77,8 +104,10 @@ ok((await p.locator('.row .t2').allTextContents()).every(t => t.includes('Solana
 ok(new URL(p.url()).searchParams.get('chain') === 'sol', 'filter state in the URL');
 
 console.log('\n# detail sheet + live chart');
-await p.click('[data-tab=all]'); await p.click('[data-chain=""]'); await p.waitForSelector('.row:not(.sk)');
-await p.fill('#q', 'ethereum'); await p.waitForTimeout(400); await p.locator('.row').first().click();
+await p.click('[data-tab=all]'); await p.click('[data-chain=""]'); await p.waitForTimeout(500);
+// All shows the categories until something is asked of it
+await p.fill('#q', 'ethereum'); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
+await p.waitForTimeout(500); await clickRow(p);
 await p.waitForSelector('.sheet.open .chart svg path', { timeout: 10000 });
 ok(true, 'asset chart loaded from API');
 ok(p.url().includes('#a/'), 'sheet is addressable');
@@ -95,7 +124,9 @@ await p.goBack(); await p.waitForTimeout(500);
 ok(!(await p.locator('.sheet').getAttribute('class')).includes('open'), 'browser back closes the sheet');
 
 console.log('\n# fluidity: rows are reused, not rebuilt');
-await p.fill('#q', ''); await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+// a list to be fluid about: All with nothing typed is the category home, so
+// this needs a query to have rows at all
+await p.click('[data-tab=all]'); await p.fill('#q', 'usdc'); await p.waitForTimeout(1200);
 // tag the live nodes, then drive the UI and see which survive
 const tag = () => p.evaluate(() => [...document.querySelectorAll('.row')].forEach((n, i) => n.__k = 'k' + i));
 const survivors = () => p.evaluate(() => [...document.querySelectorAll('.row')].filter(n => n.__k).length);
@@ -110,9 +141,9 @@ ok(await p.evaluate(() => {
 // The invariant is not "most rows survive" — a refined query may return a
 // disjoint set. It is that every row carried over reuses its existing node.
 const idsOf = () => p.evaluate(() => [...document.querySelectorAll('.row')].map(n => n.dataset.id));
-await p.fill('#q', 'kamino'); await p.waitForTimeout(900);
+await p.fill('#q', 'kamino'); await p.waitForTimeout(1100);
 const before = await idsOf(); await tag();
-await p.fill('#q', 'kamin'); await p.waitForTimeout(350);
+await p.fill('#q', 'kamin'); await p.waitForTimeout(500);
 const shared = (await idsOf()).filter(x => before.includes(x)).length;
 const kept = await survivors();
 ok(shared > 3 && kept === shared, `carried-over rows reuse their nodes (${kept}/${shared})`);
@@ -120,8 +151,8 @@ ok(await p.evaluate(() => [...document.querySelectorAll('.row')]
   .every(n => !n.__k || !n.classList.contains('in'))), 'surviving rows do not replay their entry animation');
 
 console.log('\n# keyboard reaches the sheet controls');
-await p.fill('#q', 'ethereum'); await p.waitForTimeout(400);
-await p.locator('.row').first().click(); await p.waitForSelector('.chart svg path', { timeout: 10000 });
+await p.fill('#q', 'ethereum'); await p.waitForTimeout(700);
+await clickRow(p); await p.waitForSelector('.chart svg path', { timeout: 10000 });
 ok(await p.evaluate(() => document.querySelector('#scrim').classList.contains('on')), 'scrim fades in via class, not display');
 await p.locator('[data-days="30"]').focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(700);
 ok(await p.evaluate(() => document.querySelector('[data-days="30"]').classList.contains('on')), 'Enter activates a chart range');
@@ -129,14 +160,16 @@ await p.keyboard.press('Escape'); await p.waitForTimeout(500);
 ok(await p.evaluate(() => !document.querySelector('#scrim').classList.contains('on')), 'Escape clears the scrim');
 
 console.log('\n# watchlist persists');
-await p.fill('#q', 'solana'); await p.waitForTimeout(400);
-await p.locator('.row').first().hover(); await p.locator('.row .star').first().click();
-await p.click('[data-tab=saved]'); await p.waitForTimeout(300);
+await p.click('[data-tab=all]'); await p.fill('#q', 'solana'); await p.waitForTimeout(1100);
+await clickRow(p, '.row .star');
+await p.fill('#q', ''); await p.waitForTimeout(400);
+await p.click('[data-tab=saved]'); await p.waitForTimeout(600);
 ok(await p.locator('.row').count() === 1, 'saved item listed');
-await p.reload(); await p.waitForSelector('.row:not(.sk)', { timeout: 15000 });
+await p.reload(); await p.waitForSelector('.row:not(.sk), #results .tile', { timeout: 15000 });
+await p.waitForTimeout(600);
 ok(await p.locator('[data-tab=saved]').getAttribute('aria-selected') === 'true', 'tab restored from URL');
 ok(await p.locator('.row').count() === 1, 'watchlist survives reload');
-await p.locator('.row .star').first().click(); await p.waitForTimeout(200);
+await clickRow(p, '.row .star'); await p.waitForTimeout(300);
 ok(await p.locator('.empty').count() === 1, 'unstar empties the list');
 await p.close();
 
@@ -152,7 +185,7 @@ console.log('\n# survives blocked storage (file://, Safari private, blocked site
   });
   const s = await ctx.newPage();
   const boom = []; s.on('pageerror', e => boom.push('' + e));
-  await s.goto(U);
+  await s.goto(UROWS);
   await s.waitForSelector('.row:not(.sk)', { timeout: 15000 }).catch(() => {});
   ok(await s.locator('.row:not(.sk)').count() > 5, 'app boots when localStorage throws');
   await s.fill('#q', 'usdc'); await s.waitForTimeout(400);
@@ -173,7 +206,7 @@ console.log('\n# boots even when the font host hangs');
   await ctx.route('https://fonts.googleapis.com/**', () => {});
   const s = await ctx.newPage();
   const t = Date.now();
-  await s.goto(U, { waitUntil: 'commit' });
+  await s.goto(UROWS, { waitUntil: 'commit' });
   await s.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
   const ms = Date.now() - t;
   ok(await s.locator('.row:not(.sk)').count() > 5, `app boots with the font host hanging (${ms}ms)`);
@@ -191,7 +224,7 @@ console.log('\n# a wallet, and the promise that nobody pays for one unasked');
   const q = await page();
   const fetched = [];
   q.on('request', r => /privy|config\.js|wallet\.js|trade\.js/.test(r.url()) && fetched.push(r.url()));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(1200);
   await q.fill('#q', 'bitcoin'); await q.waitForTimeout(900);
@@ -201,9 +234,14 @@ console.log('\n# a wallet, and the promise that nobody pays for one unasked');
     `searching and opening a sheet never fetches the SDK (${fetched.length} wallet-ish requests)`);
   ok(await q.locator('#connect').count() === 1, 'the way in is one control in the header');
 
-  // an app id is configured, so Connect offers the sign-in it can actually do
+  /* An app id is configured, so Connect offers the sign-in it can actually do —
+     except in a single-file build, where the SDK is the one thing that cannot
+     be inlined and the sheet says so instead of failing on an import. */
   await q.click('#connect'); await q.waitForTimeout(2500);
-  ok(await q.locator('#wemail').count() === 1, 'with an app id it offers to sign in');
+  ok(SOLO
+    ? /no wallet/i.test(await q.locator('.sheet-in').textContent())
+    : await q.locator('#wemail').count() === 1,
+    SOLO ? 'a single-file build says the wallet is not in it' : 'with an app id it offers to sign in');
   await q.keyboard.press('Escape'); await q.waitForTimeout(400);
   ok(await q.locator('#results .row').count() > 0, 'and the app behind it is untouched');
   await q.close();
@@ -224,13 +262,16 @@ console.log('\n# the app id is not a plaintext string in the repository');
   const ctx = await b.newContext();
   const q = await ctx.newPage();
   await ctx.addInitScript(() => { window.ATLAS_CONFIG = { privyAppId: 'from-the-deploy-step' }; });
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   const injected = await q.evaluate(async () => (await import('./config.js')).config.privyAppId);
   ok(injected === 'from-the-deploy-step', `a deploy step can override it (${injected})`);
   await ctx.close();
 }
 
+/* Both sections below replace config.js over the wire, which a build that has
+   already inlined it never asks for. They belong to the served app. */
+if (!SOLO) {
 console.log('\n# with no credentials at all, it says so rather than showing a dead end');
 {
   const ctx = await b.newContext();
@@ -238,7 +279,7 @@ console.log('\n# with no credentials at all, it says so rather than showing a de
   await ctx.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript',
     body: `export const config = { privyAppId: '', venues: {}, moonpay: {}, crossmint: {} };
            export const walletReady = () => false;` }));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(1200);
   await q.click('#connect'); await q.waitForTimeout(2500);
@@ -261,7 +302,7 @@ console.log('\n# with an app id, the vendored SDK is real');
                  opensea: { apiKey: '' }, hyperliquid: { read: true, trade: false } },
        solanaRpc: 'https://api.mainnet-beta.solana.com' };
      export const walletReady = () => !!config.privyAppId;` }));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(1200);
   await q.click('#connect'); await q.waitForTimeout(2500);
@@ -296,10 +337,12 @@ console.log('\n# with an app id, the vendored SDK is real');
   await ctx.close();
 }
 
+}   // !SOLO
+
 console.log('\n# a sheet offers the venue, and the wallet if there is one');
 {
   const q = await page();
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(1200);
   await q.click('[data-tab=dex]'); await q.waitForTimeout(900);
@@ -333,18 +376,20 @@ console.log('\n# the published artifact, with no network at all');
   await ctx.route('**', r => r.request().url().startsWith('http://localhost:8903')
     ? r.continue() : r.abort('failed'));
   await q.goto('http://localhost:8903/', { waitUntil: 'domcontentloaded' });
-  await q.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
+  // All is the category home now, so the landing screen is tiles
+  await q.waitForSelector('#results .tile', { timeout: 25000 });
   await q.waitForTimeout(2200);
+  ok(await q.locator('#results .tile').count() >= 12, 'the offline build lands on its categories');
 
   const tabs = await q.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
   const empty = [], mismatch = [];
   for (const t of tabs) {
-    if (t === 'saved') continue;
+    if (t === 'saved' || t === 'all') continue;
     await q.click(`[data-tab="${t}"]`); await q.waitForTimeout(600);
     if (!await q.locator('#results .row:not(.sk)').count()) { empty.push(t); continue; }
     const row = (await q.locator('#results .row:not(.sk)').first()
       .locator('.n1, .cell').first().textContent()).trim();
-    await q.locator('#results .row:not(.sk)').first().click();
+    await clickRow(q, '#results .row:not(.sk)');
     await q.waitForTimeout(1200);
     const big = (await q.locator('.sheet-in .big').textContent()).trim();
     // the chart rewrites the headline with its last point, so a series that does
@@ -357,7 +402,7 @@ console.log('\n# the published artifact, with no network at all');
   /* A dynamic import in a single-file build has nothing to fetch. Two modules
      have no reason to be separate, so the bundler inlines them; the reader was
      silently dead in every published build until it did. */
-  await q.click('[data-tab=all]'); await q.waitForTimeout(500);
+  await q.click('[data-tab=all]'); await q.waitForTimeout(600);
   await q.fill('#q', 'meme coins on solana up 5% in the past 24 hours');
   await q.waitForTimeout(2400);
   const chips = (await q.locator('#facetbar').textContent()).replace(/\s+/g, ' ').trim();
@@ -381,16 +426,24 @@ console.log('\n# the published artifact, with no network at all');
 }
 
 console.log('\n# degraded modes');
+/* The artifact build carries a sample dataset, so a source being down is not a
+   degraded state there — it falls back and still lists rows, which the
+   no-network section above already holds it to. */
+const BUNDLED = PAGE === 'artifact.html';
 for (const [mode, label, check] of [
   ['partial', 'lending source down -> warn banner, assets still usable',
-    async q => await q.locator('.warn').count() === 1 && await q.locator('.row:not(.sk)').count() > 0],
+    async q => BUNDLED
+      ? await q.locator('.row:not(.sk)').count() > 0
+      : await q.locator('.warn').count() === 1 && await q.locator('.row:not(.sk)').count() > 0],
   ['down', 'both sources down -> error state with retry',
-    async q => await q.locator('.empty [data-retry]').count() === 1],
+    async q => BUNDLED
+      ? await q.locator('.row:not(.sk)').count() > 0
+      : await q.locator('.empty [data-retry]').count() === 1],
   ['429', 'rate limited -> recovers on retry',
     async q => await q.locator('.row:not(.sk)').count() > 0],
 ]) {
   await serve(mode);
-  const q = await page(); await q.goto(U); await q.waitForTimeout(mode === '429' ? 9000 : 6000);
+  const q = await page(); await q.goto(UROWS); await q.waitForTimeout(mode === '429' ? 9000 : 6000);
   ok(await check(q), label);
   await q.screenshot({ path: D + `${mode}.png` });
   await q.close();

@@ -72,7 +72,7 @@ body.searching .hero h1,body.browsing .hero h1{font-size:0;opacity:0;margin:0;tr
 body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6px)}
 
 /* search */
-.searchbar{position:sticky;top:64px;z-index:15;display:flex;align-items:center;gap:12px;
+.searchbar{position:sticky;top:64px;z-index:15;margin-top:16px;display:flex;align-items:center;gap:12px;
   padding:0 16px;height:58px;border-radius:var(--r-lg);
   background:var(--surface);border:1px solid var(--line2);
   box-shadow:0 12px 40px -14px rgba(0,0,0,.8);
@@ -108,6 +108,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* results */
 .results{display:flex;flex-direction:column;gap:8px}
+/* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
+.results .row,.results .tile{scroll-margin-top:132px}
+.wrap>#banner{margin-top:14px}
 .row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
   background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
   transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
@@ -175,7 +178,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .chgline .mute{color:var(--faint);font-weight:500}
 .chart{margin:20px 0 4px;border-radius:var(--r);overflow:hidden;background:var(--surface);
   border:1px solid var(--line);padding:14px 0 0}
-.chart svg{display:block;width:100%;height:110px}
+.chart svg{display:block;width:100%;height:auto}
 .rangebar{display:flex;gap:4px;padding:8px 12px 10px}
 .rangebar span{padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--faint)}
 .rangebar span.on{background:var(--surface2);color:var(--text)}
@@ -236,6 +239,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .tok{position:relative;overflow:visible}
 .tok img{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;
   opacity:0;transition:opacity .25s var(--ease)}
+/* A logo with transparency let the initials underneath show through it, which
+   read as two things stacked. Once an image loads it is the whole tile. */
+.tok.img{color:transparent;background:var(--surface2)}
 .tok .badge{z-index:1}
 .ghost-btn.icon{padding:7px}
 .ghost-btn.icon .i{width:16px;height:16px}
@@ -339,6 +345,25 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.trade .qmeta{margin-top:4px;font-size:11.5px;color:var(--faint)}
 .sec.trade .cta{margin-top:0}
 
+/* All, with nothing typed: the categories themselves, not a sample of each */
+.results.home{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.tile{display:block;text-align:left;padding:16px 17px 15px;border-radius:16px;
+  background:var(--surface);border:1px solid var(--line);transition:.16s var(--ease)}
+.tile:hover{background:var(--surface2);border-color:var(--accent-dim);transform:translateY(-2px)}
+.tile .tl{font-size:14px;font-weight:600;color:var(--text)}
+.tile .tn{margin-top:9px;font-size:22px;font-weight:600;color:var(--accent-dim);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile .tw{margin-top:3px;font-size:12px;color:var(--faint)}
+.pickgrid .chip.cat{justify-content:space-between}
+.pickgrid .chip.cat .ct{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.pickgrid .chip.cat.on{background:color-mix(in srgb,var(--accent) 16%,var(--surface2));
+  border-color:var(--accent-dim);color:var(--text)}
+.catbtn{display:flex;align-items:center;gap:7px;padding:9px 13px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line2);color:var(--text);
+  font-size:13px;font-weight:600;white-space:nowrap}
+.catbtn:hover{background:var(--surface2)}
+.catbtn .ch{width:14px;height:14px;opacity:.6;margin-left:-2px}
+
 /* a category holds far more than a screen; this is the way to the rest of it */
 .more{display:block;width:100%;margin-top:10px;padding:13px;border-radius:14px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim);
@@ -372,17 +397,18 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @keyframes blink{50%{opacity:.4}}
 
 /* ---- interactive chart ---- */
-.chart-svg{position:relative;height:136px;outline-offset:-2px}
+.chart-svg{position:relative;outline-offset:-2px;padding-bottom:17px}
 .chart-svg svg{display:block;width:100%;height:120px;touch-action:none}
 /* the high/low envelope behind the close line, and a hairline at the range's
    opening value so the move is visible against something */
 .chart-svg .band{opacity:0;animation:fadein .5s .35s var(--ease) forwards}
-/* period high and low: where, not just how much */
-.pin{position:absolute;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2.5px var(--bg);opacity:0;animation:fadein .4s .6s var(--ease) forwards;
-  pointer-events:none}
-.pin.tr{opacity:0;animation:fadedim .4s .6s var(--ease) forwards}
-@keyframes fadedim{to{opacity:.5}}
+/* period high and low: where, not just how much. Circles in the svg now that
+   it is drawn 1:1 — as positioned elements they were measuring the host box
+   while the geometry was computed against the plot, and sat off the line. */
+.chart svg .pin{stroke:var(--bg);stroke-width:2.5;opacity:0;
+  animation:fadein .4s .6s var(--ease) forwards}
+.chart svg .pin.tr{opacity:0;animation:fadedim .4s .6s var(--ease) forwards}
+@keyframes fadedim{to{opacity:.55}}
 .chart-svg .base{stroke:var(--line2);stroke-width:1}
 .chart-svg .vol rect{transform-box:fill-box;transform-origin:bottom;
   animation:rise .5s var(--ease) both}
@@ -397,7 +423,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .ax.t0{bottom:1px;left:8px}
 .ax.t1{bottom:1px;right:8px}
 /* out of the bars' way: the panel is labelled above them, not across them */
-.ax.vk{top:84px;left:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
+.ax.vk{top:100px;right:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
   padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--bg) 76%,transparent)}
 .chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
@@ -420,11 +446,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .chart-svg .vol rect{animation:none}}
 
 
-/* ---- layout: DefiLlama's rail and density, Aave's calm ----
-   A persistent category rail down the left and an aggregate bar across the top
-   are what make DefiLlama scannable. The row rhythm, the size of the primary
-   number and the amount of air around it are Aave's. Both are on screen at
-   once, and the density toggle slides between them. */
+/* ---- layout: DefiLlama's rail, Aave's calm ----
+   A persistent category rail down the left is what makes DefiLlama scannable.
+   The row rhythm, the size of the primary number and the amount of air around
+   it are Aave's. Both are on screen at once. */
 .app{display:grid;grid-template-columns:212px minmax(0,1fr);align-items:start;gap:0}
 .app>*{min-width:0}
 
@@ -456,14 +481,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railchains .chip[aria-pressed=true]{background:color-mix(in srgb,var(--c) 15%,var(--surface2));color:var(--text)}
 
 /* aggregate bar — the numbers DefiLlama leads with, from data already loaded */
-.statbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin:6px 0 2px}
-.statbar .s{padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--line)}
-.statbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
-.statbar .sv{margin-top:4px;font-size:17px;font-weight:700;letter-spacing:-.025em;
-  font-variant-numeric:tabular-nums}
-.statbar:empty{display:none}
 
-/* results header: count on the left, the two view controls on the right */
+/* results header: what is on screen, and the one control that changes its shape */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .bar .meta{padding:14px 2px 10px}
 .viewtools{display:flex;gap:6px;flex:none}
@@ -472,17 +491,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
 .vt:hover{color:var(--text);border-color:var(--line2)}
 .vt .i{width:15px;height:15px}
-/* the only control here with an on/off meaning, so it is the only one that lights up */
-.vt.sf[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--up) 45%,transparent);
-  background:color-mix(in srgb,var(--up) 12%,var(--surface))}
-.vt.sf[aria-pressed=true] .i{color:var(--up)}
-/* a different accent from the junk filter: two switches, two meanings */
-.vt.st[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--accent) 50%,transparent);
-  background:color-mix(in srgb,var(--accent) 13%,var(--surface))}
-.vt.st[aria-pressed=true] .i{color:var(--accent)}
 
-/* "N hidden" in the results line, one tap to undo — never filter silently, so
-   the count sits outside the part that ellipsises when the line runs short */
+/* the results line: it truncates from the middle of its own sentence, never
+   from a figure that some other element is counting on being visible */
 .meta{display:flex;align-items:baseline;gap:8px;min-width:0}
 .mtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .link{flex:none;color:var(--dim);font:inherit;text-decoration:underline;text-underline-offset:2px;
@@ -535,7 +546,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .wrap{display:flex;flex-direction:column;padding:0 14px}
   .searchbar{order:1;top:54px}
   #banner{order:2}
-  #statbar{order:3}
   .bar{order:4}
   #refine{order:5}
   #results{order:6}
@@ -544,12 +554,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .top{padding:11px 14px}
   .railnav .tab{padding:8px 13px;font-size:13px}
   /* stacked label-over-value costs 68px of the first screen; inline costs 34 */
-  .statbar{margin:8px 0 0}
-  .statbar .s{display:flex;align-items:baseline;gap:7px;padding:7px 11px;min-width:0}
-  .statbar .sk{font-size:9.5px}
-  .statbar .sv{font-size:13.5px;margin:0}
 
-  /* results line and density control share one row instead of wrapping */
+  /* results line and view control share one row instead of wrapping */
   .bar{flex-wrap:nowrap;gap:10px;align-items:center}
   .bar .meta{padding:10px 2px;flex:1;min-width:0}
   .kbd-hint{display:none}
@@ -561,13 +567,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   /* filter and sort are the same question on a phone — how do I narrow this —
      and two stacked strips cost a row of the first screen that the results need.
      One scroller carries both, chips wrapping onto no lines at all. */
-  .refine{display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none;
+  /* stacked, not side by side: two questions, one per line */
+  .refine{display:block}
+  .refine>*{overflow-x:auto;scrollbar-width:none;
     -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .refine::-webkit-scrollbar{display:none}
-  .refine>*{flex:none}
-  /* the padding lives on the strips, so a category with neither takes no row */
-  .facetbar:not(:empty),.sortbar:not(:empty){flex-wrap:nowrap;overflow:visible;padding:0 0 9px;
-    -webkit-mask-image:none}
+  .refine>*::-webkit-scrollbar{display:none}
   .facetbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
@@ -593,10 +597,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .pickgrid .chip{width:100%;justify-content:flex-start;padding:11px 12px;border-radius:12px}
   /* one scrolling strip, not three stacked rows eating the first screen */
-  .statbar{display:flex;overflow-x:auto;scrollbar-width:none;margin:10px 0 2px;
-    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .statbar::-webkit-scrollbar{display:none}
-  .statbar .s{flex:none;min-width:132px}
   .thead{display:none}
 }
 
@@ -649,14 +649,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .grab{display:none}
 
 @media (max-width:900px){
-  .sortbar:not(:empty){display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
-    padding:0 0 10px;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .sortbar::-webkit-scrollbar{display:none}
-  /* the table toggle cannot do anything at this width — do not offer it, and
-     the density label can go: the filter is the control worth naming here */
+  /* Stacked, one strip per question — so each strip has to stay one line. A
+     wrapped filter row cost the first screen two rows of results; sideways is
+     free here, because the strip is already a scroller. */
+  .facetbar:not(:empty),.sortbar:not(:empty){display:flex;gap:6px;flex-wrap:nowrap;
+    overflow-x:auto;padding:0 0 9px;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .facetbar::-webkit-scrollbar,.sortbar::-webkit-scrollbar{display:none}
+  /* the table toggle cannot do anything at this width — do not offer it */
   #view{display:none}
-  #density span{display:none}
-  #density{padding:9px 10px}
   .bar{gap:8px}
   .bar .meta{padding:12px 2px 8px}
 

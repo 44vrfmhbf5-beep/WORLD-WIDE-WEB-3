@@ -30,6 +30,7 @@ const BINANCE = 'https://api.binance.com/api/v3';
 const NFT = 'https://nft.llama.fi';
 const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
+const WIKI = 'https://en.wikipedia.org/api/rest_v1/page/summary';
 /* GeckoTerminal versions its public API through the Accept header and is
    entitled to refuse a request that does not name a version. Sending it costs
    nothing and is what the docs ask for; without it the browser reports a bare
@@ -182,7 +183,54 @@ async function get(url, opts) {
   }
 }
 
-async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- one host at a time ----------
+   CoinGecko's free tier is a handful of calls a minute, and Atlas can ask it for
+   the market list, two equity categories, a description and a price history in
+   the same second — then get 429s for the next minute and look broken. Retrying
+   into a rate limit makes it worse.
+
+   A small queue per host: at most two requests in flight and a floor on the gap
+   between them. It costs a few hundred milliseconds on a cold load and removes
+   the failure entirely. Hosts that do not need it are not slowed: the gap is
+   per host and defaults to nothing. */
+const GAP = { 'api.coingecko.com': 1200, 'api.geckoterminal.com': 400, 'api.coinpaprika.com': 300 };
+const lanes = new Map();
+function lane(host) {
+  if (!lanes.has(host)) lanes.set(host, { last: 0, q: [], busy: false });
+  return lanes.get(host);
+}
+function pump(host) {
+  const l = lane(host);
+  if (l.busy || !l.q.length) return;
+  l.busy = true;
+  const job = l.q.shift();
+  setTimeout(() => {
+    l.last = Date.now();
+    // one slow or failed request must not stall everything behind it
+    Promise.resolve().then(job.run).then(job.res, job.rej)
+      .finally(() => { l.busy = false; pump(host); });
+  }, Math.max(0, GAP[host] - (Date.now() - l.last)));
+}
+/* Someone typing is waiting on the answer; an index warming itself up is not.
+   Urgent work goes to the front of the lane, so a search never sits behind a
+   dozen background requests nobody asked for. */
+function queued(host, run, urgent) {
+  if (!GAP[host]) return run();
+  const l = lane(host);
+  return new Promise((res, rej) => {
+    const job = { run, res, rej };
+    if (urgent) l.q.unshift(job); else l.q.push(job);
+    pump(host);
+  });
+}
+
+async function fetchJson(url, opts) {
+  return queued(hostOf(url), () => fetchOnce(url, opts), opts?.urgent);
+}
+
+async function fetchOnce(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
   // one source speaks GraphQL; everything else is a plain GET
   const init = post
     ? { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(post) }
@@ -206,7 +254,6 @@ async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers
     return r.json();
   }
 }
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* Session cache, two tiers. sessionStorage survives a reload but silently
    refuses anything over its quota — the pool payload alone is ~10MB — so a
@@ -352,8 +399,11 @@ export function loadAssets() {
    row honest: a share tokenized by Robinhood and one tokenized by Backed are
    different instruments with different redemption, and the sheet should say
    which one it is holding rather than calling both "tokenized". */
+/* Each slug is a separate request against a rate-limited host, so the list is
+   the ones most likely to exist rather than every name an issuer might use. A
+   slug that has been retired returns nothing and costs one request. */
 const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem', 'tokenized-equity',
-  'stock-tokens', 'ondo-ecosystem', 'dinari-ecosystem', 'robinhood-chain-ecosystem'];
+  'robinhood-chain-ecosystem', 'coinbase-tokenized-equities'];
 
 const ISSUERS = [
   [/backed|xstock/i, 'Backed'],
@@ -465,8 +515,8 @@ export function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
-      .catch(() => null);
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`,
+      { tries: 1, headers: GT_ACCEPT, urgent: true }).catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
       .map(p => ({ ...p, chain: chainId })).slice(0, 40);
@@ -839,16 +889,38 @@ export function loadStables() {
   });
 }
 
+/* DeFiLlama hands bridges, funding rounds and exploits no logo of their own,
+   so three categories rendered as coloured initials. Most of them are
+   protocols it already has an icon for, and the protocol index is cached by
+   the time these load — one lookup by slug is the whole cost. */
+async function protoIcons() {
+  const rows = await loadProtocols().catch(() => []);
+  const m = new Map();
+  for (const r of rows) if (r.img) { m.set(r.slug, r.img); m.set(slugOf(r.name), r.img); }
+  return m;
+}
+/* A bridge names its icon the way DeFiLlama writes it internally —
+   "protocol:across" or "chain:ethereum" — rather than as a URL. */
+const llamaIcon = (icon, byName) => {
+  const [kind, slug] = String(icon || '').split(':');
+  if (!slug) return byName || null;
+  return kind === 'chain'
+    ? `https://icons.llama.fi/chains/rsz_${encodeURIComponent(slug.toLowerCase())}.jpg`
+    : `https://icons.llama.fi/${encodeURIComponent(slug.toLowerCase())}.png`;
+};
+
 /** Cross-chain bridges, by recent volume. */
 export function loadBridges() {
   return cache('bridges', TTL, async () => {
-    const j = await get(`${BRIDGES}/bridges?includeChains=true`).catch(() => null);
+    const [j, icons] = await Promise.all([
+      get(`${BRIDGES}/bridges?includeChains=true`).catch(() => null), protoIcons()]);
     return (j?.bridges || [])
       .map(b => {
         const chains = (b.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         const name = b.displayName || b.name || '?';
         return {
           kind: 'bridge', id: `b:${b.id ?? slugOf(name)}`, name, bid: b.id ?? '',
+          img: safeUrl(llamaIcon(b.icon, icons.get(slugOf(name)))) || null,
           vol24: num(b.lastDailyVolume ?? b.volumePrevDay), volPrev: num(b.volumePrev2Day),
           chains, chain: chains[0] || null, color: colorOf(name),
           key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
@@ -863,7 +935,8 @@ export function loadBridges() {
 /** Funding rounds. */
 export function loadRaises() {
   return cache('raises', TTL, async () => {
-    const j = await get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null);
+    const [j, icons] = await Promise.all([
+      get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null), protoIcons()]);
     return (j?.raises || [])
       .filter(r => r.name)
       .map(r => {
@@ -871,6 +944,7 @@ export function loadRaises() {
         const chains = (r.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         return {
           kind: 'raise', id: `f:${slugOf(r.name)}-${r.date}`, name: r.name,
+          img: icons.get(slugOf(r.name)) || null,
           amount: num(r.amount) * 1e6, round: r.round || '', date: num(r.date) * 1000,
           sector: r.sector || r.category || '', investors,
           // amount comes in millions, valuation in whole dollars — accept either
@@ -887,7 +961,8 @@ export function loadRaises() {
 /** Exploits and hacks. */
 export function loadHacks() {
   return cache('hacks', TTL, async () => {
-    const rows = await get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null);
+    const [rows, icons] = await Promise.all([
+      get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null), protoIcons()]);
     return (Array.isArray(rows) ? rows : [])
       .filter(h => h.name)
       .map(h => {
@@ -895,6 +970,7 @@ export function loadHacks() {
         const chains = list.map(c => BY_LLAMA[c]).filter(Boolean);
         return {
           kind: 'hack', id: `h:${slugOf(h.name)}-${h.date}`, name: h.name,
+          img: icons.get(slugOf(h.name)) || null,
           amount: num(h.amount), date: num(h.date) * 1000,
           technique: h.technique || h.classification || 'Exploit',
           source: safeUrl(h.source), chains, chain: chains[0] || null, color: '#ff6b81',
@@ -1009,7 +1085,7 @@ export function searchPairs(q) {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
       get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
-        { tries: 1, timeout: 12000, headers: GT_ACCEPT }),
+        { tries: 1, timeout: 12000, headers: GT_ACCEPT, urgent: true }),
     ]);
     const errors = [];
     let rows = [];
@@ -1034,10 +1110,28 @@ export function searchPairs(q) {
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 export function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
-      .catch(() => null);
-    const imgs = gtTokens(j);
-    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);
+    /* One page of trending is twenty pools — a sample of the long tail, not the
+       long tail. Three pages, and the top pools by volume alongside them, is
+       what makes the category worth opening. Each is independent: a page that
+       fails costs its own rows and nothing else. */
+    const asks = [1, 2, 3].map(pg =>
+      get(`${GT}/networks/trending_pools?page=${pg}&include=base_token`,
+        { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    asks.push(get(`${GT}/networks/trending_pools?page=1&include=base_token&duration=24h`,
+      { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    /* Trending is global, so it is dominated by whichever chain is busy today
+       and a quiet chain can be absent from the category entirely. The busiest
+       pools on each of the big networks are a different question with a
+       different answer, and asking it is what makes every chain represented. */
+    for (const id of ['eth', 'sol', 'base', 'arb', 'bnb', 'poly'])
+      asks.push(get(`${GT}/networks/${GT_NET[id]}/pools?page=1&include=base_token`,
+        { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    const got = await Promise.all(asks);
+    const lists = got.filter(Boolean).map(j => {
+      const imgs = gtTokens(j);
+      return (j?.data || []).map(r => gtPool(r, imgs));
+    });
+    return mergePairs(lists).slice(0, 300);
   });
 }
 
@@ -1052,6 +1146,15 @@ const SOL_LAMPORTS = 1e9;
 const NFT_UNIT = { eth: 'ETH', base: 'ETH', arb: 'ETH', op: 'ETH', blast: 'ETH', linea: 'ETH',
   scrl: 'ETH', zks: 'ETH', poly: 'POL', bnb: 'BNB', avax: 'AVAX', sol: 'SOL', btc: 'BTC' };
 
+/* DeFiLlama's collection list is the widest one available without a key, and it
+   is also the one most likely to hand back a row with no image and no history.
+   Where it does, the collection is still real — so the gaps are filled from the
+   marketplace that actually holds the collection rather than left blank.
+   OpenSea's endpoints need a key; its CDN does not, and neither does the slug
+   its own URLs use. */
+const osImage = slug => slug
+  ? `https://i.seadn.io/gcs/${encodeURIComponent(slug)}` : null;
+
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
   const floorUsd = num(c.floorPriceUSD ?? c.floorPrice1dUSD);
@@ -1060,7 +1163,8 @@ function llamaNft(c) {
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: safeUrl(c.image || c.logo) || null, chain,
+    img: safeUrl(c.image || c.logo || c.imageUrl || c.logoUrl) || null,
+    slug: c.slug || c.collectionSlug || '', chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
     floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
@@ -1123,6 +1227,23 @@ function osItem(n, slug) {
 }
 
 /** The items actually listed in a collection. Empty is an answer, not a failure. */
+/* A floor history from OpenSea, where DeFiLlama has none. Their stats endpoint
+   needs a key; where one is configured this is the fallback, and where it is
+   not the chart falls back to the reported moves as before. */
+async function openseaFloor(n, key) {
+  if (!key || !n.slug) return null;
+  const j = await get(`https://api.opensea.io/api/v2/collections/${encodeURIComponent(n.slug)}/stats`,
+    { tries: 1, timeout: 15000, headers: { 'x-api-key': key } }).catch(() => null);
+  const iv = j?.intervals || [];
+  const now = num(j?.total?.floor_price);
+  if (!now) return null;
+  // three points from three windows is not a series, but it is a shape
+  const back = w => { const x = iv.find(v => v.interval === w);
+    return x && x.average_price ? now / (1 + num(x.volume_change) / 100) : now; };
+  const pts = [back('thirty_day'), back('seven_day'), now].filter(v => v > 0);
+  return pts.length === 3 ? pts : null;
+}
+
 export function loadNftItems(n, { openseaKey } = {}) {
   if (!n?.cid) return Promise.resolve({ items: [], why: 'no collection id' });
   return cache(`nftitems:${n.id}`, TTL, async () => {
@@ -1173,6 +1294,11 @@ function floorFromMoves(n) {
 }
 
 /** Floor price history for a collection. */
+/* Set once by the app from config, so the data layer does not import config and
+   the two stay independently testable. */
+let nftKey = '';
+export const setOpenseaKey = k => { nftKey = k || ''; };
+
 export function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
     /* DeFiLlama's collection ids and Magic Eden's symbols are different id
@@ -1190,25 +1316,56 @@ export function loadNftChart(n, days) {
     return rows.map(r => Array.isArray(r) ? num(r[1])
       : num(r.floorPriceUSD ?? r.floorPrice ?? r.floor ?? r.price ?? r.v))
       .filter(v => v > 0);
-  }).then(all => {
+  }).then(async all => {
     const s = slice(all, days, n.floorUsd || n.floor);
     if (s.live) return s;
     const moves = floorFromMoves(n);
-    return moves ? { pts: moves, live: true, via: 'its reported 1d and 7d moves' } : s;
+    if (moves) return { pts: moves, live: true, via: 'its reported 1d and 7d moves' };
+    const os = await openseaFloor(n, nftKey).catch(() => null);
+    return os ? { pts: os, live: true, via: 'OpenSea' } : s;
   });
 }
 
 /* An entity's own description, where its source publishes one. Assets and
    stocks come from CoinGecko, protocols from the payload the TVL chart already
    fetches. One request, cached, and only when a sheet is opened. */
+/* The first paragraph, whole. It used to be cut at 420 characters, which lands
+   mid-sentence on most of them and reads as a bug rather than as a summary.
+   Sources write two or three sentences here; a generous cap catches the one
+   that writes an essay, and it cuts at a sentence rather than a word. */
 const firstPara = s => {
   const t = String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!t) return '';
-  const cut = t.slice(0, 420);
-  return (cut.length < t.length ? cut.replace(/\s+\S*$/, '') + '…' : cut);
+  if (!t || t.length <= 900) return t;
+  const cut = t.slice(0, 900);
+  const stop = cut.lastIndexOf('. ');
+  return stop > 300 ? cut.slice(0, stop + 1) : cut.replace(/\s+\S*$/, '') + '\u2026';
 };
 
+/* A tokenized share's CoinGecko page describes the wrapper: who issued it, what
+   it is redeemable for, which chain it sits on. That is on the row already. The
+   thing a reader wants is the company — and Wikipedia's summary endpoint is
+   keyless, CORS-open and exactly one paragraph long, which is the shape this
+   slot wants. The company name is the token's name with the issuer's wrapping
+   taken off: "Tesla xStock" is Tesla. */
+const companyOf = name => String(name || '')
+  .replace(/x ?stock|token[iy]zed|dshare|backed|robinhood|coinbase|kraken|dinari|ondo|swarm|securitize|sologenic/gi, '')
+  .replace(/\b(inc|corp|corporation|co|plc|ltd|sa|nv|ag)\b\.?/gi, '')
+  .replace(/[^\w\s&.-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+function wikiSummary(title) {
+  return cache(`wiki:${title}`, 30 * TTL, async () => {
+    const j = await get(`${WIKI}/${encodeURIComponent(title)}`,
+      { tries: 1, timeout: 12000 }).catch(() => null);
+    // a disambiguation page describes nothing; treat it as no answer
+    return j && j.type === 'standard' ? firstPara(j.extract) : '';
+  });
+}
+
 export function loadAbout(it) {
+  if (it.kind === 'stock') {
+    const name = companyOf(it.name);
+    if (name) return wikiSummary(name).then(t => t || '');
+  }
   const cg = it.cg || (it.kind === 'stock' && it.id.slice(2));
   // a network is described by the page of the token that secures it
   if ((it.kind === 'asset' || it.kind === 'stock' || it.kind === 'chain') && cg) {

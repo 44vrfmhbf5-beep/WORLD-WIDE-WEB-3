@@ -173,7 +173,7 @@ http.createServer(async (req,res)=>{
   }
   if(p==='/dl/protocols') return json(Array.from({length:120},(_,i)=>({
     id:String(i), name:PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i, slug:PROTO_SLUG(i),
-    category:['Lending','Dexes','Liquid Staking','CDP','Yield'][i%5],
+    category:['Lending','Dexes','Liquid Staking','CDP','Yield','RWA'][i%6],
     chains:[CHAINS[i%CHAINS.length],CHAINS[(i+1)%CHAINS.length]],
     tvl:(5e10)/(i+2), change_1d:((i%7)-3)*1.1, change_7d:((i%5)-2)*2.4,
     url:'https://example.invalid/'+i,
@@ -205,11 +205,18 @@ http.createServer(async (req,res)=>{
   if(p==='/dl/overview/options') return json(overview(i=>({total24h:(1.1e7)/(i+1)})));
   if(p==='/bridge/bridges') return json({bridges:Array.from({length:14},(_,i)=>({
     id:i, name:'bridge'+i, displayName:'Bridge '+i, chains:[CHAINS[i%CHAINS.length],CHAINS[(i+2)%CHAINS.length]],
+    // DefiLlama writes a bridge's icon as its own shorthand, not as a URL, and
+    // some carry none at all — both have to render
+    icon: i%4===3 ? undefined : (i%4===2 ? 'chain:Ethereum' : 'protocol:bridge'+i),
     // half of them shrank yesterday, and the tail is well under $10M a day
     lastDailyVolume: i===13 ? 0 : (4e8)/((i+1)**2),
     volumePrev2Day:(4e8)/((i+1)**2)*(i%2?1.3:0.8) }))});
   if(p==='/dl/raises') return json({raises:Array.from({length:40},(_,i)=>({
-    date: Math.floor(Date.now()/1000)-i*86400*24, name:'Venture Co '+i, round:['Seed','Series A','Series B'][i%3],
+    date: Math.floor(Date.now()/1000)-i*86400*24,
+    // every other round is raised by a protocol the index already has an icon
+    // for; the rest are companies it has never heard of
+    name: i%2 ? 'Venture Co '+i : PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i,
+    round:['Seed','Series A','Series B'][i%3],
     // an unpriced round is a row with nothing in it
     amount: i===39 ? 0 : (120)/(i+1), chains:[CHAINS[i%CHAINS.length]], sector:'Infrastructure',
     leadInvestors:['Paradigm'], otherInvestors:['a16z','Polychain'],
@@ -256,6 +263,15 @@ http.createServer(async (req,res)=>{
   if(p==='/me/marketplace/popular_collections') return json(Array.from({length:12},(_,i)=>({
     symbol:'mad_lads'+i, name:['Mad Lads','Claynosaurz','Famous Fox Federation','SMB Gen2','Okay Bears'][i%5]+(i>4?' '+i:''),
     image:'https://img.invalid/me'+i+'.png', floorPrice:(120e9)/(i+1), volumeAll:(9e11)/(i+1) })));
+  /* A tokenized share's About comes from Wikipedia, under the company's name
+     with the issuer's wrapping taken off — so the title that arrives here is
+     the check that the stripping worked. */
+  if(p.startsWith('/wiki/')){
+    const title=decodeURIComponent(p.slice(6));
+    if(/xstock|token/i.test(title)) return json({type:'disambiguation',title});
+    return json({type:'standard',title,
+      extract:`${title} is a company. It designs, makes and sells things, and its shares trade on a public exchange. This paragraph stands in for the one Wikipedia returns.`});
+  }
   if(p.startsWith('/nft/chart/')){
     const m=/0xcol(\d+)$/.exec(p);
     return json(walkTo(p,200,(9e4)/((m?+m[1]:0)+1)).map((v,i)=>({timestamp:i,floorPriceUSD:v})));
@@ -268,12 +284,17 @@ http.createServer(async (req,res)=>{
   if(p==='/bn/klines'){ const n=+(u.searchParams.get('limit')||100);
     return json(walk('bn'+u.searchParams.get('symbol'),n,100).map(v=>[0,0,0,0,String(v),0])); }
   if(/^\/gt\/networks\/[^/]+\/pools$/.test(p)){
-    const rows=[]; for(let i=0;i<10;i++) rows.push({id:'net_p'+i,type:'pool',
-      relationships:{ base_token:{ data:{ id:'ctok'+i, type:'token' } } },
-      attributes:{name:'CHAINTOK'+i+(i%4?' / USDC':' / WETH'),address:'ct'+i,base_token_price_usd:String(0.5*(i+1)),
+    /* Each network's busiest pools are its own tokens, not a copy of the last
+       network's — a fixture that answers identically for every network makes
+       six requests look like one. */
+    const net=p.split('/')[3], tag=net==='solana'?'':net.slice(0,3).toUpperCase();
+    const rows=[]; for(let i=0;i<10;i++) rows.push({id:net+'_'+tag.toLowerCase()+'ct'+i,type:'pool',
+      relationships:{ base_token:{ data:{ id:'ctok'+net+i, type:'token' } } },
+      attributes:{name:tag+'CHAINTOK'+i+(i%4?' / USDC':' / WETH'),address:tag.toLowerCase()+'ct'+i,
+        base_token_price_usd:String(0.5*(i+1)),
         price_change_percentage:{h24:'3.2'},reserve_in_usd:String(2e6/(i+1)),
         volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}});
-    const included=Array.from({length:10},(_,i)=>({ id:'ctok'+i, type:'token',
+    const included=Array.from({length:10},(_,i)=>({ id:'ctok'+net+i, type:'token',
       attributes:{ image_url:'https://img.invalid/ct/'+i+'.png' }}));
     return json({data:rows,included});
   }
@@ -294,24 +315,26 @@ http.createServer(async (req,res)=>{
     return json({data:rows});
   }
   if(p==='/gt/networks/trending_pools'){
+    const pg=+(u.searchParams.get('page')||1), base=(pg-1)*12;
     const rows=[];
-    for(let i=0;i<12;i++) rows.push({
-      id:['solana','base','eth'][i%3]+'_pool'+i, type:'pool',
+    for(let k=0;k<12;k++){ const i=base+k;
+      rows.push({ id:['solana','base','eth'][i%3]+'_pool'+i, type:'pool',
       relationships:{ base_token:{ data:{ id:'tok'+i, type:'token' } } },
-      attributes:{ name:'TREND'+i+(i%3?' / USDC':' / SOL'), address:'addr'+i,
+      attributes:{ name:'TREND'+i+(i%4?' / USDC':' / SOL'), address:'addr'+i,
         base_token_price_usd:String(0.02*(i+1)),
         price_change_percentage:{h24:String(((i%6)-3)*5.1)},
         // half of them trade less than their own liquidity in a day
         reserve_in_usd:String((3e6)/(i+1)),
-        volume_usd:{h24:String((3e6)/(i+1)*(i%2?2.7:0.4))}, fdv_usd:String((4e7)/(i+1)) }});
+        volume_usd:{h24:String((3e6)/(i+1)*(i%2?2.7:0.4))}, fdv_usd:String((4e7)/(i+1)) }}); }
     // one hostile scheme, and one token the include simply does not cover
-    const included=Array.from({length:12},(_,i)=>({ id:'tok'+i, type:'token',
+    const included=Array.from({length:12},(_,k)=>{ const i=base+k; return { id:'tok'+i, type:'token',
       attributes:{ image_url: i===2 ? 'javascript:alert(1)' : i===5 ? null
-        : 'https://img.invalid/gt/'+i+'.png' }}));
+        : 'https://img.invalid/gt/'+i+'.png' }};});
     return json(u.searchParams.get('include')==='base_token' ? {data:rows,included} : {data:rows});
   }
   if(p==='/dl/hacks') return json(Array.from({length:24},(_,i)=>({
-    date: Math.floor(Date.now()/1000)-i*86400*21, name:'Protocol '+i+' exploit',
+    date: Math.floor(Date.now()/1000)-i*86400*21,
+    name: i%2 ? 'Protocol '+i+' exploit' : PROJECTS[i%PROJECTS.length].replace(/-/g,' ')+' '+i,
     amount: i===23 ? 0 : (6e7)/(i+1),
     technique:['Flash loan','Price oracle','Private key','Reentrancy'][i%4],
     chains:[CHAINS[i%CHAINS.length]], source:'https://example.invalid/hack'+i })));
@@ -366,7 +389,8 @@ http.createServer(async (req,res)=>{
   const f=path.join(ROOT,p==='/'?'index.html':p);
   if(!f.startsWith(ROOT)||!fs.existsSync(f)){res.writeHead(404);return res.end('nope');}
   let body=fs.readFileSync(f);
-  if(p==='/data.js' && process.env.REWRITE!=='0') body=Buffer.from(String(body)
+  // the single-file builds inline data.js, so they need the same re-pointing
+  if(/\.(js|html)$/.test(p==='/'?'/index.html':p) && process.env.REWRITE!=='0') body=Buffer.from(String(body)
     .replace("'https://api.coingecko.com/api/v3'","'/api/v3'")
     .replace("'https://yields.llama.fi'","'/llama'")
     .replace("'https://api.llama.fi'","'/dl'")
@@ -380,7 +404,8 @@ http.createServer(async (req,res)=>{
     .replace("'https://api-mainnet.magiceden.dev/v2'","'/me'")
     .replace("'https://tokens.uniswap.org'","'/uni'")
     .replace("'https://lite-api.jup.ag'","'/jup'")
-    .replace("'https://api.morpho.org/graphql'","'/morpho'"));
+    .replace("'https://api.morpho.org/graphql'","'/morpho'")
+    .replace("'https://en.wikipedia.org/api/rest_v1/page/summary'","'/wiki'"));
   res.writeHead(200,{'content-type':MIME[path.extname(f)]||'text/plain'});
   res.end(body);
 }).listen(PORT,()=>console.log('fixtures on',PORT,'mode',MODE));

@@ -1,7 +1,7 @@
 /* Every control against every category. The filters were built one at a time,
    each one correct on the tab it was written for; this asks whether they
-   compose — whether sorting still works after a chain filter, whether a facet
-   survives a category change, whether the junk toggle reaches every kind.
+   compose — whether sorting still works after a chain filter, and whether a
+   facet survives a category change.
      node test/serve.mjs &  node tools/audit-controls.mjs                      */
 import { chromium } from 'playwright';
 const b = await chromium.launch();
@@ -9,7 +9,7 @@ const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 const U = 'http://127.0.0.1:8899/';
 await p.goto(U, { waitUntil: 'domcontentloaded' });
-await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
+await p.waitForSelector('#results .row:not(.sk), #results .tile', { timeout: 25000 });
 await p.waitForTimeout(2200);
 
 /* The screen is one page of a category. Counting the rows on it says 40 either
@@ -26,28 +26,23 @@ const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')]
 let bad = 0;
 const bad_ = m => { bad++; return 'BROKEN: ' + m; };
 const fresh = async tab => { await p.goto(U + '?tab=' + tab, { waitUntil: 'domcontentloaded' });
-  await p.waitForSelector('#results .row:not(.sk), .empty', { timeout: 20000 }); await p.waitForTimeout(1400); };
+  await p.waitForSelector('#results .row:not(.sk), .empty, #results .tile', { timeout: 20000 }); await p.waitForTimeout(1400); };
 
-console.log('cat        rows  junk        chain       sort        facet       page        density/view');
+console.log('cat        rows  chain       sort        facet       page        view');
 for (const tab of tabs) {
   await fresh(tab);
   const n0 = await rows();
   const out = [];
 
-  // Hide junk: must change something, or say it has nothing to hide
-  await p.click('#safe'); await p.waitForTimeout(1100);
-  const nOff = await rows();
-  await p.click('#safe'); await p.waitForTimeout(1100);
-  out.push(nOff === n0 ? 'no-op' : `${n0}->${nOff}`);
-
   // Chain filter: must narrow, and must not empty a kind that has rows on it
   await p.click('[data-chain=eth]'); await p.waitForTimeout(1400);
   const nEth = await rows();
-  /* DEX pairs are the exception: picking a chain fetches that chain's own
-     tokens, so the filtered view legitimately holds rows the unfiltered one
-     never loaded. */
+  /* DEX pairs and Assets are the exception: picking a chain fetches that
+     chain's own tokens, so the filtered view legitimately holds rows the
+     unfiltered one never loaded. */
+  const fetches = tab === 'dex' || tab === 'assets';
   out.push(n0 === 0 ? 'n/a' : nEth === 0 ? bad_('eth empties it')
-    : nEth > n0 && tab !== 'dex' ? bad_('chain widened') : `${n0}->${nEth}`);
+    : nEth > n0 && !fetches ? bad_('chain widened') : `${n0}->${nEth}`);
   await p.click('[data-chain=""]'); await p.waitForTimeout(1200);
 
   // Sort: a sortable column must reorder the list
@@ -90,14 +85,14 @@ for (const tab of tabs) {
   out.push(hasMore && !more ? bad_('more exists but no button')
     : !hasMore && more ? bad_('button with nothing more') : hasMore ? 'ok' : 'n/a');
 
-  // Density and view must apply on every category
-  await p.click('#density'); await p.waitForTimeout(600);
-  const dense = await p.locator('#results.compact').count();
-  await p.click('#density'); await p.waitForTimeout(400);
-  await p.click('#view'); await p.waitForTimeout(700);
-  const cards = await p.locator('#results.table').count() === 0;
-  await p.click('#view'); await p.waitForTimeout(400);
-  out.push(`${dense ? 'd' : bad_('density')} ${cards ? 'v' : bad_('view')}`);
+  // table or cards has to apply on every category that has rows
+  if (!n0) out.push('n/a');
+  else {
+    await p.click('#view'); await p.waitForTimeout(700);
+    const cards = await p.locator('#results.table').count() === 0;
+    await p.click('#view'); await p.waitForTimeout(400);
+    out.push(cards ? 'ok' : bad_('view'));
+  }
 
   console.log(tab.padEnd(10), String(n0).padStart(4), ' ', out.map(x => String(x).padEnd(11)).join(' '));
 }

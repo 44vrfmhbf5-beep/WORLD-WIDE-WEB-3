@@ -89,7 +89,7 @@ body.searching .hero h1,body.browsing .hero h1{font-size:0;opacity:0;margin:0;tr
 body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:0;transform:translateY(-6px)}
 
 /* search */
-.searchbar{position:sticky;top:64px;z-index:15;display:flex;align-items:center;gap:12px;
+.searchbar{position:sticky;top:64px;z-index:15;margin-top:16px;display:flex;align-items:center;gap:12px;
   padding:0 16px;height:58px;border-radius:var(--r-lg);
   background:var(--surface);border:1px solid var(--line2);
   box-shadow:0 12px 40px -14px rgba(0,0,0,.8);
@@ -125,6 +125,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* results */
 .results{display:flex;flex-direction:column;gap:8px}
+/* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
+.results .row,.results .tile{scroll-margin-top:132px}
+.wrap>#banner{margin-top:14px}
 .row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
   background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
   transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
@@ -192,7 +195,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .chgline .mute{color:var(--faint);font-weight:500}
 .chart{margin:20px 0 4px;border-radius:var(--r);overflow:hidden;background:var(--surface);
   border:1px solid var(--line);padding:14px 0 0}
-.chart svg{display:block;width:100%;height:110px}
+.chart svg{display:block;width:100%;height:auto}
 .rangebar{display:flex;gap:4px;padding:8px 12px 10px}
 .rangebar span{padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--faint)}
 .rangebar span.on{background:var(--surface2);color:var(--text)}
@@ -253,6 +256,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .tok{position:relative;overflow:visible}
 .tok img{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;object-fit:cover;
   opacity:0;transition:opacity .25s var(--ease)}
+/* A logo with transparency let the initials underneath show through it, which
+   read as two things stacked. Once an image loads it is the whole tile. */
+.tok.img{color:transparent;background:var(--surface2)}
 .tok .badge{z-index:1}
 .ghost-btn.icon{padding:7px}
 .ghost-btn.icon .i{width:16px;height:16px}
@@ -356,6 +362,25 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.trade .qmeta{margin-top:4px;font-size:11.5px;color:var(--faint)}
 .sec.trade .cta{margin-top:0}
 
+/* All, with nothing typed: the categories themselves, not a sample of each */
+.results.home{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.tile{display:block;text-align:left;padding:16px 17px 15px;border-radius:16px;
+  background:var(--surface);border:1px solid var(--line);transition:.16s var(--ease)}
+.tile:hover{background:var(--surface2);border-color:var(--accent-dim);transform:translateY(-2px)}
+.tile .tl{font-size:14px;font-weight:600;color:var(--text)}
+.tile .tn{margin-top:9px;font-size:22px;font-weight:600;color:var(--accent-dim);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile .tw{margin-top:3px;font-size:12px;color:var(--faint)}
+.pickgrid .chip.cat{justify-content:space-between}
+.pickgrid .chip.cat .ct{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.pickgrid .chip.cat.on{background:color-mix(in srgb,var(--accent) 16%,var(--surface2));
+  border-color:var(--accent-dim);color:var(--text)}
+.catbtn{display:flex;align-items:center;gap:7px;padding:9px 13px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line2);color:var(--text);
+  font-size:13px;font-weight:600;white-space:nowrap}
+.catbtn:hover{background:var(--surface2)}
+.catbtn .ch{width:14px;height:14px;opacity:.6;margin-left:-2px}
+
 /* a category holds far more than a screen; this is the way to the rest of it */
 .more{display:block;width:100%;margin-top:10px;padding:13px;border-radius:14px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim);
@@ -389,17 +414,18 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @keyframes blink{50%{opacity:.4}}
 
 /* ---- interactive chart ---- */
-.chart-svg{position:relative;height:136px;outline-offset:-2px}
+.chart-svg{position:relative;outline-offset:-2px;padding-bottom:17px}
 .chart-svg svg{display:block;width:100%;height:120px;touch-action:none}
 /* the high/low envelope behind the close line, and a hairline at the range's
    opening value so the move is visible against something */
 .chart-svg .band{opacity:0;animation:fadein .5s .35s var(--ease) forwards}
-/* period high and low: where, not just how much */
-.pin{position:absolute;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2.5px var(--bg);opacity:0;animation:fadein .4s .6s var(--ease) forwards;
-  pointer-events:none}
-.pin.tr{opacity:0;animation:fadedim .4s .6s var(--ease) forwards}
-@keyframes fadedim{to{opacity:.5}}
+/* period high and low: where, not just how much. Circles in the svg now that
+   it is drawn 1:1 — as positioned elements they were measuring the host box
+   while the geometry was computed against the plot, and sat off the line. */
+.chart svg .pin{stroke:var(--bg);stroke-width:2.5;opacity:0;
+  animation:fadein .4s .6s var(--ease) forwards}
+.chart svg .pin.tr{opacity:0;animation:fadedim .4s .6s var(--ease) forwards}
+@keyframes fadedim{to{opacity:.55}}
 .chart-svg .base{stroke:var(--line2);stroke-width:1}
 .chart-svg .vol rect{transform-box:fill-box;transform-origin:bottom;
   animation:rise .5s var(--ease) both}
@@ -414,7 +440,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .ax.t0{bottom:1px;left:8px}
 .ax.t1{bottom:1px;right:8px}
 /* out of the bars' way: the panel is labelled above them, not across them */
-.ax.vk{top:84px;left:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
+.ax.vk{top:100px;right:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
   padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--bg) 76%,transparent)}
 .chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
@@ -437,11 +463,10 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .chart-svg .vol rect{animation:none}}
 
 
-/* ---- layout: DefiLlama's rail and density, Aave's calm ----
-   A persistent category rail down the left and an aggregate bar across the top
-   are what make DefiLlama scannable. The row rhythm, the size of the primary
-   number and the amount of air around it are Aave's. Both are on screen at
-   once, and the density toggle slides between them. */
+/* ---- layout: DefiLlama's rail, Aave's calm ----
+   A persistent category rail down the left is what makes DefiLlama scannable.
+   The row rhythm, the size of the primary number and the amount of air around
+   it are Aave's. Both are on screen at once. */
 .app{display:grid;grid-template-columns:212px minmax(0,1fr);align-items:start;gap:0}
 .app>*{min-width:0}
 
@@ -473,14 +498,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .railchains .chip[aria-pressed=true]{background:color-mix(in srgb,var(--c) 15%,var(--surface2));color:var(--text)}
 
 /* aggregate bar — the numbers DefiLlama leads with, from data already loaded */
-.statbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin:6px 0 2px}
-.statbar .s{padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--line)}
-.statbar .sk{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
-.statbar .sv{margin-top:4px;font-size:17px;font-weight:700;letter-spacing:-.025em;
-  font-variant-numeric:tabular-nums}
-.statbar:empty{display:none}
 
-/* results header: count on the left, the two view controls on the right */
+/* results header: what is on screen, and the one control that changes its shape */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
 .bar .meta{padding:14px 2px 10px}
 .viewtools{display:flex;gap:6px;flex:none}
@@ -489,17 +508,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
 .vt:hover{color:var(--text);border-color:var(--line2)}
 .vt .i{width:15px;height:15px}
-/* the only control here with an on/off meaning, so it is the only one that lights up */
-.vt.sf[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--up) 45%,transparent);
-  background:color-mix(in srgb,var(--up) 12%,var(--surface))}
-.vt.sf[aria-pressed=true] .i{color:var(--up)}
-/* a different accent from the junk filter: two switches, two meanings */
-.vt.st[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--accent) 50%,transparent);
-  background:color-mix(in srgb,var(--accent) 13%,var(--surface))}
-.vt.st[aria-pressed=true] .i{color:var(--accent)}
 
-/* "N hidden" in the results line, one tap to undo — never filter silently, so
-   the count sits outside the part that ellipsises when the line runs short */
+/* the results line: it truncates from the middle of its own sentence, never
+   from a figure that some other element is counting on being visible */
 .meta{display:flex;align-items:baseline;gap:8px;min-width:0}
 .mtext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .link{flex:none;color:var(--dim);font:inherit;text-decoration:underline;text-underline-offset:2px;
@@ -552,7 +563,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .wrap{display:flex;flex-direction:column;padding:0 14px}
   .searchbar{order:1;top:54px}
   #banner{order:2}
-  #statbar{order:3}
   .bar{order:4}
   #refine{order:5}
   #results{order:6}
@@ -561,12 +571,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .top{padding:11px 14px}
   .railnav .tab{padding:8px 13px;font-size:13px}
   /* stacked label-over-value costs 68px of the first screen; inline costs 34 */
-  .statbar{margin:8px 0 0}
-  .statbar .s{display:flex;align-items:baseline;gap:7px;padding:7px 11px;min-width:0}
-  .statbar .sk{font-size:9.5px}
-  .statbar .sv{font-size:13.5px;margin:0}
 
-  /* results line and density control share one row instead of wrapping */
+  /* results line and view control share one row instead of wrapping */
   .bar{flex-wrap:nowrap;gap:10px;align-items:center}
   .bar .meta{padding:10px 2px;flex:1;min-width:0}
   .kbd-hint{display:none}
@@ -578,13 +584,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   /* filter and sort are the same question on a phone — how do I narrow this —
      and two stacked strips cost a row of the first screen that the results need.
      One scroller carries both, chips wrapping onto no lines at all. */
-  .refine{display:flex;align-items:center;gap:12px;overflow-x:auto;scrollbar-width:none;
+  /* stacked, not side by side: two questions, one per line */
+  .refine{display:block}
+  .refine>*{overflow-x:auto;scrollbar-width:none;
     -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .refine::-webkit-scrollbar{display:none}
-  .refine>*{flex:none}
-  /* the padding lives on the strips, so a category with neither takes no row */
-  .facetbar:not(:empty),.sortbar:not(:empty){flex-wrap:nowrap;overflow:visible;padding:0 0 9px;
-    -webkit-mask-image:none}
+  .refine>*::-webkit-scrollbar{display:none}
   .facetbar button{padding:6px 11px}
   /* two scrollers stacked: categories, then chains. Side by side, the chain
      chips end up off the right edge behind thirteen categories. */
@@ -610,10 +614,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .pickgrid .chip{width:100%;justify-content:flex-start;padding:11px 12px;border-radius:12px}
   /* one scrolling strip, not three stacked rows eating the first screen */
-  .statbar{display:flex;overflow-x:auto;scrollbar-width:none;margin:10px 0 2px;
-    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .statbar::-webkit-scrollbar{display:none}
-  .statbar .s{flex:none;min-width:132px}
   .thead{display:none}
 }
 
@@ -666,14 +666,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .grab{display:none}
 
 @media (max-width:900px){
-  .sortbar:not(:empty){display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
-    padding:0 0 10px;-webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
-  .sortbar::-webkit-scrollbar{display:none}
-  /* the table toggle cannot do anything at this width — do not offer it, and
-     the density label can go: the filter is the control worth naming here */
+  /* Stacked, one strip per question — so each strip has to stay one line. A
+     wrapped filter row cost the first screen two rows of results; sideways is
+     free here, because the strip is already a scroller. */
+  .facetbar:not(:empty),.sortbar:not(:empty){display:flex;gap:6px;flex-wrap:nowrap;
+    overflow-x:auto;padding:0 0 9px;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 94%,transparent)}
+  .facetbar::-webkit-scrollbar,.sortbar::-webkit-scrollbar{display:none}
+  /* the table toggle cannot do anything at this width — do not offer it */
   #view{display:none}
-  #density span{display:none}
-  #density{padding:9px 10px}
   .bar{gap:8px}
   .bar .meta{padding:12px 2px 8px}
 
@@ -742,8 +743,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
     <p class="sub">Assets, NFTs, yields, protocols, bridges and more across <span id="chainWord">30 networks</span> — one bar, no wallet required.</p>
   </section>
 
-  <div class="statbar" id="statbar" aria-label="Market totals"></div>
-
   <div class="searchbar" id="searchbar">
     <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
     <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits…" aria-label="Search assets and lending markets">
@@ -756,15 +755,9 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   <div class="bar">
     <div class="meta" id="meta"></div>
     <div class="viewtools">
-      <button class="vt sf" id="safe" aria-pressed="true" title="Hide inactive and copycat listings">
-        <svg viewBox="0 0 24 24" class="i"><path d="M12 3.5 19 6v5.5c0 4.2-2.9 7.5-7 9-4.1-1.5-7-4.8-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Hide junk</span>
-      </button>
-      <button class="vt st" id="stocks" aria-pressed="false" title="Show tokenized equities only">
-        <svg viewBox="0 0 24 24" class="i"><path d="M4 19h16"/><path d="M7 16V9M12 16V5M17 16v-4"/></svg><span>Stocks</span>
-      </button>
-      <button class="vt" id="density" aria-pressed="false" title="Row density">
-        <svg viewBox="0 0 24 24" class="i"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Comfortable</span>
-      </button>
+      <button class="catbtn" id="catbtn" aria-haspopup="dialog" hidden>
+        <span class="cn">All</span>
+        <svg viewBox="0 0 24 24" class="i ch"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="vt" id="view" title="Table or cards">
         <svg viewBox="0 0 24 24" class="i"><path d="M4 5h16v14H4z"/><path d="M4 10h16M10 10v9"/></svg><span>Table</span>
       </button>
@@ -795,7 +788,7 @@ const Fuse = (() => {
  */
 function e(e){return Array.isArray?Array.isArray(e):u(e)===`[object Array]`}function t(e){if(typeof e==`string`)return e;if(typeof e==`bigint`)return e.toString();let t=e+``;return t==`0`&&1/e==-1/0?`-0`:t}function n(e){return e==null?``:t(e)}function r(e){return typeof e==`string`}function i(e){return typeof e==`number`}function a(e){return e===!0||e===!1||s(e)&&u(e)==`[object Boolean]`}function o(e){return typeof e==`object`}function s(e){return o(e)&&e!==null}function c(e){return e!=null}function l(e){return!e.trim().length}function u(e){return e==null?e===void 0?`[object Undefined]`:`[object Null]`:Object.prototype.toString.call(e)}const d=`Invalid doc index: must be a non-negative integer within the bounds of the docs array`,f=e=>`Pattern length exceeds max of ${e}.`,p=e=>`Missing ${e} property in key`,m=e=>`Property 'weight' in key '${e}' must be a positive integer`,h=Object.prototype.hasOwnProperty;var g=class{constructor(e){this._keys=[],this._keyMap={};let t=0;e.forEach(e=>{let n=_(e);this._keys.push(n),this._keyMap[n.id]=n,t+=n.weight}),this._keys.forEach(e=>{e.weight/=t})}get(e){return this._keyMap[e]}keys(){return this._keys}toJSON(){return JSON.stringify(this._keys)}};function _(t){let n=null,i=null,a=null,o=1,s=null;if(r(t)||e(t))a=t,n=v(t),i=y(t);else{if(!h.call(t,`name`))throw Error(p(`name`));let e=t.name;if(a=e,h.call(t,`weight`)&&t.weight!==void 0&&(o=t.weight,o<=0))throw Error(m(y(e)));n=v(e),i=y(e),s=t.getFn??null}return{path:n,id:i,weight:o,src:a,getFn:s}}function v(t){return e(t)?t:t.split(`.`)}function y(t){return e(t)?t.join(`.`):t}function b(t,o){let s=[],l=!1,u=(t,o,d,f)=>{if(c(t))if(!o[d])s.push(f===void 0?t:{v:t,i:f});else{let p=t[o[d]];if(!c(p))return;if(d===o.length-1&&(r(p)||i(p)||a(p)||typeof p==`bigint`))s.push(f===void 0?n(p):{v:n(p),i:f});else if(e(p)){l=!0;for(let e=0,t=p.length;e<t;e+=1)u(p[e],o,d+1,e)}else o.length&&u(p,o,d+1,f)}};return u(t,r(o)?o.split(`.`):o,0),l?s:s[0]}const x={includeMatches:!1,findAllMatches:!1,minMatchCharLength:1},S={isCaseSensitive:!1,ignoreDiacritics:!1,includeScore:!1,keys:[],shouldSort:!0,sortFn:(e,t)=>e.score===t.score?e.idx<t.idx?-1:1:e.score<t.score?-1:1},C={location:0,threshold:.6,distance:100},w={useExtendedSearch:!1,useTokenSearch:!1,tokenize:void 0,tokenMatch:`any`,getFn:b,ignoreLocation:!1,ignoreFieldNorm:!1,fieldNormWeight:1},T=Object.freeze({...S,...x,...C,...w});function E(e){return e>=9&&e<=13||e===32||e===160}function D(e=1,t=3){let n=new Map,r=10**t;return{get(t){let i=0,a=!1;for(let e=0;e<t.length;e++)E(t.charCodeAt(e))?a=!1:a||(i++,a=!0);if(i===0&&(i=1),n.has(i))return n.get(i);let o=Math.round(r/i**(.5*e))/r;return n.set(i,o),o},clear(){n.clear()}}}var O=class{constructor({getFn:e=T.getFn,fieldNormWeight:t=T.fieldNormWeight}={}){this.norm=D(t,3),this.getFn=e,this.isCreated=!1,this.docs=[],this.keys=[],this._keysMap={},this.setIndexRecords()}setSources(e=[]){this.docs=e}setIndexRecords(e=[]){this.records=e}setKeys(e=[]){this.keys=e,this._keysMap={},e.forEach((e,t)=>{this._keysMap[e.id]=t})}create(){if(this.isCreated||!this.docs.length)return;this.isCreated=!0;let e=this.docs.length;this.records=Array(e);let t=0;if(r(this.docs[0]))for(let n=0;n<e;n++){let e=this._createStringRecord(this.docs[n],n);e&&(this.records[t++]=e)}else for(let n=0;n<e;n++)this.records[t++]=this._createObjectRecord(this.docs[n],n);this.records.length=t,this.norm.clear()}add(e,t){if(!Number.isInteger(t)||t<0)throw Error(d);if(r(e)){let n=this._createStringRecord(e,t);return n&&this.records.push(n),n}let n=this._createObjectRecord(e,t);return this.records.push(n),n}removeAt(e){if(!Number.isInteger(e)||e<0)throw Error(d);for(let t=0,n=this.records.length;t<n;t+=1)if(this.records[t].i===e){this.records.splice(t,1);break}for(let t=0,n=this.records.length;t<n;t+=1)this.records[t].i>e&&--this.records[t].i}removeAll(e){let t=new Set;for(let n of e)Number.isInteger(n)&&n>=0&&t.add(n);if(t.size===0)return;this.records=this.records.filter(e=>!t.has(e.i));let n=Array.from(t).sort((e,t)=>e-t);for(let e of this.records){let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e.i?t=i+1:r=i}e.i-=t}}getValueForItemAtKeyId(e,t){return e[this._keysMap[t]]}size(){return this.records.length}_createStringRecord(e,t){return!c(e)||l(e)?null:{v:e,i:t,n:this.norm.get(e)}}_createObjectRecord(t,i){let a={i,$:{}};for(let i=0,o=this.keys.length;i<o;i++){let o=this.keys[i],s=o.getFn?o.getFn(t):this.getFn(t,o.path);if(c(s)){if(e(s)){let e=[];for(let t=0,i=s.length;t<i;t+=1){let i=s[t];if(c(i)){if(r(i)){if(!l(i)){let n={v:i,i:t,n:this.norm.get(i)};e.push(n)}}else if(c(i.v)){let t=r(i.v)?i.v:n(i.v);if(!l(t)){let n={v:t,i:i.i,n:this.norm.get(t)};e.push(n)}}}}a.$[i]=e}else if(r(s)&&!l(s)){let e={v:s,n:this.norm.get(s)};a.$[i]=e}}}return a}toJSON(){return{keys:this.keys.map(({getFn:e,...t})=>t),records:this.records}}};function k(e,t,{getFn:n=T.getFn,fieldNormWeight:r=T.fieldNormWeight}={}){let i=new O({getFn:n,fieldNormWeight:r});return i.setKeys(e.map(_)),i.setSources(t),i.create(),i}function A(e,{getFn:t=T.getFn,fieldNormWeight:n=T.fieldNormWeight}={}){let{keys:r,records:i}=e,a=new O({getFn:t,fieldNormWeight:n});return a.setKeys(r),a.setIndexRecords(i),a}function j(e=[],t=T.minMatchCharLength){let n=[],r=-1,i=-1,a=0;for(let o=e.length;a<o;a+=1){let o=e[a];o&&r===-1?r=a:!o&&r!==-1&&(i=a-1,i-r+1>=t&&n.push([r,i]),r=-1)}return e[a-1]&&a-r>=t&&n.push([r,a-1]),n}function M(e,t,n,{location:r=T.location,distance:i=T.distance,threshold:a=T.threshold,findAllMatches:o=T.findAllMatches,minMatchCharLength:s=T.minMatchCharLength,includeMatches:c=T.includeMatches,ignoreLocation:l=T.ignoreLocation}={}){if(t.length>32)throw Error(f(32));let u=t.length,d=e.length,p=Math.max(0,Math.min(r,d)),m=a,h=p,g=(e,t)=>{let n=e/u;if(l)return n;let r=Math.abs(p-t);return i?n+r/i:r?1:n},_=s>1||c,v=_?Array(d):[],y;for(;(y=e.indexOf(t,h))>-1;){let e=g(0,y);if(m=Math.min(e,m),h=y+u,_){let e=0;for(;e<u;)v[y+e]=1,e+=1}}h=-1;let b=[],x=1,S=0,C=u+d,w=1<<u-1;for(let t=0;t<u;t+=1){let r=0,i=C;for(;r<i;)g(t,p+i)<=m?r=i:C=i,i=Math.floor((C-r)/2+r);C=i;let a=Math.max(1,p-i+1),s=o?d:Math.min(p+i,d)+u,c=Array(s+2);c[s+1]=(1<<t)-1;for(let r=s;r>=a;--r){let i=r-1,o=n[e[i]];if(c[r]=(c[r+1]<<1|1)&o,t&&(c[r]|=(b[r+1]|b[r])<<1|1|b[r+1]),c[r]&w&&(x=g(t,i),x<=m)){if(m=x,h=i,S=t,h<=p)break;a=Math.max(1,2*p-h)}}if(g(t+1,p)>m)break;b=c}if(_&&h>=0){let t=Math.min(d-1,h+u-1+S);for(let r=h;r<=t;r+=1)n[e[r]]&&(v[r]=1)}let E={isMatch:h>=0,score:Math.max(.001,x)};if(_){let e=j(v,s);e.length?c&&(E.indices=e):E.isMatch=!1}return E}function N(e){let t={};for(let n=0,r=e.length;n<r;n+=1){let i=e.charAt(n);t[i]=(t[i]||0)|1<<r-n-1}return t}function P(e){if(e.length<=1)return e;e.sort((e,t)=>e[0]-t[0]||e[1]-t[1]);let t=[e[0]];for(let n=1,r=e.length;n<r;n+=1){let r=t[t.length-1],i=e[n];i[0]<=r[1]+1?r[1]=Math.max(r[1],i[1]):t.push(i)}return t}const F={ł:`l`,Ł:`L`,đ:`d`,Đ:`D`,ø:`o`,Ø:`O`,ħ:`h`,Ħ:`H`,ŧ:`t`,Ŧ:`T`,ı:`i`,ß:`ss`},I=RegExp(`[`+Object.keys(F).join(``)+`]`,`g`),L=typeof String.prototype.normalize==`function`?e=>e.normalize(`NFD`).replace(/[\u0300-\u036F\u0483-\u0489\u0591-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0711\u0730-\u074A\u07A6-\u07B0\u07EB-\u07F3\u07FD\u0816-\u0819\u081B-\u0823\u0825-\u0827\u0829-\u082D\u0859-\u085B\u08D3-\u08E1\u08E3-\u0903\u093A-\u093C\u093E-\u094F\u0951-\u0957\u0962\u0963\u0981-\u0983\u09BC\u09BE-\u09C4\u09C7\u09C8\u09CB-\u09CD\u09D7\u09E2\u09E3\u09FE\u0A01-\u0A03\u0A3C\u0A3E-\u0A42\u0A47\u0A48\u0A4B-\u0A4D\u0A51\u0A70\u0A71\u0A75\u0A81-\u0A83\u0ABC\u0ABE-\u0AC5\u0AC7-\u0AC9\u0ACB-\u0ACD\u0AE2\u0AE3\u0AFA-\u0AFF\u0B01-\u0B03\u0B3C\u0B3E-\u0B44\u0B47\u0B48\u0B4B-\u0B4D\u0B56\u0B57\u0B62\u0B63\u0B82\u0BBE-\u0BC2\u0BC6-\u0BC8\u0BCA-\u0BCD\u0BD7\u0C00-\u0C04\u0C3E-\u0C44\u0C46-\u0C48\u0C4A-\u0C4D\u0C55\u0C56\u0C62\u0C63\u0C81-\u0C83\u0CBC\u0CBE-\u0CC4\u0CC6-\u0CC8\u0CCA-\u0CCD\u0CD5\u0CD6\u0CE2\u0CE3\u0D00-\u0D03\u0D3B\u0D3C\u0D3E-\u0D44\u0D46-\u0D48\u0D4A-\u0D4D\u0D57\u0D62\u0D63\u0D82\u0D83\u0DCA\u0DCF-\u0DD4\u0DD6\u0DD8-\u0DDF\u0DF2\u0DF3\u0E31\u0E34-\u0E3A\u0E47-\u0E4E\u0EB1\u0EB4-\u0EB9\u0EBB\u0EBC\u0EC8-\u0ECD\u0F18\u0F19\u0F35\u0F37\u0F39\u0F3E\u0F3F\u0F71-\u0F84\u0F86\u0F87\u0F8D-\u0F97\u0F99-\u0FBC\u0FC6\u102B-\u103E\u1056-\u1059\u105E-\u1060\u1062-\u1064\u1067-\u106D\u1071-\u1074\u1082-\u108D\u108F\u109A-\u109D\u135D-\u135F\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17B4-\u17D3\u17DD\u180B-\u180D\u1885\u1886\u18A9\u1920-\u192B\u1930-\u193B\u1A17-\u1A1B\u1A55-\u1A5E\u1A60-\u1A7C\u1A7F\u1AB0-\u1ABE\u1B00-\u1B04\u1B34-\u1B44\u1B6B-\u1B73\u1B80-\u1B82\u1BA1-\u1BAD\u1BE6-\u1BF3\u1C24-\u1C37\u1CD0-\u1CD2\u1CD4-\u1CE8\u1CED\u1CF2-\u1CF4\u1CF7-\u1CF9\u1DC0-\u1DF9\u1DFB-\u1DFF\u20D0-\u20F0\u2CEF-\u2CF1\u2D7F\u2DE0-\u2DFF\u302A-\u302F\u3099\u309A\uA66F-\uA672\uA674-\uA67D\uA69E\uA69F\uA6F0\uA6F1\uA802\uA806\uA80B\uA823-\uA827\uA880\uA881\uA8B4-\uA8C5\uA8E0-\uA8F1\uA8FF\uA926-\uA92D\uA947-\uA953\uA980-\uA983\uA9B3-\uA9C0\uA9E5\uAA29-\uAA36\uAA43\uAA4C\uAA4D\uAA7B-\uAA7D\uAAB0\uAAB2-\uAAB4\uAAB7\uAAB8\uAABE\uAABF\uAAC1\uAAEB-\uAAEF\uAAF5\uAAF6\uABE3-\uABEA\uABEC\uABED\uFB1E\uFE00-\uFE0F\uFE20-\uFE2F]/g,``).replace(I,e=>F[e]):e=>e;var R=class{constructor(e,{location:t=T.location,threshold:n=T.threshold,distance:r=T.distance,includeMatches:i=T.includeMatches,findAllMatches:a=T.findAllMatches,minMatchCharLength:o=T.minMatchCharLength,isCaseSensitive:s=T.isCaseSensitive,ignoreDiacritics:c=T.ignoreDiacritics,ignoreLocation:l=T.ignoreLocation}={}){if(this.options={location:t,threshold:n,distance:r,includeMatches:i,findAllMatches:a,minMatchCharLength:o,isCaseSensitive:s,ignoreDiacritics:c,ignoreLocation:l},e=s?e:e.toLowerCase(),e=c?L(e):e,this.pattern=e,this.chunks=[],!this.pattern.length)return;let u=(e,t)=>{this.chunks.push({pattern:e,alphabet:N(e),startIndex:t})},d=this.pattern.length;if(d>32){let e=0,t=d%32,n=d-t;for(;e<n;)u(this.pattern.substr(e,32),e),e+=32;if(t){let e=d-32;u(this.pattern.substr(e),e)}}else u(this.pattern,0)}searchIn(e){let{isCaseSensitive:t,ignoreDiacritics:n,includeMatches:r}=this.options;if(e=t?e:e.toLowerCase(),e=n?L(e):e,this.pattern===e){if(e.length<this.options.minMatchCharLength)return{isMatch:!1,score:1};let t={isMatch:!0,score:0};return r&&(t.indices=[[0,e.length-1]]),t}let{location:i,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,ignoreLocation:l}=this.options,u=[],d=0,f=!1;this.chunks.forEach(({pattern:t,alphabet:n,startIndex:p})=>{let{isMatch:m,score:h,indices:g}=M(e,t,n,{location:i+p,distance:a,threshold:o,findAllMatches:s,minMatchCharLength:c,includeMatches:r,ignoreLocation:l});m&&(f=!0),d+=h,m&&g&&u.push(...g)});let p={isMatch:f,score:f?d/this.chunks.length:1};return f&&r&&(p.indices=P(u)),p}};const z=[];function B(...e){z.push(...e)}function V(e,t){for(let n=0,r=z.length;n<r;n+=1){let r=z[n];if(r.condition(e,t))return new r(e,t)}return new R(e,t)}function H(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){let n=1;return e.forEach(({key:e,norm:r,score:i})=>{let a=e?e.weight:null;n*=(i===0&&a?2**-52:i)**+((a||1)*(t?1:r))}),n}function U(e,{ignoreFieldNorm:t=T.ignoreFieldNorm}){e.forEach(e=>{e.score=H(e.matches,{ignoreFieldNorm:t})})}var W=class{constructor(e,t){this.limit=e,this.heap=[],this.comparator=t}get size(){return this.heap.length}insert(e){this.size<this.limit?(this.heap.push(e),this._bubbleUp(this.size-1)):this.comparator(e,this.heap[0])<0&&(this.heap[0]=e,this._sinkDown(0))}extractSorted(){return this.heap.sort(this.comparator)}_bubbleUp(e){let t=this.heap;for(;e>0;){let n=e-1>>1;if(this.comparator(t[e],t[n])<=0)break;let r=t[e];t[e]=t[n],t[n]=r,e=n}}_sinkDown(e){let t=this.heap,n=t.length,r=e;do{e=r;let i=2*e+1,a=2*e+2;if(i<n&&this.comparator(t[i],t[r])>0&&(r=i),a<n&&this.comparator(t[a],t[r])>0&&(r=a),r!==e){let n=t[e];t[e]=t[r],t[r]=n}}while(r!==e)}};function G(e){let t=[];return e.matches.forEach(e=>{if(!c(e.indices)||!e.indices.length)return;let n={indices:e.indices,value:e.value};e.key&&(n.key=e.key.id),e.idx>-1&&(n.refIndex=e.idx),t.push(n)}),t}function K(e,t,{includeMatches:n=T.includeMatches,includeScore:r=T.includeScore}={}){return e.map(e=>{let{idx:i}=e,a={item:t[i],refIndex:i};return n&&(a.matches=G(e)),r&&(a.score=e.score),a})}const q=/[\p{L}\p{M}\p{N}_]+/gu;function J(e){return typeof e==`function`?t=>e(t):e instanceof RegExp?(e.global,t=>t.match(e)||[]):e=>e.match(q)||[]}function Y({isCaseSensitive:e=!1,ignoreDiacritics:t=!1,tokenize:n}={}){let r=J(n);return{tokenize(n){return e||(n=n.toLowerCase()),t&&(n=L(n)),r(n)}}}function X(e,t,n,r){let i=r.tokenize(t);if(!i.length)return;e.fieldCount++,e.docFieldCount.set(n,(e.docFieldCount.get(n)||0)+1);let a=new Set(i),o=e.docTermFieldHits.get(n);o||(o=new Map,e.docTermFieldHits.set(n,o));for(let t of a)o.set(t,(o.get(t)||0)+1),e.df.set(t,(e.df.get(t)||0)+1)}function Z(e,t,n,r){let{i,v:a,$:o}=t;if(a!==void 0){X(e,a,i,r);return}if(o)for(let t=0;t<n;t++){let n=o[t];if(n)if(Array.isArray(n))for(let t of n)X(e,t.v,i,r);else X(e,n.v,i,r)}}function ee(e,t,n){let r={fieldCount:0,df:new Map,docFieldCount:new Map,docTermFieldHits:new Map};for(let i of e)Z(r,i,t,n);return r}function te(e,t,n,r){Z(e,t,n,r)}function ne(e,t){let n=e.docFieldCount.get(t);if(n===void 0)return;e.fieldCount-=n,e.docFieldCount.delete(t);let r=e.docTermFieldHits.get(t);if(r){for(let[t,n]of r){let r=(e.df.get(t)||0)-n;r<=0?e.df.delete(t):e.df.set(t,r)}e.docTermFieldHits.delete(t)}}function Q(e,t){if(t.length===0)return;let n=Array.from(new Set(t)).sort((e,t)=>e-t);for(let t of n)ne(e,t);let r=e=>{let t=0,r=n.length;for(;t<r;){let i=t+r>>>1;n[i]<e?t=i+1:r=i}return e-t},i=n[0],a=new Map;for(let[t,n]of e.docFieldCount)a.set(t>i?r(t):t,n);e.docFieldCount=a;let o=new Map;for(let[t,n]of e.docTermFieldHits)o.set(t>i?r(t):t,n);e.docTermFieldHits=o}var $=class{constructor(e,t,n){if(this.options={...T,...t},this.options.useExtendedSearch)throw Error(`Extended search is not available`);if(this.options.useTokenSearch)throw Error(`Token search is not available`);this._keyStore=new g(this.options.keys),this._docs=e,this._myIndex=null,this._invertedIndex=null,this.setCollection(e,n),this._lastQuery=null,this._lastSearcher=null}_getSearcher(e){if(this._lastQuery===e)return this._lastSearcher;let t=V(e,this._invertedIndex?{...this.options,_invertedIndex:this._invertedIndex}:this.options);return this._lastQuery=e,this._lastSearcher=t,t}setCollection(e,t){if(this._docs=e,t&&!(t instanceof O))throw Error(`Incorrect 'index' type`);if(this._myIndex=t||k(this.options.keys,this._docs,{getFn:this.options.getFn,fieldNormWeight:this.options.fieldNormWeight}),this.options.useTokenSearch){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});this._invertedIndex=ee(this._myIndex.records,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}add(e){if(!c(e))return;this._docs.push(e);let t=this._myIndex.add(e,this._docs.length-1);if(this._invertedIndex&&t){let e=Y({isCaseSensitive:this.options.isCaseSensitive,ignoreDiacritics:this.options.ignoreDiacritics,tokenize:this.options.tokenize});te(this._invertedIndex,t,this._myIndex.keys.length,e)}this._invalidateSearcherCache()}remove(e=()=>!1){let t=[],n=[];for(let r=0,i=this._docs.length;r<i;r+=1)e(this._docs[r],r)&&(t.push(this._docs[r]),n.push(r));if(n.length){this._invertedIndex&&Q(this._invertedIndex,n);let e=new Set(n);this._docs=this._docs.filter((t,n)=>!e.has(n)),this._myIndex.removeAll(n),this._invalidateSearcherCache()}return t}removeAt(e){if(!Number.isInteger(e)||e<0||e>=this._docs.length)throw Error(d);this._invertedIndex&&Q(this._invertedIndex,[e]);let t=this._docs.splice(e,1)[0];return this._myIndex.removeAt(e),this._invalidateSearcherCache(),t}_invalidateSearcherCache(){this._lastQuery=null,this._lastSearcher=null}getIndex(){return this._myIndex}_normalizedKeys(){return this._myIndex.keys.map(e=>this._keyStore.get(e.id)||e)}search(e,t){let{limit:n=-1}=t||{},{includeMatches:a,includeScore:o,shouldSort:s,sortFn:c,ignoreFieldNorm:l}=this.options;if(r(e)&&!e.trim()){let e=this._docs.map((e,t)=>({item:e,refIndex:t}));return i(n)&&n>-1&&(e=e.slice(0,n)),e}let u=s&&i(n)&&n>0&&r(e),d=c,f=(e,t)=>d(e,t)||e.idx-t.idx,p;if(u){let t=new W(n,f);r(this._docs[0])?this._searchStringList(e,{heap:t,ignoreFieldNorm:l}):this._searchObjectList(e,{heap:t,ignoreFieldNorm:l}),p=t.extractSorted()}else p=r(e)?r(this._docs[0])?this._searchStringList(e):this._searchObjectList(e):this._searchLogical(e),U(p,{ignoreFieldNorm:l}),s&&p.sort(r(e)?f:d),i(n)&&n>-1&&(p=p.slice(0,n));return K(p,this._docs,{includeMatches:a,includeScore:o})}_searchStringList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=t?null:[];return a.forEach(({v:e,i:a,n:s})=>{if(!c(e))return;let l=r.searchIn(e);if(l.isMatch){let r={score:l.score,value:e,norm:s,indices:l.indices};i&&(r.matchedMask=l.matchedMask,r.matchedTerms=l.matchedTerms,r.termCount=l.termCount);let c=[r];if(!i||this._coversAllTokens(c)){let r={item:e,idx:a,matches:c};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):o.push(r)}}}),o}_searchLogical(e){throw Error(`Logical search is not available`)}_searchObjectList(e,{heap:t,ignoreFieldNorm:n}={}){let r=this._getSearcher(e),i=this.options.useTokenSearch&&this.options.tokenMatch===`all`,{records:a}=this._myIndex,o=this._normalizedKeys(),s=t?null:[];return a.forEach(({$:e,i:a})=>{if(!c(e))return;let l=[],u=!1,d=!1;if(o.forEach((t,n)=>{let i=this._findMatches({key:t,value:e[n],searcher:r});i.length?(l.push(...i),i[0].hasInverse&&(d=!0)):u=!0}),!(d&&u)&&l.length&&(!i||this._coversAllTokens(l))){let r={idx:a,item:e,matches:l};t?(r.score=H(r.matches,{ignoreFieldNorm:n}),t.insert(r)):s.push(r)}}),s}_findMatches({key:t,value:n,searcher:r}){if(!c(n))return[];let i=[];if(e(n))n.forEach(({v:e,i:n,n:a})=>{if(!c(e))return;let o=r.searchIn(e);if(o.isMatch){let r={score:o.score,key:t,value:e,idx:n,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(r.matchedMask=o.matchedMask,r.matchedTerms=o.matchedTerms,r.termCount=o.termCount),i.push(r)}});else{let{v:e,n:a}=n,o=r.searchIn(e);if(o.isMatch){let n={score:o.score,key:t,value:e,norm:a,indices:o.indices,hasInverse:o.hasInverse};o.termCount!==void 0&&(n.matchedMask=o.matchedMask,n.matchedTerms=o.matchedTerms,n.termCount=o.termCount),i.push(n)}}return i}_coversAllTokens(e){let t=e.length?e[0].termCount:void 0;if(t===void 0)return!0;if(t<=31){let n=0;for(let t=0;t<e.length;t++)n|=e[t].matchedMask||0;return n===2**t-1}let n=new Set;for(let t=0;t<e.length;t++){let r=e[t].matchedTerms;if(r)for(let e of r)n.add(e)}return n.size===t}};$.version=`7.5.0`,$.createIndex=k,$.parseIndex=A,$.config=T,$.match=function(e,t,n){if(n&&n.useTokenSearch)throw Error(`Fuse.match does not support useTokenSearch: token search requires corpus-level statistics (df, fieldCount) that a one-off string comparison does not have. Use new Fuse(...).search(...) instead.`);return V(e,{...T,...n}).searchIn(t)},$.use=function(...e){e.forEach(e=>B(e))};var re=$;return re;
 })();
-const { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, loadNftChart, loadAbout, links, actions } = (() => {
+const { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions } = (() => {
 /* data.js — live data, no API keys and no backend: every source below allows
    direct browser calls.
 
@@ -828,6 +821,7 @@ const BINANCE = 'https://api.binance.com/api/v3';
 const NFT = 'https://nft.llama.fi';
 const ME = 'https://api-mainnet.magiceden.dev/v2';
 const GT = 'https://api.geckoterminal.com/api/v2';
+const WIKI = 'https://en.wikipedia.org/api/rest_v1/page/summary';
 /* GeckoTerminal versions its public API through the Accept header and is
    entitled to refuse a request that does not name a version. Sending it costs
    nothing and is what the docs ask for; without it the browser reports a bare
@@ -980,7 +974,54 @@ async function get(url, opts) {
   }
 }
 
-async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------- one host at a time ----------
+   CoinGecko's free tier is a handful of calls a minute, and Atlas can ask it for
+   the market list, two equity categories, a description and a price history in
+   the same second — then get 429s for the next minute and look broken. Retrying
+   into a rate limit makes it worse.
+
+   A small queue per host: at most two requests in flight and a floor on the gap
+   between them. It costs a few hundred milliseconds on a cold load and removes
+   the failure entirely. Hosts that do not need it are not slowed: the gap is
+   per host and defaults to nothing. */
+const GAP = { 'api.coingecko.com': 1200, 'api.geckoterminal.com': 400, 'api.coinpaprika.com': 300 };
+const lanes = new Map();
+function lane(host) {
+  if (!lanes.has(host)) lanes.set(host, { last: 0, q: [], busy: false });
+  return lanes.get(host);
+}
+function pump(host) {
+  const l = lane(host);
+  if (l.busy || !l.q.length) return;
+  l.busy = true;
+  const job = l.q.shift();
+  setTimeout(() => {
+    l.last = Date.now();
+    // one slow or failed request must not stall everything behind it
+    Promise.resolve().then(job.run).then(job.res, job.rej)
+      .finally(() => { l.busy = false; pump(host); });
+  }, Math.max(0, GAP[host] - (Date.now() - l.last)));
+}
+/* Someone typing is waiting on the answer; an index warming itself up is not.
+   Urgent work goes to the front of the lane, so a search never sits behind a
+   dozen background requests nobody asked for. */
+function queued(host, run, urgent) {
+  if (!GAP[host]) return run();
+  const l = lane(host);
+  return new Promise((res, rej) => {
+    const job = { run, res, rej };
+    if (urgent) l.q.unshift(job); else l.q.push(job);
+    pump(host);
+  });
+}
+
+async function fetchJson(url, opts) {
+  return queued(hostOf(url), () => fetchOnce(url, opts), opts?.urgent);
+}
+
+async function fetchOnce(url, { tries = 2, timeout = 25000, post = null, headers = null } = {}) {
   // one source speaks GraphQL; everything else is a plain GET
   const init = post
     ? { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(post) }
@@ -1004,7 +1045,6 @@ async function fetchJson(url, { tries = 2, timeout = 25000, post = null, headers
     return r.json();
   }
 }
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* Session cache, two tiers. sessionStorage survives a reload but silently
    refuses anything over its quota — the pool payload alone is ~10MB — so a
@@ -1150,8 +1190,11 @@ function loadAssets() {
    row honest: a share tokenized by Robinhood and one tokenized by Backed are
    different instruments with different redemption, and the sheet should say
    which one it is holding rather than calling both "tokenized". */
+/* Each slug is a separate request against a rate-limited host, so the list is
+   the ones most likely to exist rather than every name an issuer might use. A
+   slug that has been retired returns nothing and costs one request. */
 const STOCK_CATS = ['tokenized-stock', 'xstocks-ecosystem', 'tokenized-equity',
-  'stock-tokens', 'ondo-ecosystem', 'dinari-ecosystem', 'robinhood-chain-ecosystem'];
+  'robinhood-chain-ecosystem', 'coinbase-tokenized-equities'];
 
 const ISSUERS = [
   [/backed|xstock/i, 'Backed'],
@@ -1263,8 +1306,8 @@ function loadChainTokens(chainId) {
   const net = GT_NET[chainId];
   if (!net) return Promise.resolve([]);
   return cache(`chaintok:${chainId}`, TTL, async () => {
-    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
-      .catch(() => null);
+    const j = await get(`${GT}/networks/${net}/pools?page=1&include=base_token`,
+      { tries: 1, headers: GT_ACCEPT, urgent: true }).catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
       .map(p => ({ ...p, chain: chainId })).slice(0, 40);
@@ -1637,16 +1680,38 @@ function loadStables() {
   });
 }
 
+/* DeFiLlama hands bridges, funding rounds and exploits no logo of their own,
+   so three categories rendered as coloured initials. Most of them are
+   protocols it already has an icon for, and the protocol index is cached by
+   the time these load — one lookup by slug is the whole cost. */
+async function protoIcons() {
+  const rows = await loadProtocols().catch(() => []);
+  const m = new Map();
+  for (const r of rows) if (r.img) { m.set(r.slug, r.img); m.set(slugOf(r.name), r.img); }
+  return m;
+}
+/* A bridge names its icon the way DeFiLlama writes it internally —
+   "protocol:across" or "chain:ethereum" — rather than as a URL. */
+const llamaIcon = (icon, byName) => {
+  const [kind, slug] = String(icon || '').split(':');
+  if (!slug) return byName || null;
+  return kind === 'chain'
+    ? `https://icons.llama.fi/chains/rsz_${encodeURIComponent(slug.toLowerCase())}.jpg`
+    : `https://icons.llama.fi/${encodeURIComponent(slug.toLowerCase())}.png`;
+};
+
 /** Cross-chain bridges, by recent volume. */
 function loadBridges() {
   return cache('bridges', TTL, async () => {
-    const j = await get(`${BRIDGES}/bridges?includeChains=true`).catch(() => null);
+    const [j, icons] = await Promise.all([
+      get(`${BRIDGES}/bridges?includeChains=true`).catch(() => null), protoIcons()]);
     return (j?.bridges || [])
       .map(b => {
         const chains = (b.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         const name = b.displayName || b.name || '?';
         return {
           kind: 'bridge', id: `b:${b.id ?? slugOf(name)}`, name, bid: b.id ?? '',
+          img: safeUrl(llamaIcon(b.icon, icons.get(slugOf(name)))) || null,
           vol24: num(b.lastDailyVolume ?? b.volumePrevDay), volPrev: num(b.volumePrev2Day),
           chains, chain: chains[0] || null, color: colorOf(name),
           key: `${name} bridge cross-chain transfer ${(b.chains || []).join(' ')}`,
@@ -1661,7 +1726,8 @@ function loadBridges() {
 /** Funding rounds. */
 function loadRaises() {
   return cache('raises', TTL, async () => {
-    const j = await get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null);
+    const [j, icons] = await Promise.all([
+      get(`${LLAMA}/raises`, { timeout: 45000 }).catch(() => null), protoIcons()]);
     return (j?.raises || [])
       .filter(r => r.name)
       .map(r => {
@@ -1669,6 +1735,7 @@ function loadRaises() {
         const chains = (r.chains || []).map(c => BY_LLAMA[c]).filter(Boolean);
         return {
           kind: 'raise', id: `f:${slugOf(r.name)}-${r.date}`, name: r.name,
+          img: icons.get(slugOf(r.name)) || null,
           amount: num(r.amount) * 1e6, round: r.round || '', date: num(r.date) * 1000,
           sector: r.sector || r.category || '', investors,
           // amount comes in millions, valuation in whole dollars — accept either
@@ -1685,7 +1752,8 @@ function loadRaises() {
 /** Exploits and hacks. */
 function loadHacks() {
   return cache('hacks', TTL, async () => {
-    const rows = await get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null);
+    const [rows, icons] = await Promise.all([
+      get(`${LLAMA}/hacks`, { timeout: 45000 }).catch(() => null), protoIcons()]);
     return (Array.isArray(rows) ? rows : [])
       .filter(h => h.name)
       .map(h => {
@@ -1693,6 +1761,7 @@ function loadHacks() {
         const chains = list.map(c => BY_LLAMA[c]).filter(Boolean);
         return {
           kind: 'hack', id: `h:${slugOf(h.name)}-${h.date}`, name: h.name,
+          img: icons.get(slugOf(h.name)) || null,
           amount: num(h.amount), date: num(h.date) * 1000,
           technique: h.technique || h.classification || 'Exploit',
           source: safeUrl(h.source), chains, chain: chains[0] || null, color: '#ff6b81',
@@ -1807,7 +1876,7 @@ function searchPairs(q) {
     const [dx, gt] = await Promise.allSettled([
       get(`${DEXS}/latest/dex/search?q=${encodeURIComponent(term)}`, { tries: 1, timeout: 12000 }),
       get(`${GT}/search/pools?query=${encodeURIComponent(term)}&page=1&include=base_token`,
-        { tries: 1, timeout: 12000, headers: GT_ACCEPT }),
+        { tries: 1, timeout: 12000, headers: GT_ACCEPT, urgent: true }),
     ]);
     const errors = [];
     let rows = [];
@@ -1832,10 +1901,28 @@ function searchPairs(q) {
 /** Trending DEX pools, so the kind is populated before anyone searches. */
 function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
-    const j = await get(`${GT}/networks/trending_pools?page=1&include=base_token`, { tries: 1, headers: GT_ACCEPT })
-      .catch(() => null);
-    const imgs = gtTokens(j);
-    return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))]).slice(0, 40);
+    /* One page of trending is twenty pools — a sample of the long tail, not the
+       long tail. Three pages, and the top pools by volume alongside them, is
+       what makes the category worth opening. Each is independent: a page that
+       fails costs its own rows and nothing else. */
+    const asks = [1, 2, 3].map(pg =>
+      get(`${GT}/networks/trending_pools?page=${pg}&include=base_token`,
+        { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    asks.push(get(`${GT}/networks/trending_pools?page=1&include=base_token&duration=24h`,
+      { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    /* Trending is global, so it is dominated by whichever chain is busy today
+       and a quiet chain can be absent from the category entirely. The busiest
+       pools on each of the big networks are a different question with a
+       different answer, and asking it is what makes every chain represented. */
+    for (const id of ['eth', 'sol', 'base', 'arb', 'bnb', 'poly'])
+      asks.push(get(`${GT}/networks/${GT_NET[id]}/pools?page=1&include=base_token`,
+        { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    const got = await Promise.all(asks);
+    const lists = got.filter(Boolean).map(j => {
+      const imgs = gtTokens(j);
+      return (j?.data || []).map(r => gtPool(r, imgs));
+    });
+    return mergePairs(lists).slice(0, 300);
   });
 }
 
@@ -1850,6 +1937,15 @@ const SOL_LAMPORTS = 1e9;
 const NFT_UNIT = { eth: 'ETH', base: 'ETH', arb: 'ETH', op: 'ETH', blast: 'ETH', linea: 'ETH',
   scrl: 'ETH', zks: 'ETH', poly: 'POL', bnb: 'BNB', avax: 'AVAX', sol: 'SOL', btc: 'BTC' };
 
+/* DeFiLlama's collection list is the widest one available without a key, and it
+   is also the one most likely to hand back a row with no image and no history.
+   Where it does, the collection is still real — so the gaps are filled from the
+   marketplace that actually holds the collection rather than left blank.
+   OpenSea's endpoints need a key; its CDN does not, and neither does the slug
+   its own URLs use. */
+const osImage = slug => slug
+  ? `https://i.seadn.io/gcs/${encodeURIComponent(slug)}` : null;
+
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
   const floorUsd = num(c.floorPriceUSD ?? c.floorPrice1dUSD);
@@ -1858,7 +1954,8 @@ function llamaNft(c) {
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: safeUrl(c.image || c.logo) || null, chain,
+    img: safeUrl(c.image || c.logo || c.imageUrl || c.logoUrl) || null,
+    slug: c.slug || c.collectionSlug || '', chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
     floorUsd, floor, unit: NFT_UNIT[chain] || 'ETH',
@@ -1921,6 +2018,23 @@ function osItem(n, slug) {
 }
 
 /** The items actually listed in a collection. Empty is an answer, not a failure. */
+/* A floor history from OpenSea, where DeFiLlama has none. Their stats endpoint
+   needs a key; where one is configured this is the fallback, and where it is
+   not the chart falls back to the reported moves as before. */
+async function openseaFloor(n, key) {
+  if (!key || !n.slug) return null;
+  const j = await get(`https://api.opensea.io/api/v2/collections/${encodeURIComponent(n.slug)}/stats`,
+    { tries: 1, timeout: 15000, headers: { 'x-api-key': key } }).catch(() => null);
+  const iv = j?.intervals || [];
+  const now = num(j?.total?.floor_price);
+  if (!now) return null;
+  // three points from three windows is not a series, but it is a shape
+  const back = w => { const x = iv.find(v => v.interval === w);
+    return x && x.average_price ? now / (1 + num(x.volume_change) / 100) : now; };
+  const pts = [back('thirty_day'), back('seven_day'), now].filter(v => v > 0);
+  return pts.length === 3 ? pts : null;
+}
+
 function loadNftItems(n, { openseaKey } = {}) {
   if (!n?.cid) return Promise.resolve({ items: [], why: 'no collection id' });
   return cache(`nftitems:${n.id}`, TTL, async () => {
@@ -1971,6 +2085,11 @@ function floorFromMoves(n) {
 }
 
 /** Floor price history for a collection. */
+/* Set once by the app from config, so the data layer does not import config and
+   the two stay independently testable. */
+let nftKey = '';
+const setOpenseaKey = k => { nftKey = k || ''; };
+
 function loadNftChart(n, days) {
   return cache(`nchart:${n.id}`, TTL, async () => {
     /* DeFiLlama's collection ids and Magic Eden's symbols are different id
@@ -1988,25 +2107,56 @@ function loadNftChart(n, days) {
     return rows.map(r => Array.isArray(r) ? num(r[1])
       : num(r.floorPriceUSD ?? r.floorPrice ?? r.floor ?? r.price ?? r.v))
       .filter(v => v > 0);
-  }).then(all => {
+  }).then(async all => {
     const s = slice(all, days, n.floorUsd || n.floor);
     if (s.live) return s;
     const moves = floorFromMoves(n);
-    return moves ? { pts: moves, live: true, via: 'its reported 1d and 7d moves' } : s;
+    if (moves) return { pts: moves, live: true, via: 'its reported 1d and 7d moves' };
+    const os = await openseaFloor(n, nftKey).catch(() => null);
+    return os ? { pts: os, live: true, via: 'OpenSea' } : s;
   });
 }
 
 /* An entity's own description, where its source publishes one. Assets and
    stocks come from CoinGecko, protocols from the payload the TVL chart already
    fetches. One request, cached, and only when a sheet is opened. */
+/* The first paragraph, whole. It used to be cut at 420 characters, which lands
+   mid-sentence on most of them and reads as a bug rather than as a summary.
+   Sources write two or three sentences here; a generous cap catches the one
+   that writes an essay, and it cuts at a sentence rather than a word. */
 const firstPara = s => {
   const t = String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  if (!t) return '';
-  const cut = t.slice(0, 420);
-  return (cut.length < t.length ? cut.replace(/\s+\S*$/, '') + '…' : cut);
+  if (!t || t.length <= 900) return t;
+  const cut = t.slice(0, 900);
+  const stop = cut.lastIndexOf('. ');
+  return stop > 300 ? cut.slice(0, stop + 1) : cut.replace(/\s+\S*$/, '') + '\u2026';
 };
 
+/* A tokenized share's CoinGecko page describes the wrapper: who issued it, what
+   it is redeemable for, which chain it sits on. That is on the row already. The
+   thing a reader wants is the company — and Wikipedia's summary endpoint is
+   keyless, CORS-open and exactly one paragraph long, which is the shape this
+   slot wants. The company name is the token's name with the issuer's wrapping
+   taken off: "Tesla xStock" is Tesla. */
+const companyOf = name => String(name || '')
+  .replace(/x ?stock|token[iy]zed|dshare|backed|robinhood|coinbase|kraken|dinari|ondo|swarm|securitize|sologenic/gi, '')
+  .replace(/\b(inc|corp|corporation|co|plc|ltd|sa|nv|ag)\b\.?/gi, '')
+  .replace(/[^\w\s&.-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+function wikiSummary(title) {
+  return cache(`wiki:${title}`, 30 * TTL, async () => {
+    const j = await get(`${WIKI}/${encodeURIComponent(title)}`,
+      { tries: 1, timeout: 12000 }).catch(() => null);
+    // a disambiguation page describes nothing; treat it as no answer
+    return j && j.type === 'standard' ? firstPara(j.extract) : '';
+  });
+}
+
 function loadAbout(it) {
+  if (it.kind === 'stock') {
+    const name = companyOf(it.name);
+    if (name) return wikiSummary(name).then(t => t || '');
+  }
   const cg = it.cg || (it.kind === 'stock' && it.id.slice(2));
   // a network is described by the page of the token that secures it
   if ((it.kind === 'asset' || it.kind === 'stock' || it.kind === 'chain') && cg) {
@@ -2078,7 +2228,7 @@ function actions(i) {
   return out;
 }
 
-return { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, loadNftChart, loadAbout, links, actions };
+return { CHAINS, CH, ApiError, flags, clearCache, loadAssets, loadStocks, loadChainTokens, loadPools, loadAssetChart, loadPairChart, loadPoolChart, loadProtocols, loadVerified, loadMorpho, loadBridgeChart, loadChains, loadStables, loadBridges, loadRaises, loadHacks, loadChainChart, loadStableChart, loadProtocolChart, searchPairs, loadTrendingPairs, loadNftItems, loadNFTs, setOpenseaKey, loadNftChart, loadAbout, links, actions };
 })();
 window.__ATLAS_MODULES__ = { config: (() => {
 /* config.js — the credentials Atlas needs to do more than read.
@@ -2439,8 +2589,11 @@ const S = {
   loading: true, err: null, warn: null, at: 0,
   verified: null, morpho: 0,
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
-  view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
-  safe: store.get('atlas:safe') !== '0',
+  view: store.get('atlas:view') || 'auto', dense: false,
+  // Junk is hidden, full stop. It was a toggle because the rules were young and
+  // might be wrong; they are audited per kind now, and a control that everyone
+  // leaves in one position is furniture.
+  safe: true,
   sort: null, facets: new Set(), limit: 40,
   // what was typed, what it was read as, and the numeric constraints it named
   nl: null, where: [],
@@ -2449,7 +2602,7 @@ const S = {
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
-  clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), sortbar: $('#sortbar'),
+  clear: $('#clear'), banner: $('#banner'), sortbar: $('#sortbar'),
   facetbar: $('#facetbar'),
 };
 const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
@@ -2475,21 +2628,32 @@ async function load({ force } = {}) {
    needed for first paint, so they load behind the first render and are merged
    in when they arrive. Failures here are silent: the page is already useful. */
 let enriched = false;
+/* Nine loaders, and this used to wait for all nine before showing any of them —
+   so the slowest one decided when bridges, funding rounds and NFTs appeared. It
+   was invisible until requests to one host were paced against its rate limit,
+   and then a single slow source held up every category in the batch. Each one
+   now lands the moment it arrives. */
 async function enrich() {
   if (enriched) return; enriched = true;
-  const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
-    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs(), loadNFTs(), loadStocks()]);
-  const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
-  S.protocols = val(0, []);
-  S.chainRows = val(1, []);
-  const st = val(2, { rows: [], bySym: {} });
-  S.stables = st.rows; S.bySym = st.bySym;
-  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
-  S.pairs = val(6, []); S.nfts = val(7, []); S.stockRows = val(8, []);
-  S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
-  joinLogos();
-  nodes.clear(); reindex(); render();
-  third();
+  let pending = 0;
+  const paint = () => { S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
+    joinLogos(); nodes.clear(); reindex(); render(); };
+  const land = (p, fn) => {
+    pending++;
+    return p.then(v => { fn(v); paint(); }, () => {})
+      .finally(() => { if (--pending === 0) third(); });
+  };
+  await Promise.all([
+    land(loadProtocols(), v => { S.protocols = v; }),
+    land(loadChains(), v => { S.chainRows = v; }),
+    land(loadStables(), v => { S.stables = v.rows; S.bySym = v.bySym; }),
+    land(loadBridges(), v => { S.bridges = v; }),
+    land(loadRaises(), v => { S.raises = v; }),
+    land(loadHacks(), v => { S.hacks = v; }),
+    land(loadTrendingPairs(), v => { S.pairs = v; }),
+    land(loadNFTs(), v => { S.nfts = v; }),
+    land(loadStocks(), v => { S.stockRows = v; }),
+  ]);
 }
 
 /* Phase three. Two registries that say which token is the real one, and the
@@ -2498,6 +2662,9 @@ async function enrich() {
 let thirded = false;
 async function third() {
   if (thirded) return; thirded = true;
+  // the data layer does not import config; the app hands it what it needs
+  loadModule('config', './config.js')
+    .then(({ config }) => setOpenseaKey(config.venues?.opensea?.apiKey)).catch(() => {});
   const [v, m] = await Promise.allSettled([loadVerified(), loadMorpho()]);
   if (v.status === 'fulfilled') S.verified = v.value;
   if (m.status === 'fulfilled' && m.value.length) {
@@ -2658,6 +2825,11 @@ function rowsFor(tab) {
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
 const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
+/* What a category holds before the junk rule runs. The rule is no longer a
+   toggle, so comparing the two counts is the only way left to see it work. */
+if (typeof window !== 'undefined')
+  window.__ATLAS_RAWCOUNTS__ = () =>
+    Object.fromEntries(TABS.map(([t]) => [t, rowsFor(t).filter(onChain).length]));
 let hidden = 0, base = [];   // base: the category before its facets, for the chip counts
 /* Facets narrow together: a row has to answer every question that is on. */
 const facetPred = (skip) => {
@@ -2767,7 +2939,9 @@ const tok = (it, sq) => {
   const label = KIND[it.kind].label(it);
   const c = CH[it.chain];
   return `<div class="tok${sq ? ' sq' : ''}${label.length > 3 ? ' t4' : ''}" style="--c:${it.color}${c ? ';--c2:' + c.color : ''}">${esc(label)}` +
-    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
+    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" referrerpolicy="no-referrer"
+       onload="this.style.opacity=1;this.parentNode.classList.add('img')"
+       onerror="this.remove()">` : '') +
     (c ? '<span class="badge"></span>' : '') + `</div>`;
 };
 const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-star="${esc(it.id)}" aria-label="Save to watchlist" aria-pressed="${S.watch.has(it.id)}">
@@ -2789,7 +2963,8 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    scope and the sheet's chart — [loader, default range, ranges, readout].
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
-  asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
+  asset: { group: 'Assets', size: i => i.mcap, spark: true, global: true,
+    chart: [loadAssetChart, 1, R.price, usd],
     // nothing traded, nothing priced, or a market cap so thin the price is
     // whatever the last trade said it was
     ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
@@ -2967,7 +3142,8 @@ const FACET = {
     ['ten', '10%+ APY', i => i.apy >= 10],
     ['holding', 'Rate not falling', i => i.outlook === 'holding' || i.outlook === 'rising'],
     ['deep', '$10M+', i => i.tvl >= 1e7]],
-  protocol: [['fees', 'Earning fees', i => i.fees24 > 0],
+  protocol: [['rwa', 'Real-world assets', i => /rwa|real world/i.test(i.cat)],
+    ['fees', 'Earning fees', i => i.fees24 > 0],
     ['dex', 'DEXs', i => i.vol24 > 0],
     ['perps', 'Perps', i => i.perps24 > 0],
     ['big', '$1B+ TVL', i => i.tvl >= 1e9],
@@ -3104,28 +3280,12 @@ function paintSel(scroll) {
 
 /* The totals DefiLlama leads with, summed from data already in memory — no
    extra request, and they move with the chain filter like everything else. */
-function paintStats() {
-  if (S.loading || S.err) return el.stats.replaceChildren();
-  const sum = (a, f) => a.filter(onChain).reduce((t, i) => t + (f(i) || 0), 0);
-  // a source that has not answered totals zero; say so rather than claiming $0
-  const cash = n => n ? money(n) : '—';
-  const rows = [
-    ['Total TVL', cash(sum(S.chainRows, i => i.tvl))],
-    ['Supplied', cash(sum(S.pools, i => i.supplyUsd))],
-    ['DEX volume 24h', cash(sum(S.protocols, i => i.vol24))],
-    ['Stablecoins', cash(sum(S.stables, i => i.circulating))],
-    ['Indexed', compact(everything().filter(onChain).length)],
-  ];
-  el.stats.innerHTML = rows.map(([k, v]) =>
-    `<div class="s"><div class="sk">${k}</div><div class="sv">${esc(v)}</div></div>`).join('');
-}
-
 /* The column headers are the sort control, and a phone has no room for them.
    Same descriptor, rendered as chips, so sorting is not desktop-only. */
 function paintSort() {
   const k = TAB_KIND[S.tab];
   const cols = k && KIND[k].cols?.filter(c => c[2]);
-  if (!cols?.length) return el.sortbar.replaceChildren();
+  if (!cols?.length || !matched) return el.sortbar.replaceChildren();
   const chip = ([label, , key]) => `<button data-sort="${esc(key)}"${S.sort?.key === key
     ? ` class="on" aria-pressed="true"` : ' aria-pressed="false"'}>${esc(label)}${
     S.sort?.key === key ? (S.sort.dir > 0 ? ' \u2191' : ' \u2193') : ''}</button>`;
@@ -3164,6 +3324,8 @@ function paintKinds() {
 
 function paintFacets() {
   if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
+  // nothing to narrow is not a row worth keeping on screen
+  if (!matched) return el.facetbar.replaceChildren();
   const fs = facetsFor(S.tab);
   if (!fs.length) return paintKinds();
   const chip = f => {
@@ -3187,10 +3349,24 @@ function scrollToResults() {
   if (scrollY > y) scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 }
 
+/* One line each, saying what the category is for rather than repeating its
+   name. The home screen is the only place with room to say it. */
+const HOMEWORD = {
+  asset: 'Prices, caps and volume', stock: 'Shares issued onchain',
+  pool: 'Supply and borrow rates', yield: 'Farms and what they pay',
+  protocol: 'TVL, fees and revenue', nft: 'Floors and what is listed',
+  pair: 'The DEX long tail', stablecoin: 'Supply and peg',
+  bridge: 'What moves between chains', raise: 'Who raised what',
+  hack: 'What was lost, and how', chain: 'Networks by size',
+};
+
 const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" style="animation-delay:${i * 60}ms"><div class="tok"></div><div class="body"><div class="ln w40"></div><div class="ln w25"></div></div><div class="ln w15"></div></div>`).join('');
 
 function render() {
   document.body.classList.toggle('searching', !!S.q);
+  // the tile home is neither a table nor a list of cards, so the toggle that
+  // switches between them has nothing to act on there
+  $('#view').hidden = S.tab === 'all' && !S.q.trim() && !S.chain;
   el.q.classList.toggle('read', !!S.nl);
   document.body.classList.toggle('browsing', S.tab !== 'all');
   el.clear.hidden = !S.q;
@@ -3219,7 +3395,7 @@ function render() {
 
   const list = S.list = withRemote(compute());
   mode = tableKind(list) || '';
-  paintStats(); paintCounts(); paintFacets();
+  paintCounts(); paintFacets();
   // set on every path, including the empty ones below, or toggling density on a
   // category with no rows does nothing until you leave it
   el.res.classList.toggle('table', !!mode);
@@ -3236,12 +3412,24 @@ function render() {
   el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
   if (S.chain && globalKind(TAB_KIND[S.tab]))
     el.meta.innerHTML += `<span class="mnote">· not network-specific</span>`;
-  if (hidden && S.safe && list.length)
-    el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
 
   if (!list.length && S.remote.busy) {
     el.res.innerHTML = skeleton(3);
+    return;
+  }
+  if (S.tab === 'all' && !S.q.trim() && !S.chain) {
+    el.meta.innerHTML = `<span class="mtext">Everything onchain, by category · updated ${ago(S.at)}</span>`;
+    el.facetbar.replaceChildren(); el.sortbar.replaceChildren();
+    el.res.className = 'results home';
+    el.res.innerHTML = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
+      const k = TAB_KIND[t], n = countOf(t);
+      return `<button class="tile" data-go="${esc(t)}">
+        <div class="tl">${esc(label)}</div>
+        <div class="tn">${n ? esc(count(n)) : '—'}</div>
+        <div class="tw">${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</div></button>`;
+    }).join('');
+    nodes.clear();
     return;
   }
   if (!list.length) {
@@ -3695,7 +3883,16 @@ async function drawChart(days) {
    stretches SVG text horizontally along with everything else. */
 // the svg is the plot only; the time axis lives in a gutter beneath it, so
 // labels never sit on top of the volume bars
-const CW = 300, PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
+/* The chart is drawn in real pixels, measured from the element it lands in.
+
+   It used to be drawn in a fixed 300-unit viewBox stretched to fit with
+   preserveAspectRatio="none", and everything that went wrong with it went wrong
+   for that one reason: a stroke is scaled differently across than down, a
+   circle becomes an ellipse, and anything positioned as a percentage of the
+   host is measuring a different box from the one the geometry was computed in —
+   which is why the high and low marks sat off the line by eleven pixels.
+   Measuring first costs one layout read and removes the whole class. */
+const PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
 
 /* Resolution follows the range. Month-and-day across a year prints "Aug 29" at
    both ends, a year apart, which reads as no span at all. */
@@ -3707,6 +3904,8 @@ const stamp = (d, days) => days <= 1
 
 function paintChart(box, it, s, days) {
   const host = box.querySelector('.chart-svg');
+  // one read, before anything is written: the width the line is actually drawn at
+  const CW = Math.max(120, Math.round(host.getBoundingClientRect().width) || 320);
   const pts = s.pts?.length > 1 ? s.pts : [0, 0];
   const n = pts.length;
   const hi = s.hi?.length === n ? s.hi : null;
@@ -3721,7 +3920,7 @@ function paintChart(box, it, s, days) {
   const up = move >= 0;
   const stroke = up ? 'var(--up)' : 'var(--down)';
 
-  const X = i => (i / (n - 1)) * CW;
+  const X = i => CPAD + (i / (n - 1)) * (CW - CPAD * 2);
   const Y = v => CPAD + (1 - (v - min) / span) * (PH - CPAD * 2);
   const line = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
   const d = line(pts);
@@ -3743,38 +3942,36 @@ function paintChart(box, it, s, days) {
     return out;
   };
   /* The axis says what the high and the low were; it does not say when. Two
-     marks on the line do. They are positioned in percentages rather than drawn
-     into the svg, which is stretched by preserveAspectRatio="none" and would
-     squash a circle into an ellipse. */
+     marks on the line do — and now that the svg is drawn 1:1 they can be circles
+     in it, on the line, instead of elements positioned against a different box. */
   const mark = (i, cls) => n < 4 || i < 0 ? ''
-    : `<i class="pin ${cls}" style="left:${(i / (n - 1) * 100).toFixed(2)}%;` +
-      `top:${(Y(pts[i]) / CH2 * 100).toFixed(2)}%;background:${stroke}"></i>`;
+    : `<circle class="pin ${cls}" cx="${X(i).toFixed(1)}" cy="${Y(pts[i]).toFixed(1)}"
+        r="3.5" fill="${stroke}"/>`;
   const marks = max === min ? ''
     : mark(pts.indexOf(max), 'pk') + mark(pts.indexOf(min), 'tr');
 
   const vb = vol ? buckets(vol, 64) : null;
   const vmax = vb ? Math.max(...vb) || 1 : 1;
-  const bw = vb ? Math.max(1.2, CW / vb.length - 1) : 0;
+  const bw = vb ? Math.max(1.2, (CW - CPAD * 2) / vb.length - 1.5) : 0;
   const bars = vb ? vb.map((v, i) => {
     const h = (v / vmax) * VH;
-    return `<rect x="${(i / vb.length * CW).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
-       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="0.5"/>`;
+    return `<rect x="${(CPAD + i / vb.length * (CW - CPAD * 2)).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
+       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
   }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CH2}" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
       ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
-      <path class="area" d="${d}L${CW} ${PH}L0 ${PH}Z" fill="url(#cgrad)"/>
-      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"
-        vector-effect="non-scaling-stroke"/>
+      <path class="area" d="${d}L${(CW - CPAD).toFixed(1)} ${PH}L${CPAD} ${PH}Z" fill="url(#cgrad)"/>
+      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"/>
       <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
-        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        stroke-linejoin="round" stroke-linecap="round"/>
       ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
+      ${marks}
     </svg>
-    ${marks}
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
     <div class="tip"><b></b><span></span></div>
     <div class="ax hi"></div><div class="ax lo"></div>
@@ -3793,7 +3990,15 @@ function paintChart(box, it, s, days) {
   const big = box.querySelector('.big');
   const baseBig = fmt(last);
   const source = !live ? ' · no history' : s.via ? ` · via ${s.via}` : '';
-  const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
+  /* The row and the chart were quoting different numbers for the same window.
+     The row prints the change the source reports; the chart computed its own
+     from the first and last points of whatever series came back, over whatever
+     span that series actually covered. Both are defensible and they disagree,
+     which just looks wrong. Where the source has published a figure for exactly
+     this window, that figure wins in both places. */
+  const reported = { 1: it.chg, 7: it.chg7d, 30: it.chg30d, 365: it.chg1y }[days];
+  const shown = reported == null ? move : reported;
+  const summary = `<span class="${shown >= 0 ? 'up' : 'down'}">${pct(shown)}</span>
     <span class="mute">${esc(RANGE_LABEL[days] || '')}${esc(source)}</span>`;
   if (big) big.textContent = baseBig;
   if (head) head.innerHTML = summary;
@@ -3824,7 +4029,8 @@ function paintChart(box, it, s, days) {
   };
   const nearest = clientX => {
     const r = host.getBoundingClientRect();
-    return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left) / r.width * (n - 1))));
+    const t = (clientX - r.left - CPAD) / Math.max(1, r.width - CPAD * 2);
+    return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   };
   host.onpointermove = e => at(nearest(e.clientX));
   host.onpointerleave = clear;
@@ -3859,6 +4065,21 @@ function open(id, { push = true } = {}) {
   fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
+}
+
+/* Same sheet as the network picker, for the same reason: a list you can see at
+   once beats a control you have to hunt along. */
+function openCats() {
+  history.pushState({ picker: 'cat', depth: ++depth }, '', location.href);
+  showSheet(`<div class="grab" aria-hidden="true"></div><div class="sheet-in picker" role="dialog" aria-label="Choose a category">
+    <div class="sheet-top"><div class="ident"><div><h2>Category</h2>
+      <div class="hsub">What to look through</div></div></div>
+      <div class="acts"><button class="x" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+    <div class="pickgrid">${TABS.map(([t, label]) =>
+      `<button class="chip cat${t === S.tab ? ' on' : ''}" data-pick="${esc(t)}">${esc(label)}
+        <span class="ct">${countOf(t) ? count(countOf(t)) : ''}</span></button>`).join('')}</div>
+  </div>`);
 }
 
 /* Thirty networks in a horizontal scroller is a bad way to find one on a
@@ -3920,8 +4141,6 @@ function syncUrl(now) {
     if (S.sort) p.set('sort', (S.sort.dir > 0 ? '' : '-') + S.sort.key);
     if (S.facets.size) p.set('f', [...S.facets].join(','));
     if (S.view === 'cards') p.set('view', 'cards');
-    if (S.dense) p.set('dense', '1');
-    if (!S.safe) p.set('all', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -3937,8 +4156,6 @@ function fromUrl() {
   const known = new Set(facetsFor(S.tab).map(f => f[0]));
   S.facets = new Set((p.get('f') || '').split(',').filter(x => known.has(x)));
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
-  if (p.get('dense')) S.dense = p.get('dense') === '1';
-  if (p.get('all')) S.safe = p.get('all') !== '1';
   paintFilters(); paintTools();
 }
 
@@ -3974,7 +4191,7 @@ $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="t
 $('#netCount').textContent = `${CHAINS.length} networks`;
 $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
-  document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
+  document.querySelectorAll('#tabs [data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
   const btn = $('#chainbtn');
   btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
@@ -3983,17 +4200,19 @@ function paintFilters() {
 }
 /** How much sits behind each category, so the rail says what it holds. */
 function paintCounts() {
-  document.querySelectorAll('[data-tab] .ct').forEach(el => {
+  document.querySelectorAll('#tabs [data-tab] .ct').forEach(el => {
     const n = countOf(el.parentElement.dataset.tab);
     el.textContent = n ? count(n) : '';
   });
 }
 function paintTools() {
-  $('#density span').textContent = S.dense ? 'Compact' : 'Comfortable';
-  $('#density').setAttribute('aria-pressed', S.dense);
   $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
-  $('#safe').setAttribute('aria-pressed', S.safe);
-  $('#stocks').setAttribute('aria-pressed', S.tab === 'stocks');
+  /* The category picker is the rail on a wide screen and a dropdown everywhere
+     else — and it says nothing worth a control on All, where the categories are
+     the page. */
+  const cb = $('#catbtn');
+  cb.hidden = S.tab === 'all';
+  cb.querySelector('.cn').textContent = TABS.find(([t]) => t === S.tab)?.[1] || 'All';
 }
 
 /* ---------- events ---------- */
@@ -4021,27 +4240,9 @@ $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#connect').addEventListener('click', openWallet);
 $('#refresh').addEventListener('click', () => load({ force: true }));
 narrow.addEventListener('change', () => { nodes.clear(); render(); });
-function setSafe(on) {
-  S.safe = on; store.set('atlas:safe', on ? '1' : '0');
-  paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
-}
-$('#safe').addEventListener('click', () => setSafe(!S.safe));
-/* Stocks-only is a view, and the rail already has it. The switch is a way in
-   and back out from anywhere, so it holds no state of its own — it reports
-   whether that category is the one on screen. */
-let lastTab = 'all';
-$('#stocks').addEventListener('click', () => {
-  const on = S.tab === 'stocks';
-  if (!on) lastTab = S.tab;
-  S.tab = on ? (lastTab === 'stocks' ? 'all' : lastTab) : 'stocks';
-  S.sel = 0; S.sort = null; S.facets.clear();
-  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
-});
-el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
-$('#density').addEventListener('click', () => {
-  S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0');
-  paintTools(); render(); syncUrl(true);
-});
+/* The category picker: the rail on a wide screen, a dropdown on any other, and
+   the same list either way. */
+$('#catbtn').addEventListener('click', openCats);
 $('#view').addEventListener('click', () => {
   S.view = S.view === 'cards' ? 'auto' : 'cards';
   store.set('atlas:view', S.view); paintTools(); nodes.clear(); render(); syncUrl(true);
@@ -4096,7 +4297,6 @@ function goTab(tab) {
   if (!tab || !TABS.some(([t]) => t === tab)) return;
   if (S.nl) { dropReading(); S.q = el.q.value = ''; }
   if (tab === S.tab) { paintFilters(); reindex(); render(); return; }
-  if (S.tab !== 'stocks') lastTab = S.tab;
   S.tab = tab; S.sel = 0; S.sort = null; S.facets.clear(); S.limit = 40;
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 }
@@ -4143,6 +4343,11 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
+  const tile = e.target.closest('.tile[data-go]');
+  if (tile) return goTab(tile.dataset.go);
+  // recently viewed lives in an empty state, and was rendered but inert
+  const mini = e.target.closest('.mini[data-id]');
+  if (mini) return open(mini.dataset.id);
   if (e.target.closest('[data-more]')) {
     S.limit += PAGE;
     const at = scrollY;
@@ -4162,6 +4367,8 @@ el.sheet.addEventListener('click', e => {
   if (e.target.closest('[data-close]')) return close();
   if (e.target.closest('[data-chain]')) return onChainClick(e);
   if (e.target.closest('[data-back]')) return history.back();
+  const pick = e.target.closest('[data-pick]');
+  if (pick) { const t = pick.dataset.pick; history.back(); return setTimeout(() => goTab(t), 60); }
   const d = e.target.closest('[data-days]');
   if (d) {
     el.sheet.querySelectorAll('[data-days]').forEach(x => x.classList.toggle('on', x === d));
@@ -4530,6 +4737,7 @@ addEventListener('error', e => {
 });
 
 fromUrl();
+if (S.chain) pickChain(S.chain);        // a link with ?chain= arrived, not a click
 paintConnect();
 // an OAuth redirect lands back here with a one-time code in the query string
 if (/privy_oauth_code/.test(location.search))

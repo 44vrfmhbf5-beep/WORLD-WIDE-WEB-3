@@ -7,11 +7,11 @@ import { chromium } from 'playwright';
 const b = await chromium.launch();
 const p = await (await b.newContext({ viewport: { width: 1280, height: 1000 } })).newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.goto('http://127.0.0.1:8899/', { waitUntil: 'domcontentloaded' });
+await p.goto('http://127.0.0.1:8899/?tab=assets', { waitUntil: 'domcontentloaded' });
 await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
 await p.waitForTimeout(2200);
 const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
-let bad = 0;
+let bad = 0, seen = 0;
 const flag = (m) => { bad++; return '  << ' + m; };
 for (const t of tabs) {
   if (t === 'saved') continue;
@@ -23,7 +23,7 @@ for (const t of tabs) {
     const row = p.locator('#results .row:not(.sk)').nth(idx);
     const id = await row.getAttribute('data-id');
     const num = (await row.locator('.n1, .cell').first().textContent()).trim();
-    await row.click(); await p.waitForTimeout(1500);
+    await row.evaluate(el => el.click()); await p.waitForTimeout(1500);
     if (!await p.locator('.chart').count()) { await p.keyboard.press('Escape'); await p.waitForTimeout(300); continue; }
     const ranges = await p.locator('.rangebar [data-days]').evaluateAll(x => x.map(e => e.dataset.days));
     for (const d of ranges) {
@@ -46,11 +46,12 @@ for (const t of tabs) {
         : /SOL|ETH/.test(v || '') ? 'native' : 'other';
       if (r.hi && unit(r.big) !== unit(r.hi)) notes.push(flag(`headline ${r.big} vs axis ${r.hi}`));
       if (d === ranges[0] && r.big !== num && !r.nohist) notes.push(flag(`row ${num} vs headline ${r.big}`));
+      seen++;
       if (notes.length) console.log(`${t}/${id} @${d}d  big=${r.big} hi=${r.hi} lo=${r.lo} ${r.nohist ? '(flat)' : ''}${notes.join('')}`);
     }
     await p.keyboard.press('Escape'); await p.waitForTimeout(350);
   }
 }
-console.log(`\n${bad} chart problem(s)`);
+console.log(`\n${seen} chart(s) checked, ${bad} problem(s)`);
 console.log(errs.length ? 'PAGE ERRORS: ' + errs.slice(0, 3).join(' | ') : 'no page errors');
 await b.close();

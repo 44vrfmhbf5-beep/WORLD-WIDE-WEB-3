@@ -56,8 +56,6 @@
     <p class="sub">Assets, NFTs, yields, protocols, bridges and more across <span id="chainWord">30 networks</span> — one bar, no wallet required.</p>
   </section>
 
-  <div class="statbar" id="statbar" aria-label="Market totals"></div>
-
   <div class="searchbar" id="searchbar">
     <svg viewBox="0 0 24 24" class="i lens"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
     <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search assets, NFTs, protocols, yields, bridges, exploits…" aria-label="Search assets and lending markets">
@@ -70,15 +68,9 @@
   <div class="bar">
     <div class="meta" id="meta"></div>
     <div class="viewtools">
-      <button class="vt sf" id="safe" aria-pressed="true" title="Hide inactive and copycat listings">
-        <svg viewBox="0 0 24 24" class="i"><path d="M12 3.5 19 6v5.5c0 4.2-2.9 7.5-7 9-4.1-1.5-7-4.8-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Hide junk</span>
-      </button>
-      <button class="vt st" id="stocks" aria-pressed="false" title="Show tokenized equities only">
-        <svg viewBox="0 0 24 24" class="i"><path d="M4 19h16"/><path d="M7 16V9M12 16V5M17 16v-4"/></svg><span>Stocks</span>
-      </button>
-      <button class="vt" id="density" aria-pressed="false" title="Row density">
-        <svg viewBox="0 0 24 24" class="i"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Comfortable</span>
-      </button>
+      <button class="catbtn" id="catbtn" aria-haspopup="dialog" hidden>
+        <span class="cn">All</span>
+        <svg viewBox="0 0 24 24" class="i ch"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="vt" id="view" title="Table or cards">
         <svg viewBox="0 0 24 24" class="i"><path d="M4 5h16v14H4z"/><path d="M4 10h16M10 10v9"/></svg><span>Table</span>
       </button>

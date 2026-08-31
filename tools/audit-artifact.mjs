@@ -16,7 +16,7 @@ const p = await c.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message));
 // the artifact runs with no network at all
 await c.route('**', r => r.request().url().startsWith('http://localhost:8907') ? r.continue() : r.abort('failed'));
-await p.goto('http://localhost:8907/', { waitUntil: 'domcontentloaded' });
+await p.goto('http://localhost:8907/?tab=assets', { waitUntil: 'domcontentloaded' });
 await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
 await p.waitForTimeout(2500);
 const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
@@ -24,9 +24,12 @@ const wrong = [];
 for (const t of tabs) {
   if (t === 'saved') continue;
   await p.click(`[data-tab="${t}"]`); await p.waitForTimeout(700);
-  if (!await p.locator('#results .row:not(.sk)').count()) { console.log(`${t}: EMPTY`); continue; }
+  if (!await p.locator('#results .row:not(.sk)').count()) {
+    const tiles = await p.locator('#results .tile').count();
+    console.log(`${t}: ${tiles ? tiles + ' category tiles' : 'EMPTY'}`); continue;
+  }
   const rowNum = (await p.locator('#results .row:not(.sk)').first().locator('.n1, .cell').first().textContent()).trim();
-  await p.locator('#results .row:not(.sk)').first().click(); await p.waitForTimeout(1400);
+  await p.locator('#results .row:not(.sk)').first().evaluate(el => el.click()); await p.waitForTimeout(1400);
   const kind = await p.locator('.sheet-in').getAttribute('data-kind');
   const big = (await p.locator('.sheet-in .big').textContent()).trim();
   const nohist = await p.locator('.nohist').count();

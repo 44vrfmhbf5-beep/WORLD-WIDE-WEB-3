@@ -13,6 +13,10 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PAGE = process.env.PAGE || 'index.html';
 const PORT = 8901, U = `http://localhost:${PORT}/${PAGE}`;
+/* All, with nothing typed, is the category home now — a grid of tiles, no
+   rows. Anything here that wants the mixed list has to ask for it, which is
+   what a person does too. */
+const UROWS = U + '?tab=assets';
 const srv = spawn(process.execPath, [path.join(HERE, 'serve.mjs')],
   { env: { ...process.env, MODE: 'ok', PORT: String(PORT), REWRITE: '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((res, rej) => {          // never wait forever on a server that died
@@ -21,6 +25,9 @@ await new Promise((res, rej) => {          // never wait forever on a server tha
 });
 
 let fail = 0;
+/** Clicks past the sticky search bar, which overlays what scrolls under it. */
+const clickRow = (pg, sel = '#results .row:not(.sk)') =>
+  pg.locator(sel).first().evaluate(el => el.click());
 const ok = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fail++; };
 
 // ---- payloads in the documented response shapes ----
@@ -290,12 +297,17 @@ R('https://api.geckoterminal.com/**', r => {
         attributes: { image_url: 'https://img.example/gtcash.png' } }] }) });
   }
   if (/\/networks\/[^/]+\/pools/.test(u)) {          // that chain's own tokens
+    /* Every network answers with its own tokens, never a copy of the last
+       one's — six identical answers would make six requests look like one. */
+    const net = /\/networks\/([^/]+)\/pools/.exec(u)[1];
+    const tag = net === 'solana' ? '' : net.toUpperCase().slice(0, 3);
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({
       data: Array.from({ length: 8 }, (_, i) =>
         // one in four keeps a moving quote, so the rule that drops those is
         // still being exercised rather than being switched off wholesale
-        pool(`solana_C${i}`, `CHAINTOK${i} / ${i % 4 === 3 ? 'SOL' : 'USDC'}`, `chainaddr${i}`)),
-      included: Array.from({ length: 8 }, (_, i) => ({ id: `tkCHAINTOK${i}`, type: 'token',
+        pool(`${net}_C${i}`, `${tag}CHAINTOK${i} / ${i % 4 === 3 ? 'SOL' : 'USDC'}`,
+          `${tag.toLowerCase()}chainaddr${i}`)),
+      included: Array.from({ length: 8 }, (_, i) => ({ id: `tk${tag}CHAINTOK${i}`, type: 'token',
         // one hostile scheme among them: an upstream string reaching a src
         attributes: { image_url: i === 3 ? 'javascript:alert(1)' : `https://img.example/c${i}.png` } })) }) });
   }
@@ -368,12 +380,20 @@ R('https://api-mainnet.magiceden.dev/**', r => {
   r.fulfill({ contentType: 'application/json', body: JSON.stringify([
     { symbol: 'mad_lads', name: 'Mad Lads', image: null, floorPrice: 118e9, volumeAll: 9.2e11 }]) });
 });
+/* A tokenized share's About is about the company, so it comes from Wikipedia
+   under the company's own name — the wrapper's name must never reach here. */
+R('https://en.wikipedia.org/api/rest_v1/page/summary/**', r => {
+  seen.push(r.request().url());
+  const title = decodeURIComponent(r.request().url().split('/').pop());
+  r.fulfill({ contentType: 'application/json', body: JSON.stringify(
+    { type: 'standard', title, extract: `${title} is a company described by Wikipedia. It does things.` }) });
+});
 R('https://assets.coingecko.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
 
 for (const [glob, fn] of routes) await p.route(glob, fn);
 
 console.log(`\n# production endpoints (${PAGE})`);
-await p.goto(U); await p.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+await p.goto(UROWS); await p.waitForSelector('.row:not(.sk)', { timeout: 20000 });
 const hit = re => seen.some(u => re.test(u));
 ok(hit(/^https:\/\/api\.coingecko\.com\/api\/v3\/coins\/markets\?/), 'CoinGecko /coins/markets');
 ok(hit(/vs_currency=usd/) && hit(/sparkline=true/) && hit(/price_change_percentage=24h/), 'markets query params');
@@ -383,10 +403,13 @@ ok(hit(/^https:\/\/yields\.llama\.fi\/lendBorrow$/), 'DeFiLlama /lendBorrow');
 console.log('\n# real payloads render');
 const txt = await p.locator('#results').textContent();
 ok(txt.includes('Bitcoin') && txt.includes('$96,240'), 'CoinGecko fields map to asset rows');
-ok(txt.includes('Aave V3') || txt.includes('Aave v3'), 'DeFiLlama project name is humanised');
-ok(!txt.includes('FTM'), 'pool on an unsupported chain is dropped');
+// pools live under their own tab now that All is a category home
+await p.click('[data-tab=lending]'); await p.waitForSelector('.row[data-id^="p:"]', { timeout: 20000 });
+const ytxt = await p.locator('#results').textContent();
+ok(ytxt.includes('Aave V3') || ytxt.includes('Aave v3'), 'DeFiLlama project name is humanised');
+ok(!ytxt.includes('FTM'), 'pool on an unsupported chain is dropped');
 ok(await p.locator('.warn').count() === 0, '/lendBorrow failing alone is not an error');
-ok(txt.includes('6.72%'), 'borrow fields read off the pool when /lendBorrow is down');
+ok(ytxt.includes('6.72%'), 'borrow fields read off the pool when /lendBorrow is down');
 
 console.log('\n# the wider DeFi sources');
 // wait for real protocol rows (id prefix r:), not the tab label of the same name
@@ -403,9 +426,18 @@ ok(hit(/\/overview\/derivatives\?/), 'DeFiLlama /overview/derivatives');
 ok(hit(/\/overview\/options\?/), 'DeFiLlama /overview/options');
 ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/trending_pools\?page=1&include=base_token$/),
   'GeckoTerminal /trending_pools, with the token beside the pool');
+/* Trending alone is whichever chain is loud today, so a quiet chain could be
+   missing from the category altogether. The busiest pools per network are the
+   other half of the index. */
+{
+  const nets = ['eth', 'solana', 'base', 'arbitrum', 'bsc', 'polygon_pos']
+    .filter(n => seen.some(u => u.includes(`/networks/${n}/pools?page=1`)));
+  ok(nets.length === 6, `each big network is asked for its own busiest pools (${nets.join(' ')})`);
+}
 ok(hit(/^https:\/\/nft\.llama\.fi\/collections$/), 'DeFiLlama NFT /collections');
 ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collections$/), 'Magic Eden /popular_collections');
 {
+  await p.click('[data-tab=nfts]');
   await p.waitForSelector('.row[data-id^="n:"]', { timeout: 20000 }).catch(() => {});
   const body = await p.locator('#results').textContent();
   ok(body.includes('Bored Ape'), 'EVM collections are indexed');
@@ -419,7 +451,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   ok(/SOL/.test(await p.locator('.row[data-id^="n:me-"]').first().textContent()),
     'a Solana floor keeps its own unit rather than being mislabelled as dollars');
   await p.fill('#q', 'bored ape'); await p.waitForTimeout(600);
-  await p.locator('.row[data-id^="n:"]').first().click();
+  await p.locator('.row[data-id^="n:"]').first().evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="nft"]', { timeout: 8000 });
   await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
   ok(hit(/^https:\/\/nft\.llama\.fi\/chart\/0xbayc$/), 'floor history hits /chart/{collectionId}');
@@ -427,7 +459,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   // the collection whose history endpoint gives back nothing
   await p.fill('#q', 'polygon apes'); await p.waitForTimeout(900);
-  await p.locator('.row[data-id="n:0xpoly"]').click();
+  await p.locator('.row[data-id="n:0xpoly"]').evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="nft"]', { timeout: 8000 });
   await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
   ok(await p.locator('.chart svg .line').count() === 1, 'a collection with no history still charts');
@@ -436,7 +468,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
     'and says that is where the line came from');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
-  await p.fill('#q', ''); await p.waitForTimeout(400);
+  await p.fill('#q', ''); await p.click('[data-tab=all]'); await p.waitForTimeout(400);
 }
 {
   await p.fill('#q', 'cashcat'); await p.waitForTimeout(1400);
@@ -456,7 +488,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   ok(await p.locator('.row[data-id^="d:"]').count() > 0, 'a $-prefixed ticker still resolves');
   ok((await p.locator('.gtitle').allTextContents()).filter(x => x === 'DEX pairs').length <= 1,
     'live DEX results merge into one group');
-  await p.locator('.row[data-id^="d:"]').first().click();
+  await p.locator('.row[data-id^="d:"]').first().evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="pair"]', { timeout: 8000 });
   ok((await p.locator('.sheet').textContent()).includes('Liquidity'), 'DEX pair opens a real sheet');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
@@ -465,7 +497,7 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
 {
   await p.fill('#q', 'pantera'); await p.waitForTimeout(500);
   ok(await p.locator('.row[data-id^="f:"]').count() > 0, 'funding rounds are searchable by investor');
-  await p.locator('.row[data-id^="f:"]').first().click();
+  await p.locator('.row[data-id^="f:"]').first().evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="raise"]', { timeout: 8000 });
   ok(/\$4\.00B/.test(await p.locator('.sheet').textContent()),
     'a valuation already in dollars is not scaled by a million again');
@@ -477,27 +509,31 @@ ok(hit(/^https:\/\/api-mainnet\.magiceden\.dev\/v2\/marketplace\/popular_collect
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
 {
+  await p.click('[data-tab=protocols]');
+  await p.waitForSelector('.row[data-id^="r:"]', { timeout: 20000 }).catch(() => {});
   const body = await p.locator('#results').textContent();
   ok(body.includes('Aave V3'), 'protocols render as their own kind');
   ok(!body.includes('Tiny'), 'protocol under the TVL floor is dropped');
-  ok(body.includes('Networks') || body.includes('Ethereum'), 'networks render with live TVL');
+  await p.click('[data-tab=networks]');
+  await p.waitForSelector('.row[data-id^="c:"]', { timeout: 20000 }).catch(() => {});
+  ok((await p.locator('#results').textContent()).includes('Ethereum'), 'networks render with live TVL');
   // the chain row destructured one field too far, so every network read $0
   await p.fill('#q', 'ethereum'); await p.waitForTimeout(600);
   const net = await p.locator('.row[data-id="c:eth"]').textContent();
   ok(/\$62\.00B/.test(net), `a network carries its real TVL (${net.trim().slice(0, 60)})`);
-  await p.locator('.row[data-id="c:eth"]').click();
+  await p.locator('.row[data-id="c:eth"]').evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="chain"]', { timeout: 8000 });
   await p.waitForSelector('.chart svg .line', { timeout: 10000 }).catch(() => {});
   ok(hit(/\/v2\/historicalChainTvl\/Ethereum$/), 'a network charts its own TVL history');
   ok(await p.locator('.chart svg .line').count() === 1, 'the network sheet draws a chart');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
-  await p.fill('#q', ''); await p.waitForTimeout(400);
+  await p.fill('#q', ''); await p.click('[data-tab=all]'); await p.waitForTimeout(400);
 }
 
 console.log('\n# upstream strings that end up in an href');
 {
   await p.fill('#q', 'poison'); await p.waitForTimeout(700);
-  await p.locator('.row[data-id="r:poison"]').first().click();
+  await p.locator('.row[data-id="r:poison"]').first().evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="protocol"]', { timeout: 8000 });
   const href = await p.locator('.sheet .cta a').getAttribute('href');
   ok(!/^javascript:/i.test(href), `a javascript: url from upstream never reaches the href (${href})`);
@@ -508,7 +544,7 @@ console.log('\n# upstream strings that end up in an href');
 await p.fill('#q', 'aave v3'); await p.waitForTimeout(600);
 const order = await p.locator('.row').evaluateAll(ns => ns.slice(0, 4).map(n => n.dataset.id));
 ok(order[0]?.startsWith('r:'), `protocol outranks its own markets (${order.join(' ')})`);
-await p.locator('.row[data-id^="r:"]').first().click();
+await p.locator('.row[data-id^="r:"]').first().evaluate(el => el.click());
 await p.waitForSelector('.sheet-in[data-kind="protocol"]', { timeout: 10000 });
 ok(hit(/\/protocol\/aave-v3$/), 'protocol chart hits /protocol/{slug}');
 {
@@ -518,7 +554,7 @@ ok(hit(/\/protocol\/aave-v3$/), 'protocol chart hits /protocol/{slug}');
 }
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', 'kamino'); await p.waitForTimeout(600);
-await p.locator('.row[data-id^="p:"]').first().click();
+await p.locator('.row[data-id^="p:"]').first().evaluate(el => el.click());
 await p.waitForSelector('.sheet-in[data-kind="pool"]', { timeout: 10000 });
 ok((await p.locator('.sheet').textContent()).includes('Protocol'), 'a lending market links to the protocol behind it');
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
@@ -548,9 +584,6 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
   ok(await p.locator('#rail [data-tab=protocols] .ct').textContent() !== '',
     'a category carries its row count');
 
-  // aggregate bar, summed from data already loaded
-  const stats = await p.locator('#statbar').textContent();
-  ok(/Total TVL/.test(stats) && /\$/.test(stats), `the aggregate bar totals the index (${stats.slice(0, 40)})`);
 
   // browsing a category is a sortable table
   await p.click('[data-tab=protocols]'); await p.waitForTimeout(700);
@@ -575,10 +608,8 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
   ok(await p.locator('.thead button[data-sort=chg1d]').getAttribute('aria-sort') === null,
     'a third click clears the sort');
 
-  // density: the one control between DefiLlama's rows and Aave's
-  await p.click('#density'); await p.waitForTimeout(300);
-  ok(await p.locator('#results.compact').count() === 1, 'the density toggle compacts the rows');
-  await p.click('#density'); await p.waitForTimeout(300);
+  // the density switch is gone — one row height, chosen rather than offered
+  ok(await p.locator('#density').count() === 0, 'no density control is left to get out of sync');
 
   // inside a category the columns survive a query
   await p.fill('#q', 'aave'); await p.waitForTimeout(700);
@@ -587,18 +618,19 @@ console.log('\n# the combined layout: DefiLlama density, Aave calm');
 
   // on All the list is a ranked mix, where the heading carries the meaning
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
+  ok(await p.locator('#results.home .tile').count() > 0, 'All with nothing typed is the category home');
   ok(await p.locator('#results.table').count() === 0, 'a ranked mix of kinds is never a table');
   await p.fill('#q', 'aave'); await p.waitForTimeout(700);
   ok(await p.locator('.gtitle').count() > 0, 'and keeps the group heading that names each kind');
   await p.fill('#q', ''); await p.waitForTimeout(400);
 }
 
-console.log('\n# tokenized stocks are their own kind behind their own switch');
+console.log('\n# tokenized stocks are their own kind');
 {
+  await p.click('[data-tab=stocks]'); await p.waitForTimeout(900);
   await p.waitForSelector('.row[data-id^="t:"]', { timeout: 20000 }).catch(() => {});
   ok(hit(/category=tokenized-stock/) && hit(/category=xstocks-ecosystem/),
     'both stock categories are asked, so one slug drifting is survivable');
-  await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
   const ids = await p.locator('#results .row').evaluateAll(ns => ns.map(n => n.dataset.id));
   ok(ids.length && ids.every(i => i.startsWith('t:')), `the tab holds only equities (${ids.length})`);
   ok(new Set(ids).size === ids.length, 'and the overlapping categories are deduped');
@@ -606,40 +638,20 @@ console.log('\n# tokenized stocks are their own kind behind their own switch');
   ok(/tracks TSLA\b/.test(body), `an equity says what it tracks (${body.slice(0, 40).trim()})`);
   ok(!/Defunct/.test(body), 'and one that stopped trading is filtered like anything else');
 
-  // the switch is a way into stocks-only and back out, from anywhere
-  await p.click('[data-tab=lending]'); await p.waitForTimeout(700);
-  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false', 'the switch is off elsewhere');
-  await p.click('#stocks'); await p.waitForTimeout(900);
-  const only = await p.locator('#results .row').evaluateAll(ns => ns.map(n => n.dataset.id));
-  ok(only.length && only.every(i => i.startsWith('t:')), `it shows equities only (${only.length})`);
-  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'true', 'and reports that it is on');
-  ok(await p.locator('[data-tab=stocks]').getAttribute('aria-selected') === 'true',
-    'with the rail saying the same thing');
+  // the old stocks switch is gone: the rail is the only way in, and it says so
+  ok(await p.locator('#stocks').count() === 0, 'no separate stocks switch to fall out of step');
   ok(/tab=stocks/.test(p.url()), 'the view is in the url');
-
-  // pressing it again returns you to where you were
-  await p.click('#stocks'); await p.waitForTimeout(900);
-  ok(await p.locator('[data-tab=lending]').getAttribute('aria-selected') === 'true',
-    'pressing it again puts you back where you were');
-  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false', 'and the switch goes quiet');
-
-  // navigating the rail away has to keep the switch honest
-  await p.click('#stocks'); await p.waitForTimeout(800);
-  await p.click('[data-tab=all]'); await p.waitForTimeout(800);
-  ok(await p.locator('#stocks').getAttribute('aria-pressed') === 'false',
-    'leaving by the rail turns the switch off too');
-  ok(/Tokenized stocks/.test(await p.locator('#results').textContent()),
-    'and equities are back among everything else');
+  await p.click('[data-tab=all]'); await p.waitForTimeout(700);
+  ok(await p.locator('[data-tab=stocks]').getAttribute('aria-selected') === 'false',
+    'and leaving by the rail deselects it');
 }
 
-console.log('\n# one toggle, for things that do not trade or are not what they say');
+console.log('\n# things that do not trade, or are not what they say, never show');
 {
   const shown = async q => {
     await p.fill('#q', q); await p.waitForTimeout(1400);
     return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id));
   };
-  ok(await p.locator('#safe').getAttribute('aria-pressed') === 'true', 'the filter is on by default');
-
   const junk = [
     ['ghostcoin', 'a:ghostcoin', 'an asset nothing has traded'],
     ['deadpool', 'p:dd44', 'a lending market nobody is using'],
@@ -659,17 +671,9 @@ console.log('\n# one toggle, for things that do not trade or are not what they s
   ok(cc.includes('d:PAIR1') && cc.some(i => i.startsWith('d:GTCASH')),
     `the same real token from two indexes survives (${cc.filter(i => i[0] === 'd').join(' ')})`);
 
-  const on = await p.locator('#meta').textContent();
-  ok(/\d+ hidden/.test(on), `it says how much it hid (${on.trim().slice(-24)})`);
-
-  await p.click('[data-unsafe]'); await p.waitForTimeout(1200);
-  ok(await p.locator('#safe').getAttribute('aria-pressed') === 'false', 'the count turns it off');
-  for (const [q, id, what] of junk) {
-    const ids = await shown(q);
-    ok(ids.includes(id), `shows ${what} again with the filter off`);
-  }
-  ok(/all=1/.test(p.url()), 'and the choice is in the url');
-  await p.click('#safe'); await p.waitForTimeout(1200);
+  // hiding is not something to advertise or to offer as a choice
+  ok(await p.locator('#safe').count() === 0, 'there is no toggle left to leave in the wrong state');
+  ok(!/hidden/.test(await p.locator('#meta').textContent()), 'and no running tally of what it hid');
   await p.fill('#q', ''); await p.waitForTimeout(600);
 }
 
@@ -738,7 +742,7 @@ console.log('\n# a row shows the logo its source already sent');
 console.log('\n# a network is described by the token that secures it');
 {
   await p.click('[data-tab=networks]'); await p.waitForTimeout(900);
-  await p.locator('.row[data-id="c:eth"]').click(); await p.waitForTimeout(1600);
+  await p.locator('.row[data-id="c:eth"]').evaluate(el => el.click()); await p.waitForTimeout(1600);
   const src = p.locator('.sheet-in [data-src]');
   ok(await src.count() === 1 && !(await src.isHidden()), 'a chain sheet carries source prose');
   ok(/ethereum/i.test(await src.textContent()),
@@ -746,14 +750,14 @@ console.log('\n# a network is described by the token that secures it');
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
 
   await p.click('[data-tab=stocks]'); await p.waitForTimeout(900);
-  await p.locator('.row[data-id="t:tesla-xstock"]').click(); await p.waitForTimeout(1400);
+  await p.locator('.row[data-id="t:tesla-xstock"]').evaluate(el => el.click()); await p.waitForTimeout(1400);
   const t = await p.locator('.sheet-in .stats').textContent();
   // the equity request carries the same windows and high as any other asset,
   // and the sheet was showing four of them
   ok(/7d/.test(t) && /All-time high/.test(t),
     `an equity sheet shows the fields its row carries (${t.replace(/\s+/g, ' ').trim().slice(0, 90)})`);
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
-  await p.locator('.row[data-id="t:apple-xstock"]').click(); await p.waitForTimeout(1400);
+  await p.locator('.row[data-id="t:apple-xstock"]').evaluate(el => el.click()); await p.waitForTimeout(1400);
   const u = await p.locator('.sheet-in .stats').textContent();
   ok(!/All-time high/.test(u), 'and omits the ones its source did not send');
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
@@ -854,9 +858,10 @@ console.log('\n# one index failing is not the feature being down');
   const q = await ctx.newPage();
   for (const [g, fn] of routes) await ctx.route(g, fn);
   await ctx.route('https://api.geckoterminal.com/**', r => r.abort('failed'));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
-  await q.fill('#q', 'cashcat'); await q.waitForTimeout(2200);
+  await q.click('#tabs [data-tab=all]');
+  await q.fill('#q', 'cashcat'); await q.waitForTimeout(2600);
   ok(await q.locator('.row[data-id="d:PAIR1"]').count() === 1,
     'the surviving index still returns results');
   ok(await q.locator('.warn').count() === 0,
@@ -869,6 +874,32 @@ console.log('\n# one index failing is not the feature being down');
   const warn = await q.locator('.warn').textContent().catch(() => '');
   ok(/No DEX index answered/.test(warn), `with both down it says so (${warn.trim().slice(0, 46)})`);
   ok(await q.locator('.warn [data-retry]').count() === 1, 'and offers to retry');
+  await ctx.close();
+}
+
+console.log('\n# a typed search does not queue behind the index warming up');
+{
+  /* One host, one lane, a floor on the gap between calls — which is what keeps
+     the rate limit away, and also what could put a person's search tenth in
+     line behind requests nobody asked for. */
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 900 } });
+  const q = await ctx.newPage();
+  const order = [];
+  for (const [g, fn] of routes) await ctx.route(g, fn);
+  await ctx.route('https://api.geckoterminal.com/**', async r => {
+    order.push(r.request().url());
+    const h = routes.find(([g]) => g.startsWith('https://api.geckoterminal.com'))[1];
+    return h(r);
+  });
+  await q.goto(UROWS, { waitUntil: 'commit' });
+  await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+  await q.click('#tabs [data-tab=all]');
+  await q.fill('#q', 'cashcat');
+  await q.waitForSelector('.row[data-id^="d:GTCASH"]', { timeout: 8000 }).catch(() => {});
+  const at = order.findIndex(u => /search\/pools/.test(u));
+  ok(at >= 0, 'the search reaches GeckoTerminal');
+  ok(await q.locator('.row[data-id^="d:GTCASH"]').count() > 0,
+    `and answers while the warm-up is still going (${at} requests ahead of it)`);
   await ctx.close();
 }
 
@@ -897,9 +928,6 @@ console.log('\n# a price is only a price if the other side holds still');
   const shown = await ids('chaintok');
   ok(shown.includes('d:chainaddr0'), 'a pair quoted in a dollar stablecoin is kept');
   ok(!shown.includes('d:chainaddr3'), 'and one quoted in a token that moves is not');
-  await p.click('#safe'); await p.waitForTimeout(1200);
-  ok((await ids('chaintok')).includes('d:chainaddr3'), 'turning the filter off shows it again');
-  await p.click('#safe'); await p.waitForTimeout(1000);
   await p.click('[data-chain=""]'); await p.waitForTimeout(900);
   await p.fill('#q', ''); await p.waitForTimeout(700);
 }
@@ -907,15 +935,11 @@ console.log('\n# a price is only a price if the other side holds still');
 console.log('\n# every kind says what junk means for it');
 {
   // six kinds had no rule at all, so nothing could be junk in them
-  const kinds = await p.evaluate(() => window.__ATLAS_KINDS__ || null);
-  await p.click('#safe'); await p.waitForTimeout(1400);
-  const off = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab .ct')]
-    .map(e => ({ tab: e.parentElement.dataset.tab, n: e.textContent })));
-  await p.click('#safe'); await p.waitForTimeout(1400);
+  const off = await p.evaluate(() => window.__ATLAS_RAWCOUNTS__());
   const on = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab .ct')]
     .map(e => ({ tab: e.parentElement.dataset.tab, n: e.textContent })));
   const num = v => Number(String(v).replace(/,/g, '')) || 0;
-  const filtered = on.filter((x, i) => num(x.n) < num(off[i].n)).map(x => x.tab);
+  const filtered = on.filter(x => num(x.n) < num(off[x.tab])).map(x => x.tab);
   ok(filtered.length >= 9,
     `the filter reaches most categories, not a handful (${filtered.join(', ')})`);
 }
@@ -934,7 +958,7 @@ console.log('\n# a sheet is about the row you opened, all the way down');
     if (!await p.locator('#results .row:not(.sk)').count()) continue;
     const rowNum = (await p.locator('#results .row:not(.sk)').first()
       .locator('.n1, .cell').first().textContent()).trim();
-    await p.locator('#results .row:not(.sk)').first().click();
+    await p.locator('#results .row:not(.sk)').first().evaluate(el => el.click());
     await p.waitForTimeout(1500);
     const kind = await p.locator('.sheet-in').getAttribute('data-kind');
     const big = (await p.locator('.sheet-in .big').textContent()).trim();
@@ -996,7 +1020,7 @@ console.log('\n# two registries settle what a heuristic can only guess');
 
   await p.click('[data-tab=dex]'); await p.waitForTimeout(900);
   ok(await p.locator('[data-facet=real]').count() === 1, 'and it becomes a filter of its own');
-  await p.locator('#results .row[data-id="d:PAIR1"], #results .row').first().click();
+  await p.locator('#results .row[data-id="d:PAIR1"], #results .row').first().evaluate(el => el.click());
   await p.waitForTimeout(1200);
   const sheet = await p.locator('.sheet-in').textContent();
   ok(/Listed by/.test(sheet) || /Jupiter|Uniswap/.test(sheet),
@@ -1061,14 +1085,23 @@ console.log('\n# categories are walkable from the keyboard');
 console.log('\n# the chart says where, not only how much');
 {
   await p.click('[data-tab=assets]'); await p.waitForTimeout(800);
-  await p.locator('#results .row').first().click();
+  await p.locator('#results .row').first().evaluate(el => el.click());
   await p.waitForSelector('.chart svg .line', { timeout: 15000 });
   await p.waitForTimeout(900);
   ok(await p.locator('.chart .pin.pk').count() === 1, 'the period high is marked on the line');
   ok(await p.locator('.chart .pin.tr').count() === 1, 'and so is the low');
-  const pins = await p.locator('.chart .pin').evaluateAll(ns => ns.map(n => n.style.left));
-  ok(pins.every(l => /%$/.test(l) && parseFloat(l) >= 0 && parseFloat(l) <= 100),
-    `positioned in the plot, not drawn into a stretched svg (${pins.join(' ')})`);
+  /* The marks are circles in the same svg as the line now, so the check is the
+     one that matters: does each sit on the line, to the pixel. */
+  const offLine = await p.evaluate(() => {
+    const pts = document.querySelector('.chart svg .line')?.getAttribute('d') || '';
+    const xy = [...pts.matchAll(/([\d.]+) ([\d.]+)/g)].map(m => [+m[1], +m[2]]);
+    return [...document.querySelectorAll('.chart svg .pin')].map(c => {
+      const cx = +c.getAttribute('cx'), cy = +c.getAttribute('cy');
+      const near = xy.find(([x]) => Math.abs(x - cx) < 0.6);
+      return !near || Math.abs(near[1] - cy) > 0.6 ? `${cx},${cy}` : null;
+    }).filter(Boolean);
+  });
+  ok(offLine.length === 0, `both marks sit on the line, to the pixel (${offLine.join(' ') || 'on'})`);
   const vk = await p.locator('.chart .vk').textContent().catch(() => '');
   ok(/peak \$/.test(vk), `the volume strip carries its own scale (${vk})`);
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
@@ -1077,7 +1110,7 @@ console.log('\n# the chart says where, not only how much');
 console.log('\n# bridges have history too');
 {
   await p.click('[data-tab=bridges]'); await p.waitForTimeout(900);
-  await p.locator('#results .row').first().click();
+  await p.locator('#results .row').first().evaluate(el => el.click());
   await p.waitForSelector('.chart svg .line', { timeout: 15000 });
   await p.waitForTimeout(800);
   ok(hit(/bridges\.llama\.fi\/bridgevolume/), 'a bridge asks for its own daily volume');
@@ -1095,8 +1128,11 @@ console.log('\n# the rail groups its categories, and loses none of them');
   ok(rail.heads.length >= 4, `the column is grouped under headings (${rail.heads.join(', ')})`);
   // a kind added to the table but left out of a group would vanish from the
   // rail with nothing failing, so check the rail against the kinds themselves
+  // All groups a typed search by kind; with nothing typed it is the tile home
+  await p.fill('#q', 'usdc'); await p.waitForTimeout(1200);
   const kinds = await p.evaluate(() =>
     [...document.querySelectorAll('#results .gtitle')].length);
+  await p.fill('#q', ''); await p.waitForTimeout(500);
   for (const t of ['assets', 'stocks', 'dex', 'nfts', 'lending', 'yield', 'protocols',
     'stables', 'bridges', 'networks', 'raises', 'hacks', 'all', 'saved'])
     ok(rail.tabs.includes(t), `${t} has a place in the rail`);
@@ -1138,10 +1174,6 @@ console.log('\n# a rate far above its own month is the same trick told quietly')
     return p.evaluate(() => [...document.querySelectorAll('#results .row')].map(r => r.dataset.id)); };
   ok(!(await idsFor('spike')).includes('y:hh88'), 'hides a farm paying eight times its 30-day mean');
   ok(!(await idsFor('outlier')).includes('y:ii99'), 'hides a farm the source itself flags');
-  await p.click('#safe'); await p.waitForTimeout(1000);
-  ok((await idsFor('spike')).includes('y:hh88'), 'and shows it again with the filter off');
-  ok((await idsFor('outlier')).includes('y:ii99'), 'as it does the flagged one');
-  await p.click('#safe'); await p.waitForTimeout(800);
   await p.fill('#q', ''); await p.waitForTimeout(600);
 }
 
@@ -1225,7 +1257,7 @@ console.log('\n# a sorted view survives a reload and a shared link');
 console.log('\n# every entity says what it is');
 {
   await p.fill('#q', 'bitcoin'); await p.waitForTimeout(700);
-  await p.locator('.row[data-id^="a:"]').first().click();
+  await p.locator('.row[data-id^="a:"]').first().evaluate(el => el.click());
   await p.waitForSelector('[data-about]', { timeout: 8000 });
   await p.waitForTimeout(1300);
   const line = await p.locator('[data-about]').textContent();
@@ -1238,7 +1270,7 @@ console.log('\n# every entity says what it is');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 
   await p.fill('#q', 'across'); await p.waitForTimeout(800);
-  await p.locator('.row[data-id^="b:"]').first().click(); await p.waitForTimeout(700);
+  await p.locator('.row[data-id^="b:"]').first().evaluate(el => el.click()); await p.waitForTimeout(700);
   ok(/moves value between Ethereum, Base/.test(await p.locator('[data-about]').textContent()),
     'a kind with no published description names what it actually connects');
   ok(await p.locator('[data-src]:not([hidden])').count() === 0, 'and shows no empty source block');
@@ -1246,7 +1278,7 @@ console.log('\n# every entity says what it is');
 
   // a market is run by a protocol, and that protocol describes itself
   await p.fill('#q', 'kamino'); await p.waitForTimeout(800);
-  await p.locator('.row[data-id^="p:"]').first().click(); await p.waitForTimeout(1400);
+  await p.locator('.row[data-id^="p:"]').first().evaluate(el => el.click()); await p.waitForTimeout(1400);
   ok(/Supply .* and earn/.test(await p.locator('[data-about]').textContent()),
     'a lending market states its own terms');
   ok(/kamino-lend is described by its own source/.test(await p.locator('[data-src]').textContent()),
@@ -1258,7 +1290,7 @@ console.log('\n# every entity says what it is');
 console.log('\n# a tokenized stock opens like anything else');
 {
   await p.click('[data-tab=stocks]'); await p.waitForTimeout(800);
-  await p.locator('.row[data-id^="t:"]').first().click(); await p.waitForTimeout(800);
+  await p.locator('.row[data-id^="t:"]').first().evaluate(el => el.click()); await p.waitForTimeout(800);
   // it fell through to the lending renderer and threw on a field it does not
   // have, so the sheet never opened at all
   ok(await p.locator('.sheet-in[data-kind="stock"]').count() === 1, 'clicking an equity opens its sheet');
@@ -1269,8 +1301,10 @@ console.log('\n# a tokenized stock opens like anything else');
   const about = await p.locator('[data-about]').textContent();
   ok(/\bTSLA\b/.test(about) && /Backed/.test(about),
     `and an about line naming its own underlying and who issued it (${about.slice(0, 70)})`);
-  ok(/^tesla-xstock is described here/.test(await p.locator('[data-src]').textContent()),
-    'with prose fetched for that equity, not another');
+  const prose = await p.locator('[data-src]').textContent();
+  ok(/^Tesla is a company/.test(prose), `with prose about the company behind it (${prose.slice(0, 40)})`);
+  ok(hit(/wikipedia\.org\/api\/rest_v1\/page\/summary\/Tesla$/),
+    'looked up under the company name, with the wrapper stripped off');
   await p.keyboard.press('Escape'); await p.waitForTimeout(400);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }
@@ -1287,7 +1321,7 @@ ok(hit(/^https:\/\/api\.geckoterminal\.com\/api\/v2\/networks\/solana\/pools\?pa
 }
 await p.click('[data-chain=""]'); await p.waitForTimeout(800);
 await p.fill('#q', 'bitcoin'); await p.waitForTimeout(500);
-await p.locator('.row').first().click();
+await p.locator('.row').first().evaluate(el => el.click());
 await p.waitForSelector('.chart svg path', { timeout: 15000 });
 ok(hit(/\/coins\/bitcoin\/market_chart\?vs_currency=usd&days=1$/), 'asset chart hits /market_chart with the coin id');
 ok(await p.locator('.chart svg .line').count() === 1, 'the chart draws an animated line');
@@ -1337,7 +1371,7 @@ console.log('\n# what the chart encodes');
 }
 await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 await p.fill('#q', 'kamino'); await p.waitForTimeout(600);
-await p.locator('.row[data-id^="p:"]').first().click();
+await p.locator('.row[data-id^="p:"]').first().evaluate(el => el.click());
 await p.waitForSelector('.chart svg path, .cload.err', { timeout: 15000 });
 ok(hit(/^https:\/\/yields\.llama\.fi\/chart\/bb22$/), 'market chart hits /chart/{poolId}');
 
@@ -1362,12 +1396,12 @@ console.log('\n# CoinGecko refusing the origin must not empty the app');
   await ctx.route('https://api.binance.com/**', r => r.fulfill({ contentType: 'application/json',
     body: JSON.stringify(Array.from({ length: 100 }, (_, i) =>
       [0, 0, String(104 + i), String(96 + i), String(100 + i), '5', 0, String(1e6 + i * 1e4)])) }));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
   const body = await q.locator('#results').textContent();
   ok(body.includes('Paprika Coin'), 'CoinPaprika carries the asset list when CoinGecko refuses');
   ok(await q.locator('.warn').count() === 0, 'a working fallback raises no warning');
-  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.locator('.row[data-id^="a:"]').first().evaluate(el => el.click());
   await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
   ok(await q.locator('.chart svg .line').count() === 1, 'charts fall back to Binance klines');
   // klines carry high, low and quote volume in the same rows
@@ -1401,9 +1435,9 @@ console.log('\n# an asset off every price feed still gets a real chart');
     'https://bridges.llama.fi/**', 'https://api.dexscreener.com/**', 'https://nft.llama.fi/**',
     'https://api-mainnet.magiceden.dev/**'])
     await ctx.route(h, r => r.fulfill({ contentType: 'application/json', body: '{}' }));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('.row[data-id^="a:"]', { timeout: 20000 }).catch(() => {});
-  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.locator('.row[data-id^="a:"]').first().evaluate(el => el.click());
   await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
   ok(await q.locator('.chart svg .line').count() === 1, 'a token on no price feed still charts');
   ok(gt.some(u => /\/search\/pools\?query=OBSC/.test(u)), 'by finding where it actually trades');
@@ -1426,9 +1460,9 @@ console.log('\n# a chart always draws, even with no history anywhere');
   for (const h of ['https://yields.llama.fi/**', 'https://api.llama.fi/**', 'https://stablecoins.llama.fi/**',
     'https://bridges.llama.fi/**', 'https://api.geckoterminal.com/**', 'https://api.dexscreener.com/**'])
     await ctx.route(h, r => r.fulfill({ contentType: 'application/json', body: '{}' }));
-  await q.goto(U, { waitUntil: 'commit' });
+  await q.goto(UROWS, { waitUntil: 'commit' });
   await q.waitForSelector('.row:not(.sk)', { timeout: 20000 }).catch(() => {});
-  await q.locator('.row[data-id^="a:"]').first().click();
+  await q.locator('.row[data-id^="a:"]').first().evaluate(el => el.click());
   await q.waitForSelector('.chart svg .line', { timeout: 12000 }).catch(() => {});
   ok(await q.locator('.chart svg .line').count() === 1, 'the chart still draws with every source down');
   ok(await q.locator('.nohist').count() === 1, 'and says plainly that there is no history');
@@ -1444,7 +1478,7 @@ console.log('\n# mobile');
   const q = await ctx.newPage();
   q.on('pageerror', e => { console.log('  JS ERROR', e.message); fail++; });
   for (const [h, fn] of routes) await ctx.route(h, fn);
-  await q.goto(U); await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
+  await q.goto(UROWS); await q.waitForSelector('.row:not(.sk)', { timeout: 20000 });
   await q.waitForTimeout(2500);
   await q.click('[data-tab=lending]'); await q.waitForTimeout(900);
 
@@ -1454,17 +1488,8 @@ console.log('\n# mobile');
   ok(!await q.locator('#view').isVisible(), 'and is not offered a table toggle that cannot work');
   ok(!await q.locator('.hero').isVisible(), 'the decorative hero does not cost a phone its first screen');
 
-  // the count is the only signal that the filter is holding something back, so
-  // it must not be the part that ellipsises when the line runs out of room
-  {
-    const link = q.locator('[data-unsafe]');
-    ok(await link.count() === 1, 'a phone still says how much was hidden');
-    const fits = await link.evaluate(e => {
-      const l = e.getBoundingClientRect(), m = document.querySelector('#meta').getBoundingClientRect();
-      return l.width > 0 && l.right <= m.right + 1;
-    });
-    ok(fits, 'and the count is not truncated away with the rest of the line');
-  }
+  ok(await q.locator('[data-unsafe]').count() === 0,
+    'a phone is not asked to manage what it never sees');
 
   // the column headers are the desktop sort control; a phone needs its own
   ok(await q.locator('#sortbar button').count() >= 4, 'sort is reachable as chips');
@@ -1518,7 +1543,7 @@ console.log('\n# mobile');
   await q.locator('.pickgrid [data-chain=""]').click(); await q.waitForTimeout(1500);
 
   // a bottom sheet you cannot throw away feels stuck
-  await q.locator('.row').first().click();
+  await q.locator('.row').first().evaluate(el => el.click());
   await q.waitForSelector('.sheet.open', { timeout: 8000 }); await q.waitForTimeout(600);
   ok(await q.locator('.grab').isVisible(), 'the sheet has something to grab');
   const g = await q.locator('.grab').boundingBox();

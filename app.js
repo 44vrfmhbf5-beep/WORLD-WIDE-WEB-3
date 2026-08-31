@@ -4,7 +4,7 @@ import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStabl
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
   loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
-  loadVerified, loadMorpho, loadBridgeChart, loadNftItems,
+  loadVerified, loadMorpho, loadBridgeChart, loadNftItems, setOpenseaKey,
   links, actions, flags, clearCache } from './data.js';
 
 /* ---------- helpers ---------- */
@@ -69,8 +69,11 @@ const S = {
   loading: true, err: null, warn: null, at: 0,
   verified: null, morpho: 0,
   // table vs cards, DefiLlama density vs Aave's, and the active column sort
-  view: store.get('atlas:view') || 'auto', dense: store.get('atlas:dense') === '1',
-  safe: store.get('atlas:safe') !== '0',
+  view: store.get('atlas:view') || 'auto', dense: false,
+  // Junk is hidden, full stop. It was a toggle because the rules were young and
+  // might be wrong; they are audited per kind now, and a control that everyone
+  // leaves in one position is furniture.
+  safe: true,
   sort: null, facets: new Set(), limit: 40,
   // what was typed, what it was read as, and the numeric constraints it named
   nl: null, where: [],
@@ -79,7 +82,7 @@ const S = {
 };
 const el = {
   q: $('#q'), res: $('#results'), meta: $('#meta'), sheet: $('#sheet'), scrim: $('#scrim'),
-  clear: $('#clear'), banner: $('#banner'), stats: $('#statbar'), sortbar: $('#sortbar'),
+  clear: $('#clear'), banner: $('#banner'), sortbar: $('#sortbar'),
   facetbar: $('#facetbar'),
 };
 const saveWatch = () => store.set('atlas:watch', JSON.stringify([...S.watch.values()]));
@@ -105,21 +108,32 @@ async function load({ force } = {}) {
    needed for first paint, so they load behind the first render and are merged
    in when they arrive. Failures here are silent: the page is already useful. */
 let enriched = false;
+/* Nine loaders, and this used to wait for all nine before showing any of them —
+   so the slowest one decided when bridges, funding rounds and NFTs appeared. It
+   was invisible until requests to one host were paced against its rate limit,
+   and then a single slow source held up every category in the batch. Each one
+   now lands the moment it arrives. */
 async function enrich() {
   if (enriched) return; enriched = true;
-  const got = await Promise.allSettled([loadProtocols(), loadChains(), loadStables(),
-    loadBridges(), loadRaises(), loadHacks(), loadTrendingPairs(), loadNFTs(), loadStocks()]);
-  const val = (i, d) => got[i].status === 'fulfilled' ? got[i].value : d;
-  S.protocols = val(0, []);
-  S.chainRows = val(1, []);
-  const st = val(2, { rows: [], bySym: {} });
-  S.stables = st.rows; S.bySym = st.bySym;
-  S.bridges = val(3, []); S.raises = val(4, []); S.hacks = val(5, []);
-  S.pairs = val(6, []); S.nfts = val(7, []); S.stockRows = val(8, []);
-  S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
-  joinLogos();
-  nodes.clear(); reindex(); render();
-  third();
+  let pending = 0;
+  const paint = () => { S.byProto = Object.fromEntries(S.protocols.map(p => [p.slug, p]));
+    joinLogos(); nodes.clear(); reindex(); render(); };
+  const land = (p, fn) => {
+    pending++;
+    return p.then(v => { fn(v); paint(); }, () => {})
+      .finally(() => { if (--pending === 0) third(); });
+  };
+  await Promise.all([
+    land(loadProtocols(), v => { S.protocols = v; }),
+    land(loadChains(), v => { S.chainRows = v; }),
+    land(loadStables(), v => { S.stables = v.rows; S.bySym = v.bySym; }),
+    land(loadBridges(), v => { S.bridges = v; }),
+    land(loadRaises(), v => { S.raises = v; }),
+    land(loadHacks(), v => { S.hacks = v; }),
+    land(loadTrendingPairs(), v => { S.pairs = v; }),
+    land(loadNFTs(), v => { S.nfts = v; }),
+    land(loadStocks(), v => { S.stockRows = v; }),
+  ]);
 }
 
 /* Phase three. Two registries that say which token is the real one, and the
@@ -128,6 +142,9 @@ async function enrich() {
 let thirded = false;
 async function third() {
   if (thirded) return; thirded = true;
+  // the data layer does not import config; the app hands it what it needs
+  loadModule('config', './config.js')
+    .then(({ config }) => setOpenseaKey(config.venues?.opensea?.apiKey)).catch(() => {});
   const [v, m] = await Promise.allSettled([loadVerified(), loadMorpho()]);
   if (v.status === 'fulfilled') S.verified = v.value;
   if (m.status === 'fulfilled' && m.value.length) {
@@ -288,6 +305,11 @@ function rowsFor(tab) {
   return k === 'asset' && S.chain ? [...S.chainTokens, ...S.assets] : SRC[k]();
 }
 const countOf = tab => sift(rowsFor(tab).filter(onChain)).length;
+/* What a category holds before the junk rule runs. The rule is no longer a
+   toggle, so comparing the two counts is the only way left to see it work. */
+if (typeof window !== 'undefined')
+  window.__ATLAS_RAWCOUNTS__ = () =>
+    Object.fromEntries(TABS.map(([t]) => [t, rowsFor(t).filter(onChain).length]));
 let hidden = 0, base = [];   // base: the category before its facets, for the chip counts
 /* Facets narrow together: a row has to answer every question that is on. */
 const facetPred = (skip) => {
@@ -397,7 +419,9 @@ const tok = (it, sq) => {
   const label = KIND[it.kind].label(it);
   const c = CH[it.chain];
   return `<div class="tok${sq ? ' sq' : ''}${label.length > 3 ? ' t4' : ''}" style="--c:${it.color}${c ? ';--c2:' + c.color : ''}">${esc(label)}` +
-    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.style.opacity=1" onerror="this.remove()">` : '') +
+    (it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy" referrerpolicy="no-referrer"
+       onload="this.style.opacity=1;this.parentNode.classList.add('img')"
+       onerror="this.remove()">` : '') +
     (c ? '<span class="badge"></span>' : '') + `</div>`;
 };
 const star = it => `<button class="star${S.watch.has(it.id) ? ' on' : ''}" data-star="${esc(it.id)}" aria-label="Save to watchlist" aria-pressed="${S.watch.has(it.id)}">
@@ -419,7 +443,8 @@ const nftValue = (v, i) => i.floorUsd ? usd(v) : `${v.toFixed(i.unit === 'SOL' ?
    scope and the sheet's chart — [loader, default range, ranges, readout].
    Adding a kind is a table entry, not another branch through render. */
 const KIND = {
-  asset: { group: 'Assets', size: i => i.mcap, spark: true, chart: [loadAssetChart, 1, R.price, usd],
+  asset: { group: 'Assets', size: i => i.mcap, spark: true, global: true,
+    chart: [loadAssetChart, 1, R.price, usd],
     // nothing traded, nothing priced, or a market cap so thin the price is
     // whatever the last trade said it was
     ok: i => i.vol > 0 && i.price > 0 && i.mcap >= 1e6,
@@ -597,7 +622,8 @@ const FACET = {
     ['ten', '10%+ APY', i => i.apy >= 10],
     ['holding', 'Rate not falling', i => i.outlook === 'holding' || i.outlook === 'rising'],
     ['deep', '$10M+', i => i.tvl >= 1e7]],
-  protocol: [['fees', 'Earning fees', i => i.fees24 > 0],
+  protocol: [['rwa', 'Real-world assets', i => /rwa|real world/i.test(i.cat)],
+    ['fees', 'Earning fees', i => i.fees24 > 0],
     ['dex', 'DEXs', i => i.vol24 > 0],
     ['perps', 'Perps', i => i.perps24 > 0],
     ['big', '$1B+ TVL', i => i.tvl >= 1e9],
@@ -734,28 +760,12 @@ function paintSel(scroll) {
 
 /* The totals DefiLlama leads with, summed from data already in memory — no
    extra request, and they move with the chain filter like everything else. */
-function paintStats() {
-  if (S.loading || S.err) return el.stats.replaceChildren();
-  const sum = (a, f) => a.filter(onChain).reduce((t, i) => t + (f(i) || 0), 0);
-  // a source that has not answered totals zero; say so rather than claiming $0
-  const cash = n => n ? money(n) : '—';
-  const rows = [
-    ['Total TVL', cash(sum(S.chainRows, i => i.tvl))],
-    ['Supplied', cash(sum(S.pools, i => i.supplyUsd))],
-    ['DEX volume 24h', cash(sum(S.protocols, i => i.vol24))],
-    ['Stablecoins', cash(sum(S.stables, i => i.circulating))],
-    ['Indexed', compact(everything().filter(onChain).length)],
-  ];
-  el.stats.innerHTML = rows.map(([k, v]) =>
-    `<div class="s"><div class="sk">${k}</div><div class="sv">${esc(v)}</div></div>`).join('');
-}
-
 /* The column headers are the sort control, and a phone has no room for them.
    Same descriptor, rendered as chips, so sorting is not desktop-only. */
 function paintSort() {
   const k = TAB_KIND[S.tab];
   const cols = k && KIND[k].cols?.filter(c => c[2]);
-  if (!cols?.length) return el.sortbar.replaceChildren();
+  if (!cols?.length || !matched) return el.sortbar.replaceChildren();
   const chip = ([label, , key]) => `<button data-sort="${esc(key)}"${S.sort?.key === key
     ? ` class="on" aria-pressed="true"` : ' aria-pressed="false"'}>${esc(label)}${
     S.sort?.key === key ? (S.sort.dir > 0 ? ' \u2191' : ' \u2193') : ''}</button>`;
@@ -794,6 +804,8 @@ function paintKinds() {
 
 function paintFacets() {
   if (S.nl) return void (el.facetbar.innerHTML = readingHTML());
+  // nothing to narrow is not a row worth keeping on screen
+  if (!matched) return el.facetbar.replaceChildren();
   const fs = facetsFor(S.tab);
   if (!fs.length) return paintKinds();
   const chip = f => {
@@ -817,10 +829,24 @@ function scrollToResults() {
   if (scrollY > y) scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 }
 
+/* One line each, saying what the category is for rather than repeating its
+   name. The home screen is the only place with room to say it. */
+const HOMEWORD = {
+  asset: 'Prices, caps and volume', stock: 'Shares issued onchain',
+  pool: 'Supply and borrow rates', yield: 'Farms and what they pay',
+  protocol: 'TVL, fees and revenue', nft: 'Floors and what is listed',
+  pair: 'The DEX long tail', stablecoin: 'Supply and peg',
+  bridge: 'What moves between chains', raise: 'Who raised what',
+  hack: 'What was lost, and how', chain: 'Networks by size',
+};
+
 const skeleton = n => Array.from({ length: n }, (_, i) => `<div class="row sk" style="animation-delay:${i * 60}ms"><div class="tok"></div><div class="body"><div class="ln w40"></div><div class="ln w25"></div></div><div class="ln w15"></div></div>`).join('');
 
 function render() {
   document.body.classList.toggle('searching', !!S.q);
+  // the tile home is neither a table nor a list of cards, so the toggle that
+  // switches between them has nothing to act on there
+  $('#view').hidden = S.tab === 'all' && !S.q.trim() && !S.chain;
   el.q.classList.toggle('read', !!S.nl);
   document.body.classList.toggle('browsing', S.tab !== 'all');
   el.clear.hidden = !S.q;
@@ -849,7 +875,7 @@ function render() {
 
   const list = S.list = withRemote(compute());
   mode = tableKind(list) || '';
-  paintStats(); paintCounts(); paintFacets();
+  paintCounts(); paintFacets();
   // set on every path, including the empty ones below, or toggling density on a
   // category with no rows does nothing until you leave it
   el.res.classList.toggle('table', !!mode);
@@ -866,12 +892,24 @@ function render() {
   el.meta.innerHTML = metaText ? `<span class="mtext">${metaText}</span>` : '';
   if (S.chain && globalKind(TAB_KIND[S.tab]))
     el.meta.innerHTML += `<span class="mnote">· not network-specific</span>`;
-  if (hidden && S.safe && list.length)
-    el.meta.innerHTML += `<button class="link" data-unsafe>${hidden} hidden</button>`;
   if (S.q && S.remote.busy) el.meta.innerHTML += ' <span class="pulse">· searching DEXs…</span>';
 
   if (!list.length && S.remote.busy) {
     el.res.innerHTML = skeleton(3);
+    return;
+  }
+  if (S.tab === 'all' && !S.q.trim() && !S.chain) {
+    el.meta.innerHTML = `<span class="mtext">Everything onchain, by category · updated ${ago(S.at)}</span>`;
+    el.facetbar.replaceChildren(); el.sortbar.replaceChildren();
+    el.res.className = 'results home';
+    el.res.innerHTML = TABS.filter(([t]) => t !== 'all').map(([t, label]) => {
+      const k = TAB_KIND[t], n = countOf(t);
+      return `<button class="tile" data-go="${esc(t)}">
+        <div class="tl">${esc(label)}</div>
+        <div class="tn">${n ? esc(count(n)) : '—'}</div>
+        <div class="tw">${esc(k ? HOMEWORD[k] || '' : 'What you starred')}</div></button>`;
+    }).join('');
+    nodes.clear();
     return;
   }
   if (!list.length) {
@@ -1325,7 +1363,16 @@ async function drawChart(days) {
    stretches SVG text horizontally along with everything else. */
 // the svg is the plot only; the time axis lives in a gutter beneath it, so
 // labels never sit on top of the volume bars
-const CW = 300, PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
+/* The chart is drawn in real pixels, measured from the element it lands in.
+
+   It used to be drawn in a fixed 300-unit viewBox stretched to fit with
+   preserveAspectRatio="none", and everything that went wrong with it went wrong
+   for that one reason: a stroke is scaled differently across than down, a
+   circle becomes an ellipse, and anything positioned as a percentage of the
+   host is measuring a different box from the one the geometry was computed in —
+   which is why the high and low marks sat off the line by eleven pixels.
+   Measuring first costs one layout read and removes the whole class. */
+const PH = 92, VH = 22, GAP = 6, CH2 = PH + GAP + VH, CPAD = 6;
 
 /* Resolution follows the range. Month-and-day across a year prints "Aug 29" at
    both ends, a year apart, which reads as no span at all. */
@@ -1337,6 +1384,8 @@ const stamp = (d, days) => days <= 1
 
 function paintChart(box, it, s, days) {
   const host = box.querySelector('.chart-svg');
+  // one read, before anything is written: the width the line is actually drawn at
+  const CW = Math.max(120, Math.round(host.getBoundingClientRect().width) || 320);
   const pts = s.pts?.length > 1 ? s.pts : [0, 0];
   const n = pts.length;
   const hi = s.hi?.length === n ? s.hi : null;
@@ -1351,7 +1400,7 @@ function paintChart(box, it, s, days) {
   const up = move >= 0;
   const stroke = up ? 'var(--up)' : 'var(--down)';
 
-  const X = i => (i / (n - 1)) * CW;
+  const X = i => CPAD + (i / (n - 1)) * (CW - CPAD * 2);
   const Y = v => CPAD + (1 - (v - min) / span) * (PH - CPAD * 2);
   const line = a => a.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join('');
   const d = line(pts);
@@ -1373,38 +1422,36 @@ function paintChart(box, it, s, days) {
     return out;
   };
   /* The axis says what the high and the low were; it does not say when. Two
-     marks on the line do. They are positioned in percentages rather than drawn
-     into the svg, which is stretched by preserveAspectRatio="none" and would
-     squash a circle into an ellipse. */
+     marks on the line do — and now that the svg is drawn 1:1 they can be circles
+     in it, on the line, instead of elements positioned against a different box. */
   const mark = (i, cls) => n < 4 || i < 0 ? ''
-    : `<i class="pin ${cls}" style="left:${(i / (n - 1) * 100).toFixed(2)}%;` +
-      `top:${(Y(pts[i]) / CH2 * 100).toFixed(2)}%;background:${stroke}"></i>`;
+    : `<circle class="pin ${cls}" cx="${X(i).toFixed(1)}" cy="${Y(pts[i]).toFixed(1)}"
+        r="3.5" fill="${stroke}"/>`;
   const marks = max === min ? ''
     : mark(pts.indexOf(max), 'pk') + mark(pts.indexOf(min), 'tr');
 
   const vb = vol ? buckets(vol, 64) : null;
   const vmax = vb ? Math.max(...vb) || 1 : 1;
-  const bw = vb ? Math.max(1.2, CW / vb.length - 1) : 0;
+  const bw = vb ? Math.max(1.2, (CW - CPAD * 2) / vb.length - 1.5) : 0;
   const bars = vb ? vb.map((v, i) => {
     const h = (v / vmax) * VH;
-    return `<rect x="${(i / vb.length * CW).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
-       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="0.5"/>`;
+    return `<rect x="${(CPAD + i / vb.length * (CW - CPAD * 2)).toFixed(1)}" y="${(CH2 - h).toFixed(1)}"
+       width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1"/>`;
   }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CH2}" preserveAspectRatio="none" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
       ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
-      <path class="area" d="${d}L${CW} ${PH}L0 ${PH}Z" fill="url(#cgrad)"/>
-      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"
-        vector-effect="non-scaling-stroke"/>
+      <path class="area" d="${d}L${(CW - CPAD).toFixed(1)} ${PH}L${CPAD} ${PH}Z" fill="url(#cgrad)"/>
+      <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"/>
       <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
-        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        stroke-linejoin="round" stroke-linecap="round"/>
       ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
+      ${marks}
     </svg>
-    ${marks}
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
     <div class="tip"><b></b><span></span></div>
     <div class="ax hi"></div><div class="ax lo"></div>
@@ -1423,7 +1470,15 @@ function paintChart(box, it, s, days) {
   const big = box.querySelector('.big');
   const baseBig = fmt(last);
   const source = !live ? ' · no history' : s.via ? ` · via ${s.via}` : '';
-  const summary = `<span class="${up ? 'up' : 'down'}">${pct(move)}</span>
+  /* The row and the chart were quoting different numbers for the same window.
+     The row prints the change the source reports; the chart computed its own
+     from the first and last points of whatever series came back, over whatever
+     span that series actually covered. Both are defensible and they disagree,
+     which just looks wrong. Where the source has published a figure for exactly
+     this window, that figure wins in both places. */
+  const reported = { 1: it.chg, 7: it.chg7d, 30: it.chg30d, 365: it.chg1y }[days];
+  const shown = reported == null ? move : reported;
+  const summary = `<span class="${shown >= 0 ? 'up' : 'down'}">${pct(shown)}</span>
     <span class="mute">${esc(RANGE_LABEL[days] || '')}${esc(source)}</span>`;
   if (big) big.textContent = baseBig;
   if (head) head.innerHTML = summary;
@@ -1454,7 +1509,8 @@ function paintChart(box, it, s, days) {
   };
   const nearest = clientX => {
     const r = host.getBoundingClientRect();
-    return Math.max(0, Math.min(n - 1, Math.round((clientX - r.left) / r.width * (n - 1))));
+    const t = (clientX - r.left - CPAD) / Math.max(1, r.width - CPAD * 2);
+    return Math.max(0, Math.min(n - 1, Math.round(t * (n - 1))));
   };
   host.onpointermove = e => at(nearest(e.clientX));
   host.onpointerleave = clear;
@@ -1489,6 +1545,21 @@ function open(id, { push = true } = {}) {
   fillItems(el.sheet, it);
   const c = KIND[it.kind].chart;
   if (c) drawChart(c[1]);
+}
+
+/* Same sheet as the network picker, for the same reason: a list you can see at
+   once beats a control you have to hunt along. */
+function openCats() {
+  history.pushState({ picker: 'cat', depth: ++depth }, '', location.href);
+  showSheet(`<div class="grab" aria-hidden="true"></div><div class="sheet-in picker" role="dialog" aria-label="Choose a category">
+    <div class="sheet-top"><div class="ident"><div><h2>Category</h2>
+      <div class="hsub">What to look through</div></div></div>
+      <div class="acts"><button class="x" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" class="i"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div></div>
+    <div class="pickgrid">${TABS.map(([t, label]) =>
+      `<button class="chip cat${t === S.tab ? ' on' : ''}" data-pick="${esc(t)}">${esc(label)}
+        <span class="ct">${countOf(t) ? count(countOf(t)) : ''}</span></button>`).join('')}</div>
+  </div>`);
 }
 
 /* Thirty networks in a horizontal scroller is a bad way to find one on a
@@ -1550,8 +1621,6 @@ function syncUrl(now) {
     if (S.sort) p.set('sort', (S.sort.dir > 0 ? '' : '-') + S.sort.key);
     if (S.facets.size) p.set('f', [...S.facets].join(','));
     if (S.view === 'cards') p.set('view', 'cards');
-    if (S.dense) p.set('dense', '1');
-    if (!S.safe) p.set('all', '1');
     history.replaceState(history.state, '', (p.toString() ? '?' + p : location.pathname) + location.hash);
   };
   now ? write() : (urlT = setTimeout(write, 350));
@@ -1567,8 +1636,6 @@ function fromUrl() {
   const known = new Set(facetsFor(S.tab).map(f => f[0]));
   S.facets = new Set((p.get('f') || '').split(',').filter(x => known.has(x)));
   if (p.get('view')) S.view = p.get('view') === 'cards' ? 'cards' : 'auto';
-  if (p.get('dense')) S.dense = p.get('dense') === '1';
-  if (p.get('all')) S.safe = p.get('all') !== '1';
   paintFilters(); paintTools();
 }
 
@@ -1604,7 +1671,7 @@ $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="t
 $('#netCount').textContent = `${CHAINS.length} networks`;
 $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
-  document.querySelectorAll('[data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
+  document.querySelectorAll('#tabs [data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
   const btn = $('#chainbtn');
   btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
@@ -1613,17 +1680,19 @@ function paintFilters() {
 }
 /** How much sits behind each category, so the rail says what it holds. */
 function paintCounts() {
-  document.querySelectorAll('[data-tab] .ct').forEach(el => {
+  document.querySelectorAll('#tabs [data-tab] .ct').forEach(el => {
     const n = countOf(el.parentElement.dataset.tab);
     el.textContent = n ? count(n) : '';
   });
 }
 function paintTools() {
-  $('#density span').textContent = S.dense ? 'Compact' : 'Comfortable';
-  $('#density').setAttribute('aria-pressed', S.dense);
   $('#view span').textContent = S.view === 'cards' ? 'Cards' : 'Table';
-  $('#safe').setAttribute('aria-pressed', S.safe);
-  $('#stocks').setAttribute('aria-pressed', S.tab === 'stocks');
+  /* The category picker is the rail on a wide screen and a dropdown everywhere
+     else — and it says nothing worth a control on All, where the categories are
+     the page. */
+  const cb = $('#catbtn');
+  cb.hidden = S.tab === 'all';
+  cb.querySelector('.cn').textContent = TABS.find(([t]) => t === S.tab)?.[1] || 'All';
 }
 
 /* ---------- events ---------- */
@@ -1651,27 +1720,9 @@ $('#topSearch').addEventListener('click', () => el.q.focus());
 $('#connect').addEventListener('click', openWallet);
 $('#refresh').addEventListener('click', () => load({ force: true }));
 narrow.addEventListener('change', () => { nodes.clear(); render(); });
-function setSafe(on) {
-  S.safe = on; store.set('atlas:safe', on ? '1' : '0');
-  paintTools(); nodes.clear(); reindex(); render(); syncUrl(true);
-}
-$('#safe').addEventListener('click', () => setSafe(!S.safe));
-/* Stocks-only is a view, and the rail already has it. The switch is a way in
-   and back out from anywhere, so it holds no state of its own — it reports
-   whether that category is the one on screen. */
-let lastTab = 'all';
-$('#stocks').addEventListener('click', () => {
-  const on = S.tab === 'stocks';
-  if (!on) lastTab = S.tab;
-  S.tab = on ? (lastTab === 'stocks' ? 'all' : lastTab) : 'stocks';
-  S.sel = 0; S.sort = null; S.facets.clear();
-  paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
-});
-el.meta.addEventListener('click', e => e.target.closest('[data-unsafe]') && setSafe(false));
-$('#density').addEventListener('click', () => {
-  S.dense = !S.dense; store.set('atlas:dense', S.dense ? '1' : '0');
-  paintTools(); render(); syncUrl(true);
-});
+/* The category picker: the rail on a wide screen, a dropdown on any other, and
+   the same list either way. */
+$('#catbtn').addEventListener('click', openCats);
 $('#view').addEventListener('click', () => {
   S.view = S.view === 'cards' ? 'auto' : 'cards';
   store.set('atlas:view', S.view); paintTools(); nodes.clear(); render(); syncUrl(true);
@@ -1726,7 +1777,6 @@ function goTab(tab) {
   if (!tab || !TABS.some(([t]) => t === tab)) return;
   if (S.nl) { dropReading(); S.q = el.q.value = ''; }
   if (tab === S.tab) { paintFilters(); reindex(); render(); return; }
-  if (S.tab !== 'stocks') lastTab = S.tab;
   S.tab = tab; S.sel = 0; S.sort = null; S.facets.clear(); S.limit = 40;
   paintFilters(); paintTools(); reindex(); render(); scrollToResults(); syncUrl(true);
 }
@@ -1773,6 +1823,11 @@ function toggleStar(id) {
   if (S.tab === 'saved') { reindex(); render(); }
 }
 el.res.addEventListener('click', e => {
+  const tile = e.target.closest('.tile[data-go]');
+  if (tile) return goTab(tile.dataset.go);
+  // recently viewed lives in an empty state, and was rendered but inert
+  const mini = e.target.closest('.mini[data-id]');
+  if (mini) return open(mini.dataset.id);
   if (e.target.closest('[data-more]')) {
     S.limit += PAGE;
     const at = scrollY;
@@ -1792,6 +1847,8 @@ el.sheet.addEventListener('click', e => {
   if (e.target.closest('[data-close]')) return close();
   if (e.target.closest('[data-chain]')) return onChainClick(e);
   if (e.target.closest('[data-back]')) return history.back();
+  const pick = e.target.closest('[data-pick]');
+  if (pick) { const t = pick.dataset.pick; history.back(); return setTimeout(() => goTab(t), 60); }
   const d = e.target.closest('[data-days]');
   if (d) {
     el.sheet.querySelectorAll('[data-days]').forEach(x => x.classList.toggle('on', x === d));
@@ -2160,6 +2217,7 @@ addEventListener('error', e => {
 });
 
 fromUrl();
+if (S.chain) pickChain(S.chain);        // a link with ?chain= arrived, not a click
 paintConnect();
 // an OAuth redirect lands back here with a one-time code in the query string
 if (/privy_oauth_code/.test(location.search))

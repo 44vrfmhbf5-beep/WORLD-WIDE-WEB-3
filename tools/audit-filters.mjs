@@ -7,7 +7,7 @@ const b = await chromium.launch();
 const p = await (await b.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
 const errs = [];
 p.on('pageerror', e => errs.push(e.message));
-await p.goto('http://127.0.0.1:8899/', { waitUntil: 'domcontentloaded' });
+await p.goto('http://127.0.0.1:8899/?tab=assets', { waitUntil: 'domcontentloaded' });
 await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
 await p.waitForTimeout(2500);
 const TABS = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));

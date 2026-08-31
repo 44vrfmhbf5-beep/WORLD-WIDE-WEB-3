@@ -16,7 +16,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 await c.route('**', r => r.request().resourceType() === 'image'
   && !r.request().url().startsWith('http://127.0.0.1')
   ? r.fulfill({ contentType: 'image/png', body: PNG }) : r.continue());
-await p.goto('http://127.0.0.1:8899/', { waitUntil: 'domcontentloaded' });
+await p.goto('http://127.0.0.1:8899/?tab=assets', { waitUntil: 'domcontentloaded' });
 await p.waitForSelector('#results .row:not(.sk)', { timeout: 25000 });
 await p.waitForTimeout(2500);
 const tabs = await p.evaluate(() => [...document.querySelectorAll('#tabs .tab')].map(t => t.dataset.tab));
