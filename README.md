@@ -119,6 +119,17 @@ hands them to the app the same way it hands it Fuse. **Until it did,
 natural-language search was silently dead in every published build**, which is a
 worse bug than the error that led me to it.
 
+**And a deployment can be checked.** Five of the modules load only when
+somebody uses the thing that needs them — the wallet arrives when Trade is
+clicked, which is hours after the deploy that forgot to copy it. The browser
+then says *"Importing a module script failed"*, naming neither the file nor the
+reason. So `node tools/check-deploy.mjs https://your-site/` asks for every file
+the app can ever need and says which are absent, which are served as HTML by a
+host that answers 404s with a page, and what each one costs when it is missing.
+The app's own error names the file and the URL it asked for now, too — a
+message that says only "a module script failed" is a message that cannot be
+acted on.
+
 **A build says what it carries.** A megabyte on one line cannot be read back,
 so it does not have to be: the modules table and the manifest beside it are
 built from the same list, and `window.__ATLAS_BUILD__` names what went in.
@@ -981,6 +992,7 @@ npm install       # playwright, oxlint and axe-core, for the checks only
 npm test          # the static audit, both builds, and every suite against all three
 npm run audit     # imports, exports, bundle coverage, lint
 npm run audit:all # the above plus accessibility, dead CSS, and endpoint coverage
+npm run check https://your-site/   # is every file the app can need actually there
 ```
 
 Two suites, both offline:

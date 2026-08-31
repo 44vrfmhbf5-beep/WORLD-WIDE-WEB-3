@@ -2317,13 +2317,27 @@ const bundled = typeof window !== 'undefined' ? window.__ATLAS_MODULES__ : null;
    there is a bundler fault and must say so in those words — falling through to
    `import('./wallet.js')` would 404 and report itself as a network problem,
    which sends the reader to check their connection for a build error. */
+/* A relative dynamic import resolves against the *document's* base URL, not
+   this file's — so any host that injects a `<base href>`, which the artifact
+   host does, sends `./wallet.js` somewhere it has never existed and the browser
+   reports it as "Importing a module script failed". Resolving against
+   `import.meta.url` asks for the file next to this one, which is what was
+   always meant. */
+const near = path => {
+  try { return new URL(path, import.meta.url).href; } catch { return path; }
+};
 const loadModule = (name, path) => {
   if (bundled) {
     return bundled[name] ? Promise.resolve(bundled[name])
       : Promise.reject(new Error(`This build was assembled without ${path.replace('./', '')} `
         + `(it carries: ${Object.keys(bundled).join(', ') || 'nothing'}).`));
   }
-  return import(path);
+  const url = near(path);
+  return import(/* @vite-ignore */ url).catch(e => {
+    // name the URL that failed: "a module script failed" says nothing about which
+    throw new Error(`${path.replace('./', '')} could not be loaded from ${url} — ${
+      e?.message || 'the browser would not fetch it'}`);
+  });
 };
 
 let NL = null;

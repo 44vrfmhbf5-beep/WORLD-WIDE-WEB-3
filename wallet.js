@@ -21,7 +21,10 @@ let client = null, ready = null, frame = null;
    build simply did not have, which made the published Atlas a search engine
    that could only hand you off somewhere else. */
 const vendor = () => (typeof window !== 'undefined' && window.__ATLAS_VENDOR__)
-  ? Promise.resolve(window.__ATLAS_VENDOR__) : import('./vendor/privy.mjs');
+  ? Promise.resolve(window.__ATLAS_VENDOR__)
+  // next to this file, not next to the document — a host that sets <base href>
+  // would otherwise send this somewhere the SDK has never been
+  : import(new URL('./vendor/privy.mjs', import.meta.url).href);
 
 async function boot() {
   if (!config.privyAppId) throw new Error('No Privy app id configured — see config.js.');

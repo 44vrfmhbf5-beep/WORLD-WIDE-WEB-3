@@ -3,7 +3,7 @@
 // so does app.js) cannot collide at shared scope.
 //   node build.mjs
 import fs from 'node:fs';
-import vm from 'node:vm';
+import { execFileSync } from 'node:child_process';
 
 const read = f => fs.readFileSync(f, 'utf8');
 
@@ -117,8 +117,19 @@ const html = read('index.html')
 // inlined code, so the damage happened during the splice, not before it.
 const emitted = html.match(/<script type="module">\n([\s\S]*?)\n<\/script>/)?.[1];
 if (!emitted) throw new Error('bundle: could not find the emitted script block');
-try { new vm.Script(emitted); }
-catch (e) { throw new Error(`bundle is not valid JavaScript: ${e.message}`); }
+/* It is emitted as `<script type="module">`, so it has to be checked as one.
+   `new vm.Script` parses a classic script and rejects `import.meta`, which is
+   valid in the thing actually shipped — a validator that disagrees with the
+   runtime is worse than no validator. */
+{
+  const tmp = `.bundle-check-${process.pid}.mjs`;
+  fs.writeFileSync(tmp, emitted);
+  try { execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' }); }
+  catch (e) {
+    const said = String(e.stderr || e.message).split('\n').filter(Boolean).slice(0, 3).join(' ');
+    throw new Error('bundle is not valid JavaScript: ' + said.trim());
+  } finally { fs.rmSync(tmp, { force: true }); }
+}
 
 const out = ARTIFACT ? artifactPage(html) : html;
 const name = ARTIFACT ? 'artifact.html' : 'demo.html';
