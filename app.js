@@ -2313,8 +2313,18 @@ addEventListener('keydown', e => {
    what it can and leaves it here. Ask for that first; fall back to a real
    module only when it is a real page with real files next to it. */
 const bundled = typeof window !== 'undefined' ? window.__ATLAS_MODULES__ : null;
-const loadModule = (name, path) => bundled?.[name]
-  ? Promise.resolve(bundled[name]) : import(path);
+/* In a single-file build every module is inlined, so asking for one that is not
+   there is a bundler fault and must say so in those words — falling through to
+   `import('./wallet.js')` would 404 and report itself as a network problem,
+   which sends the reader to check their connection for a build error. */
+const loadModule = (name, path) => {
+  if (bundled) {
+    return bundled[name] ? Promise.resolve(bundled[name])
+      : Promise.reject(new Error(`This build was assembled without ${path.replace('./', '')} `
+        + `(it carries: ${Object.keys(bundled).join(', ') || 'nothing'}).`));
+  }
+  return import(path);
+};
 
 let NL = null;
 const loadNL = () => (NL ||= loadModule('nl', './nl.js'));
@@ -2407,6 +2417,7 @@ const whereWord = ([f, op, v]) =>
    offline, blocked, or a bundled build with no module to fetch — the app is the
    app it was and every sheet still offers its hand-off links. */
 let W = null, T = null, wallet = { signedIn: false }, configured = false, standalone = false;
+let missingWhy = '';                    // what the bundle actually said, verbatim
 const loadWallet = () => (W ||= loadModule('wallet', './wallet.js').then(m => {
   m.onWallet(s => { wallet = s; paintConnect(); if (el.sheet.classList.contains('open')) reopen(); });
   return m;
@@ -2444,11 +2455,10 @@ function walletErr(box, e, lead = '') {
    cannot work. The rest of the app does not depend on any of this. */
 const standaloneHTML = () => `<div class="wsec">
     <h3>The wallet module is missing</h3>
-    <p class="note l">This build was assembled without <code>wallet.js</code>, so
-      there is nothing here to sign with. Everything else is the whole app.</p>
+    <p class="note l">${esc(missingWhy || 'This build has no wallet.js in it.')}</p>
     <p class="note l">A current single-file build carries the wallet and the SDK
-      inline. Rebuild with <code>node build.mjs</code>, or run Atlas from the
-      repository.</p>
+      inline, so this means an old or partial build. Rebuild with
+      <code>node build.mjs</code>, or run Atlas from the repository.</p>
     <div class="wrow"><a class="s" href="https://github.com/44vrfmhbf5-beep/WORLD-WIDE-WEB-3"
       target="_blank" rel="noopener noreferrer">The source ↗</a></div>
   </div>`;
@@ -2523,10 +2533,11 @@ async function openWallet() {
     configured = walletReady();
     showSheet(walletHTML());
   } catch (e) {
-    // a build with no wallet module at all is a different thing from a wallet
-    // that failed to start, and reads differently
-    if (/module|import|Failed to fetch/i.test(e?.message || '')) {
-      standalone = true; showSheet(walletHTML()); return;
+    /* Only one thing means "missing": the bundle said so. Matching on the word
+       "import" or "Failed to fetch" caught unrelated failures too and told
+       people their build was broken when their network was. */
+    if (/assembled without/.test(e?.message || '')) {
+      standalone = true; missingWhy = e.message; showSheet(walletHTML()); return;
     }
     walletErr(el.sheet, e, 'The wallet could not load.');
   }

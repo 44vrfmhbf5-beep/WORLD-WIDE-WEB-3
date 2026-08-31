@@ -43,9 +43,33 @@ if (!EXPORTS.source.includes('async')) fail('build.mjs export reader would miss 
 for (const f of ['config.js', 'nl.js', 'mcp.js'])
   if (!bundle.includes(f)) fail(`${f} is dynamically imported but not inlined by build.mjs`);
 // what app.js loads lazily must be either a file next to it or inlined
-for (const m of [...read('app.js').matchAll(/loadModule\('([^']+)',\s*'\.\/([^']+)'\)/g)])
-  if (!bundle.includes(m[2])) fail(`app.js lazily imports ${m[2]}, which build.mjs does not inline`);
+const lazy = [...read('app.js').matchAll(/loadModule\('([^']+)',\s*'\.\/([^']+)'\)/g)].map(m => [m[1], m[2]]);
+for (const [, file] of lazy)
+  if (!bundle.includes(file)) fail(`app.js lazily imports ${file}, which build.mjs does not inline`);
 console.log('  bundle covers: ' + [...bundle.matchAll(/inline\('([^']+)'/g)].map(m => m[1]).join(', '));
+
+/* And the check that matters: the built file itself. Reading build.mjs only
+   proves the intent — a regex that quietly drops an export, or a rename, and
+   the intent is still there while the module is not. So this reads what was
+   actually emitted and looks for each name in the modules table. */
+for (const out of ['demo.html', 'artifact.html']) {
+  if (!fs.existsSync(out)) { console.log(`  ${out}: not built`); continue; }
+  const built = read(out);
+  // the build says what it carries; a megabyte of one line cannot be read any other way
+  const said = built.match(/window\.__ATLAS_BUILD__ = (\{[^;]+\});/)?.[1];
+  if (!said) { fail(`${out} carries no build manifest — rebuild it`); continue; }
+  const man = JSON.parse(said.replace(/(\w+):/g, '"$1":'));
+  for (const [name] of lazy)
+    if (!man.modules.includes(name))
+      fail(`${out} has no "${name}" module — the app would tell the reader it is missing`);
+  // the runtime sees the same table the manifest was derived from, so what is
+  // left to check is that nothing in the app asks for a module outside it
+  const extra = lazy.map(([n]) => n).filter(n => !man.modules.includes(n));
+  if (extra.length) fail(`${out} is missing ${extra.join(', ')}`);
+  if (!man.vendor || !/__ATLAS_VENDOR__ = /.test(built))
+    fail(`${out} carries no wallet SDK, so Connect cannot do anything`);
+  console.log(`  ${out}: ${man.modules.join(', ')}${man.vendor ? ' + the SDK' : ''}`);
+}
 
 console.log('\n# nothing is exported into the void');
 /* An export nothing imports is either dead weight or — the case that actually

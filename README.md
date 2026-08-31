@@ -119,6 +119,15 @@ hands them to the app the same way it hands it Fuse. **Until it did,
 natural-language search was silently dead in every published build**, which is a
 worse bug than the error that led me to it.
 
+**A build says what it carries.** A megabyte on one line cannot be read back,
+so it does not have to be: the modules table and the manifest beside it are
+built from the same list, and `window.__ATLAS_BUILD__` names what went in.
+`tools/audit-code.mjs` reads that out of the built file — not out of the build
+script, which only proves intent — and the suite asserts at runtime that every
+module the manifest names is really there and is the real module rather than a
+stub. Drop the wallet from the bundler and both fail, which is the point: the
+first anyone knew about a missing module used to be a reader saying so.
+
 The wallet was the last holdout, on the grounds that 900KB of vendored SDK was
 too much to inline — so a single-file build had no wallet, no trading, and
 nothing left to offer but a link to somewhere that had both. That is a search

@@ -74,12 +74,23 @@ const walletPre = 'const { config } = __cfg;\n';
 const tradePre = 'const { config } = __cfg;\nconst { '
   + exportsOf(read('wallet.js')).join(', ') + ' } = __wallet;\n';
 
+/* The table is built from a list, and the manifest is derived from the same
+   list — so a module that is dropped disappears from both, and the manifest can
+   never claim something the build does not carry. A single-file build is a
+   megabyte on one line: it has to be able to say what is in it, because
+   nothing else can read it back. */
+const TABLE = [
+  ['config', '__cfg'],
+  ['nl', inline('nl.js')],
+  ['mcp', inline('mcp.js', 'const { config } = __cfg;\n')],
+  ['wallet', '__wallet'],
+  ['trade', inline('trade.js', tradePre)],
+];
 const modules = `const __cfg = ${inline('config.js')};\n`
   + `window.__ATLAS_VENDOR__ = ${privy};\n`
   + `const __wallet = ${inline('wallet.js', walletPre)};\n`
-  + `window.__ATLAS_MODULES__ = { config: __cfg, nl: ${inline('nl.js')}, `
-  + `mcp: ${inline('mcp.js', 'const { config } = __cfg;\n')}, `
-  + `wallet: __wallet, trade: ${inline('trade.js', tradePre)} };`;
+  + `window.__ATLAS_MODULES__ = { ${TABLE.map(([n, code]) => `${n}: ${code}`).join(', ')} };\n`
+  + `window.__ATLAS_BUILD__ = { modules: ${JSON.stringify(TABLE.map(([n]) => n))}, vendor: true };`;
 
 // --artifact: bundle the sample dataset and emit body-level content only, since
 // the Artifact host supplies its own <!doctype>/<html>/<head>/<body> wrapper.

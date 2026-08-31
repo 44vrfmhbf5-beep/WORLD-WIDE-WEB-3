@@ -499,6 +499,35 @@ console.log('\n# the chart readout sits on the line it is reading');
   await q.close();
 }
 
+console.log('\n# the build says what it carries, and carries what it says');
+{
+  /* "Wallet js is missing" is a real report, and the only way to answer it is
+     to make the build provable: what it contains is in a manifest, the manifest
+     is derived from the same list the modules table is built from, and the app
+     resolves every lazy module against it. A build that ships without the
+     wallet now fails here rather than in somebody's browser. */
+  const q = await page();
+  await q.goto(UROWS, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  const build = await q.evaluate(() => window.__ATLAS_BUILD__ || null);
+  const live = await q.evaluate(() => Object.keys(window.__ATLAS_MODULES__ || {}));
+  if (SOLO) {
+    ok(!!build, 'a single-file build states what it carries');
+    for (const m of ['config', 'nl', 'mcp', 'wallet', 'trade'])
+      ok(build?.modules.includes(m) && live.includes(m), `and carries ${m}`);
+    ok(await q.evaluate(() => typeof window.__ATLAS_VENDOR__?.default === 'function'),
+      'including the wallet SDK itself, constructible');
+    ok(await q.evaluate(() => typeof window.__ATLAS_MODULES__.wallet.sendEmailCode === 'function'),
+      'and the wallet module is the real one, not a stub');
+    ok(await q.evaluate(() => typeof window.__ATLAS_MODULES__.trade.quote === 'function'),
+      'and so is the trade module');
+  } else {
+    ok(build === null && live.length === 0, 'a served build inlines nothing and fetches its modules');
+  }
+  await q.close();
+}
+
 console.log('\n# the published artifact, with no network at all');
 {
   /* The artifact is body-level HTML with the sample dataset bundled in, served
