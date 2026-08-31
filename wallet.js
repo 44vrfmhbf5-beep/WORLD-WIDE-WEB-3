@@ -15,11 +15,17 @@ import { config } from './config.js';
 
 let client = null, ready = null, frame = null;
 
-/* The SDK is imported dynamically so the bundler leaves it alone and a page
-   that never asks for a wallet never pays for one. */
+/* The SDK is imported dynamically, so a page that never asks for a wallet never
+   pays for one. A single-file build has nothing to fetch, so it inlines the SDK
+   and leaves it here instead — the wallet used to be the one thing a bundled
+   build simply did not have, which made the published Atlas a search engine
+   that could only hand you off somewhere else. */
+const vendor = () => (typeof window !== 'undefined' && window.__ATLAS_VENDOR__)
+  ? Promise.resolve(window.__ATLAS_VENDOR__) : import('./vendor/privy.mjs');
+
 async function boot() {
   if (!config.privyAppId) throw new Error('No Privy app id configured — see config.js.');
-  const { default: Privy, LocalStorage } = await import('./vendor/privy.mjs');
+  const { default: Privy, LocalStorage } = await vendor();
   const c = new Privy({ appId: config.privyAppId, storage: new LocalStorage() });
 
   /* Privy's key material lives in an iframe on Privy's origin. The SDK hands us

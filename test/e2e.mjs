@@ -133,6 +133,47 @@ console.log('\n# CoinGecko, asked directly');
   await q.close();
 }
 
+console.log('\n# a category is as deep as the source, not as deep as one page');
+{
+  /* CoinGecko lists seventeen thousand assets and GeckoTerminal indexes
+     millions of pools. Atlas took one page of each and stopped, which is why a
+     category could hold twenty rows while a search for the same thing found
+     thousands. Showing more now reaches past the end of what is loaded. */
+  const q = await page();
+  for (const [tab, what] of [['assets', 'assets'], ['dex', 'DEX pairs']]) {
+    await q.goto(U + '?tab=' + tab, { waitUntil: 'commit' });
+    await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+    await q.waitForTimeout(1500);
+    const before = await q.locator('#results .row').count();
+    for (let i = 0; i < 3; i++) {
+      await q.evaluate(() => document.querySelector('[data-more]')?.click());
+      await q.waitForTimeout(2200);
+    }
+    const after = await q.locator('#results .row').count();
+    ok(after > before + 40, `${what}: showing more fetched more, not just revealed more (${before} to ${after})`);
+  }
+  await q.close();
+}
+
+console.log('\n# the home cards say what the categories actually hold');
+{
+  await p.goto(U); await p.waitForSelector('#results .hcard', { timeout: 20000 });
+  await p.waitForTimeout(2500);
+  const cards = await p.locator('#results .hcard:not([aria-hidden])').evaluateAll(ns =>
+    ns.map(n => [n.dataset.go, n.querySelector('.hn').textContent.trim()]));
+  const rail = await p.evaluate(() => Object.fromEntries(
+    [...document.querySelectorAll('#tabs .tab')].map(t => [t.dataset.tab, t.querySelector('.ct').textContent.trim()])));
+  const off = cards.filter(([t, n]) => t !== 'saved' && n !== (rail[t] || '—'));
+  ok(!off.length, `every card matches its category${off.length ? ' — ' + off.map(x => x.join('=')).join(' ') : ''}`);
+  // and the number is the number, not a rounding of it
+  const dex = cards.find(([t]) => t === 'dex')[1];
+  await p.click('[data-tab=dex]'); await p.waitForTimeout(1200);
+  const meta = await p.locator('#meta').textContent();
+  ok(meta.includes(dex), `the card's count is the one the category reports (${dex} in "${meta.trim().slice(0, 40)}")`);
+  await p.goto(U); await p.waitForSelector('#results .hcard', { timeout: 20000 });
+  await p.waitForTimeout(800);
+}
+
 console.log('\n# XSS: hostile token name from the API must not execute');
 await p.fill('#q', 'script'); await p.waitForTimeout(600);
 ok(await p.evaluate(() => window.__XSS === undefined), 'no script execution from API strings');
@@ -290,10 +331,10 @@ console.log('\n# a wallet, and the promise that nobody pays for one unasked');
      except in a single-file build, where the SDK is the one thing that cannot
      be inlined and the sheet says so instead of failing on an import. */
   await q.click('#connect'); await q.waitForTimeout(2500);
-  ok(SOLO
-    ? /no wallet/i.test(await q.locator('.sheet-in').textContent())
-    : await q.locator('#wemail').count() === 1,
-    SOLO ? 'a single-file build says the wallet is not in it' : 'with an app id it offers to sign in');
+  /* The single-file build used to stop here — no wallet, because the SDK could
+     not be inlined. It can be, and a build whose only remaining action is a
+     link to somewhere else is worth less than the megabyte. */
+  ok(await q.locator('#wemail').count() === 1, 'with an app id it offers to sign in');
   await q.keyboard.press('Escape'); await q.waitForTimeout(400);
   ok(await q.locator('#results .row').count() > 0, 'and the app behind it is untouched');
   await q.close();
@@ -415,6 +456,43 @@ console.log('\n# a sheet trades the thing, rather than linking to somewhere that
   await q.close();
 }
 
+console.log('\n# the chart readout sits on the line it is reading');
+{
+  const q = await page();
+  await q.goto(UROWS, { waitUntil: 'commit' });
+  await q.waitForSelector('#results .row:not(.sk)', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  await q.locator('#results .row').first().evaluate(el => el.click());
+  await q.waitForSelector('.sheet.open .chart svg .line', { timeout: 20000 });
+  await q.waitForTimeout(1200);
+  const box = await q.locator('.chart-svg').boundingBox();
+  const off = [], clipped = [];
+  for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+    await q.mouse.move(box.x + Math.min(box.width - 1, box.width * f), box.y + box.height / 2);
+    await q.waitForTimeout(120);
+    const r = await q.evaluate(() => {
+      const host = document.querySelector('.chart-svg');
+      const hb = host.getBoundingClientRect();
+      const d = document.querySelector('.cdot').getBoundingClientRect();
+      const tip = document.querySelector('.tip').getBoundingClientRect();
+      const xy = [...document.querySelector('.chart svg .line').getAttribute('d')
+        .matchAll(/([\d.]+) ([\d.]+)/g)].map(m => [+m[1], +m[2]]);
+      const dx = d.x + d.width / 2 - hb.x, dy = d.y + d.height / 2 - hb.y;
+      const near = xy.reduce((a, c) => Math.abs(c[0] - dx) < Math.abs(a[0] - dx) ? c : a);
+      return { dx: Math.abs(near[0] - dx), dy: Math.abs(near[1] - dy),
+        inside: tip.left >= hb.left - 0.5 && tip.right <= hb.right + 0.5 };
+    });
+    /* The readout is HTML over the svg and used to be placed as a percentage of
+       a box 17px taller than the chart, with the padding the line is drawn
+       inside ignored. The dot sat below and beside the point it marked. */
+    if (r.dx > 1 || r.dy > 1) off.push(`${(f * 100).toFixed(0)}%: ${r.dx.toFixed(1)},${r.dy.toFixed(1)}`);
+    if (!r.inside) clipped.push(`${(f * 100).toFixed(0)}%`);
+  }
+  ok(!off.length, `the dot sits on the line at every point${off.length ? ' — off by ' + off.join(' ') : ''}`);
+  ok(!clipped.length, `and the label stays inside the chart at both ends${clipped.length ? ' — clipped at ' + clipped.join(' ') : ''}`);
+  await q.close();
+}
+
 console.log('\n# the published artifact, with no network at all');
 {
   /* The artifact is body-level HTML with the sample dataset bundled in, served
@@ -468,12 +546,15 @@ console.log('\n# the published artifact, with no network at all');
     'and still sets the category it names');
   await q.fill('#q', ''); await q.waitForTimeout(700);
 
-  /* The wallet is the one thing that cannot be inlined — 900KB of SDK and an
-     iframe from a host this page may not reach — so it has to say that, rather
-     than report a failed module fetch as "could not reach Privy". */
-  await q.click('#connect'); await q.waitForTimeout(2000);
+  /* The wallet used to be the one thing left out of this build, and the sheet
+     said so. It carries the SDK now, so the artifact offers the same sign-in
+     the served app does — the whole point of a build somebody can actually
+     use. */
+  await q.click('#connect'); await q.waitForTimeout(2500);
   const w = (await q.locator('.sheet-in').textContent()).replace(/\s+/g, ' ').trim();
-  ok(/single-file build/.test(w), `Connect explains what this build is (${w.slice(30, 110)})`);
+  ok(await q.locator('#wemail').count() === 1,
+    `the offline build still offers to sign in (${w.slice(0, 70)})`);
+  ok(!/single-file build has no wallet/.test(w), 'and no longer says it has no wallet');
   ok(!/module|failed to fetch/i.test(w), 'without reporting a module error to somebody who cannot act on it');
   ok(await q.locator('[data-werr]').isVisible() === false, 'and without showing an error at all');
   await q.keyboard.press('Escape'); await q.waitForTimeout(400);

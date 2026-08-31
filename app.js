@@ -2,7 +2,7 @@
 import Fuse from './vendor/fuse.mjs';
 import { CHAINS, CH, loadAssets, loadPools, loadProtocols, loadChains, loadStables,
   loadBridges, loadRaises, loadHacks, loadTrendingPairs, searchPairs,
-  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout, loadSecurity, loadSecurityMany, scannable, colorOf,
+  loadChainTokens, loadNFTs, loadNftChart, loadChainChart, loadStableChart, loadStocks, loadAbout, loadSecurity, loadSecurityMany, scannable, colorOf, loadAssetPage, loadPairPage,
   loadAssetChart, loadPairChart, loadPoolChart, loadProtocolChart,
   loadVerified, loadMorpho, loadBridgeChart, loadNftItems, setOpenseaKey, nftImages,
   links, actions, flags, clearCache } from './data.js';
@@ -1796,14 +1796,24 @@ function paintChart(box, it, s, days) {
   const tipV = tip.querySelector('b'), tipL = tip.querySelector('span');
 
   let cur = -1;
+  /* The readout is HTML sitting on top of the svg, so it has to be placed the
+     way the line is placed: in the svg's own pixels. It used to be placed as a
+     percentage of the host box — which ignores the padding the line is drawn
+     inside, and measures height against a box 17px taller than the chart. The
+     dot was consistently below and beside the point it claimed to mark. */
   const at = i => {
     cur = i;
-    const v = pts[i], xp = i / (n - 1) * 100;
-    cx.style.cssText = `left:${xp}%;opacity:1`;
-    dot.style.cssText = `left:${xp}%;top:${Y(v) / CH2 * 100}%;background:${stroke};opacity:1`;
+    const v = pts[i], x = X(i), y = Y(v);
+    cx.style.cssText = `left:${x.toFixed(1)}px;opacity:1`;
+    dot.style.cssText = `left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;background:${stroke};opacity:1`;
     tipV.textContent = fmt(v);                        // value leads
     tipL.textContent = stamp(when(i), days) + (vol ? ` · ${money(vol[i])} vol` : '');
-    tip.style.cssText = `left:${xp}%;opacity:1`;
+    /* Centred on the point, except where centring would put half of it outside
+       the chart — at either end the label was simply cut off. */
+    tip.style.cssText = `left:${x.toFixed(1)}px;opacity:1`;
+    const w = tip.offsetWidth / 2 + 2;          // 2px so it never sits flush to the edge
+    const clamped = Math.min(Math.max(x, w), Math.max(w, CW - w));
+    tip.style.transform = `translateX(calc(-50% + ${(clamped - x).toFixed(1)}px))`;
     if (big) big.textContent = fmt(v);
     if (head) head.innerHTML = `<span class="${v >= first ? 'up' : 'down'}">${
       pct(first ? (v - first) / Math.abs(first) * 100 : 0)}</span>
@@ -1967,6 +1977,38 @@ function geckoRow(c) {
     spark: [], color: colorOf(sym), via: 'CoinGecko',
     key: `${sym} ${c.name || ''} token coin asset price`,
   };
+}
+
+/* ---------- there is always more ----------
+   Two sources page: CoinGecko lists seventeen thousand assets, GeckoTerminal
+   indexes millions of pools, and Atlas used to take one page of each. That is
+   why a category could hold twenty rows while a search for the same thing
+   found thousands — the rows existed, they had simply never been asked for.
+   Showing more now reaches past the end of what is loaded. */
+const pages = { asset: 1, pair: 1 };
+let deepening = false;
+async function deepen() {
+  if (deepening) return;
+  const kind = TAB_KIND[S.tab];
+  const src = kind === 'asset' ? 'asset' : kind === 'pair' ? 'pair' : null;
+  if (!src) return;
+  // only reach for another page when the screen has caught up with the list
+  const have = src === 'asset' ? S.assets.length : S.pairs.length;
+  if (S.limit < have - PAGE) return;
+  deepening = true;
+  try {
+    const next = pages[src] + 1;
+    const rows = src === 'asset' ? await loadAssetPage(next) : await loadPairPage(next);
+    pages[src] = next;
+    if (rows.length) {
+      const seen = new Set((src === 'asset' ? S.assets : S.pairs).map(i => i.id));
+      const add = rows.filter(r => !seen.has(r.id));
+      if (src === 'asset') S.assets = [...S.assets, ...add];
+      else S.pairs = [...S.pairs, ...add];
+      reindex(); render();
+    }
+  } catch { /* the end of a source is not an error */ }
+  finally { deepening = false; }
 }
 
 /* ---------- url state ---------- */
@@ -2192,6 +2234,7 @@ el.res.addEventListener('click', e => {
     S.limit += PAGE;
     const at = scrollY;
     render(); scrollTo({ top: at });        // the page grows, it does not jump
+    deepen();                               // and the source is asked for more
     return;
   }
   if (e.target.closest('[data-retry]')) return load({ force: true });
@@ -2356,11 +2399,11 @@ const whereWord = ([f, op, v]) =>
    offline, blocked, or a bundled build with no module to fetch — the app is the
    app it was and every sheet still offers its hand-off links. */
 let W = null, T = null, wallet = { signedIn: false }, configured = false, standalone = false;
-const loadWallet = () => (W ||= import('./wallet.js').then(m => {
+const loadWallet = () => (W ||= loadModule('wallet', './wallet.js').then(m => {
   m.onWallet(s => { wallet = s; paintConnect(); if (el.sheet.classList.contains('open')) reopen(); });
   return m;
 }));
-const loadTrade = () => (T ||= import('./trade.js'));
+const loadTrade = () => (T ||= loadModule('trade', './trade.js'));
 const reopen = () => { const id = el.sheet.querySelector('[data-id]')?.dataset.id; if (id) open(id, { push: false }); };
 
 const short = a => !a ? '' : a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
@@ -2392,13 +2435,12 @@ function walletErr(box, e, lead = '') {
 /* Shipped with no keys, so say that plainly rather than presenting a form that
    cannot work. The rest of the app does not depend on any of this. */
 const standaloneHTML = () => `<div class="wsec">
-    <h3>Not in this build</h3>
-    <p class="note l">This is the single-file build of Atlas — one HTML file, no
-      server, nothing to install. The wallet is the one thing that cannot come
-      with it: it needs a 900KB SDK and an iframe served from Privy's own origin,
-      which a page like this is not allowed to reach.</p>
-    <p class="note l">Everything else here is the whole app. Run it from the
-      repository and <code>Connect</code> works.</p>
+    <h3>The wallet module is missing</h3>
+    <p class="note l">This build was assembled without <code>wallet.js</code>, so
+      there is nothing here to sign with. Everything else is the whole app.</p>
+    <p class="note l">A current single-file build carries the wallet and the SDK
+      inline. Rebuild with <code>node build.mjs</code>, or run Atlas from the
+      repository.</p>
     <div class="wrow"><a class="s" href="https://github.com/44vrfmhbf5-beep/WORLD-WIDE-WEB-3"
       target="_blank" rel="noopener noreferrer">The source ↗</a></div>
   </div>`;
@@ -2464,16 +2506,20 @@ function walletHTML() {
 async function openWallet() {
   history.pushState({ wallet: true, depth: ++depth }, '', location.href);
   showSheet(walletHTML());
-  /* The wallet is the one thing that cannot be inlined: 900KB of SDK, and an
-     iframe from a host a bundled page is not allowed to reach anyway. So a
-     single-file build has no wallet, and saying "failed to fetch a module" for
-     that is both mystifying and wrong. */
-  if (bundled) { standalone = true; return showSheet(walletHTML()); }
+  /* The single-file build used to stop here: no wallet, because the SDK could
+     not be inlined. It can — it costs a megabyte — and a search engine whose
+     only remaining action is a link to somewhere else is worth less than that
+     megabyte. `standalone` now means the module genuinely is not there. */
   try {
     const [{ walletReady }] = await Promise.all([loadModule('config', './config.js'), loadWallet()]);
     configured = walletReady();
     showSheet(walletHTML());
   } catch (e) {
+    // a build with no wallet module at all is a different thing from a wallet
+    // that failed to start, and reads differently
+    if (/module|import|Failed to fetch/i.test(e?.message || '')) {
+      standalone = true; showSheet(walletHTML()); return;
+    }
     walletErr(el.sheet, e, 'The wallet could not load.');
   }
 }

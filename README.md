@@ -114,18 +114,24 @@ of showing a form that cannot work, and everything else in Atlas is untouched.
 ### What a single-file build can and cannot carry
 
 `demo.html` and the artifact are one file with no siblings, so a dynamic
-`import('./x.js')` has nothing to fetch. Two of those modules had no reason to
-be separate — `config.js` is a literal and the query reader only needs the chain
-table — so the bundler inlines them and hands them to the app the same way it
-hands it Fuse. **Until it did, natural-language search was silently dead in
-every published build**, which is a worse bug than the error that led me to it.
+`import('./x.js')` has nothing to fetch. The bundler inlines every module and
+hands them to the app the same way it hands it Fuse. **Until it did,
+natural-language search was silently dead in every published build**, which is a
+worse bug than the error that led me to it.
 
-The wallet genuinely cannot come along: 900KB of SDK, and an iframe served from
-Privy's own origin that a page like this is not allowed to reach. So *Connect*
-in a single-file build says exactly that and links to the source. Reporting a
-failed module fetch as "could not reach Privy" sent people to check an app id
-that was never the problem — a module that will not load and a host that will
-not answer are different failures wearing the same browser wording.
+The wallet was the last holdout, on the grounds that 900KB of vendored SDK was
+too much to inline — so a single-file build had no wallet, no trading, and
+nothing left to offer but a link to somewhere that had both. That is a search
+engine admitting it cannot do the thing it just described, which is worth less
+than a megabyte. The SDK is now inlined too, `wallet.js` and `trade.js` with it,
+and the published build signs in, generates a wallet and quotes a swap exactly
+as the served one does. `standalone` still exists, but it now means what it
+says: a build assembled without the wallet module at all.
+
+The bundler reads each module's exports with one regex, and that regex used to
+miss `export async function` — so an async export was simply absent and the
+single-file build died at runtime with "X is not defined". There is exactly one
+reader now, and `tools/audit-code.mjs` fails the build if it drifts.
 
 ### The app id, and what "hidden" can honestly mean
 
@@ -606,6 +612,14 @@ cost no extra requests. Volume is summed into 64 buckets to draw; an hourly
 month is 720 marks in 370 pixels, which reads as one solid block. The tooltip
 still reads the full-resolution series.
 
+**Where the readout sits.** The crosshair, the dot and the label are HTML over
+the svg, so they have to be placed the way the line is placed: in the svg's own
+pixels. They were placed as a percentage of the host box instead — which ignores
+the padding the line is drawn inside, and measures height against a box 17px
+taller than the chart. The dot was consistently below and beside the point it
+claimed to mark. The label is now clamped to the chart's width as well; centred
+on the last point, half of it used to sit outside the box and get cut off.
+
 **What it says without hovering.** The high and low of the range, both ends of
 the time axis, and a hairline at the opening value so the move has something to
 be measured against. Resolution follows the range — a bare clock time reads
@@ -695,6 +709,20 @@ Counts are printed exactly rather than through the money formatter. `1K of 1K`
 hid the difference between 1,029 and 1,224, which is the entire thing the
 number was there to say.
 
+**And the category itself is as deep as the source, not as deep as one page.**
+Every kind carried a slice — 4,000 pools, 500 protocols, 300 NFT collections,
+300 DEX pairs, one 100-row page of assets. Those payloads arrive whole, so the
+slice was throwing away rows already in memory; and for the two sources that
+page, it meant a category could hold twenty rows while a search for the same
+thing found thousands. **The rows existed and had simply never been asked
+for** — which is what "only renders once searched" actually was.
+
+The slices are gone. CoinGecko and GeckoTerminal are paged: showing more asks
+for the next page when the screen catches up with the list, dedupes by id and
+appends. Running out is the source saying it has no more, not Atlas deciding
+forty was enough. The home cards and the rail read the same `countOf` as the
+category itself, so what a card claims is what opening it gives you.
+
 ### Logos, and the kinds that had one and were not using it
 
 An asset drew its CoinGecko logo and everything else drew coloured initials —
@@ -727,6 +755,15 @@ through the same `safeUrl()` as the links do.
 Networks keep their coloured dot on purpose: thirty chain icons at 20px are less
 legible than thirty colours, and the dot doubles as the badge on every row that
 belongs to one.
+
+**NFT collections** take their floor from DeFiLlama and their artwork from
+whatever will give it without a key: the collection's own `image` where the
+payload carries one, and DeFiLlama's icon CDN — keyed by the same collection id
+the floor came from — where it does not. There is no public OpenSea key to
+find: OpenSea issues keys per account and rate-limits per account, so shipping
+somebody else's in a public repository would be both a theft and a thing that
+breaks the day they notice. A key of your own in `config.js` still adds
+OpenSea's own artwork and its listings on top.
 
 ### A zero is not a gap
 
@@ -896,7 +933,7 @@ both where the record is read and where the link is built.
 | `mcp.js` | CoinGecko's MCP server, in a hundred lines of JSON-RPC |
 | `wallet.js` | Privy: sign in, generate, sign, fund. Loaded on demand |
 | `trade.js` | Quotes and swaps: Uniswap v3 direct, 0x, Jupiter, OpenSea |
-| `vendor/privy.mjs` | Privy JS SDK, pinned and bundled. Apache-2.0 |
+| `vendor/privy.mjs` | Privy JS SDK, pinned and inlined into single-file builds |
 | `test/` | Fixture server + end-to-end suite |
 | `tools/` | Seven audits that print what renders, so it can be looked at |
 
@@ -953,10 +990,10 @@ source, once against the bundled `demo.html`.
 
 Both suites run against the single-file builds too (`PAGE=demo.html`,
 `PAGE=artifact.html`). Those builds differ in two ways the tests have to know
-about: they inline `config.js` and `nl.js`, so a section that replaces one over
-the wire is checking the served app rather than this one; and `artifact.html`
-carries a sample dataset, so a source going down is a fallback there, not a
-degraded state.
+about: they inline every module, so a section that replaces one over the wire is
+checking the served app rather than this one; and `artifact.html` carries a
+sample dataset, so a source going down is a fallback there, not a degraded
+state.
 
 **`tools/`** is not a suite — it is seven scripts that print what actually
 renders, because the bugs that survive longest are the ones nothing asserts.

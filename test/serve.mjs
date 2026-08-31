@@ -158,6 +158,17 @@ http.createServer(async (req,res)=>{
     // a category request used to fall through to the same coins, which filled
     // the stocks tab with bitcoin
     if(/tokenized-stock|xstocks/.test(cat)) return json(STOCKS(cat));
+    /* Page 2 is the next slice of the tail, not the same coins again — a
+       fixture that ignores `page` makes an exhausted list look bottomless. */
+    const pg=+(u.searchParams.get('page')||1);
+    if(pg>1) return json(pg>3 ? [] : Array.from({length:25},(_,k)=>{
+      const i=(pg-2)*25+k, id='tail-'+i;
+      return { id, symbol:'TAIL'+i, name:'Tail Coin '+i,
+        image:'https://assets.coingecko.com/coins/images/'+i+'/large/x.png',
+        current_price:0.5+i/10, market_cap:9e8/(i+1), market_cap_rank:300+i,
+        total_volume:4e6/(i+1), price_change_percentage_24h:((i%5)-2)*3.1,
+        circulating_supply:1e9, sparkline_in_7d:{price:walk(id,168,0.5+i/10)} };
+    }));
     return json(markets(cat));
   }
   if(p.startsWith('/api/v3/coins/')&&!p.endsWith('/market_chart')&&!p.endsWith('/markets')){
@@ -360,14 +371,17 @@ http.createServer(async (req,res)=>{
        network's — a fixture that answers identically for every network makes
        six requests look like one. */
     const net=p.split('/')[3], tag=net==='solana'?'':net.slice(0,3).toUpperCase();
-    const rows=[]; for(let i=0;i<10;i++) rows.push({id:net+'_'+tag.toLowerCase()+'ct'+i,type:'pool',
+    /* Page 2 is different rows from page 1, or "show more" looks like it works
+       while the list never grows. */
+    const pg=+(u.searchParams.get('page')||1), off=(pg-1)*10;
+    const rows=[]; for(let k=0;k<10;k++){ const i=off+k; rows.push({id:net+'_'+tag.toLowerCase()+'ct'+i,type:'pool',
       relationships:{ base_token:{ data:{ id:'ctok'+net+i, type:'token' } } },
       attributes:{name:tag+'CHAINTOK'+i+(i%4?' / USDC':' / WETH'),address:tag.toLowerCase()+'ct'+i,
         base_token_price_usd:String(0.5*(i+1)),
         price_change_percentage:{h24:'3.2'},reserve_in_usd:String(2e6/(i+1)),
-        volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}});
-    const included=Array.from({length:10},(_,i)=>({ id:'ctok'+net+i, type:'token',
-      attributes:{ image_url:'https://img.invalid/ct/'+i+'.png' }}));
+        volume_usd:{h24:String(5e6/(i+1))},fdv_usd:String(3e7/(i+1))}}); }
+    const included=rows.map((r,k)=>({ id:'ctok'+net+(off+k), type:'token',
+      attributes:{ image_url:'https://img.invalid/ct/'+(off+k)+'.png' }}));
     return json({data:rows,included});
   }
   if(/ohlcv/.test(p)){

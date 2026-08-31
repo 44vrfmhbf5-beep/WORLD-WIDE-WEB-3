@@ -389,15 +389,31 @@ function paprikaAsset(p, i) {
 /** Top assets by market cap, from whichever price source is reachable. */
 export function loadAssets() {
   return cache('assets:all', TTL, async () => {
-    const cg = get(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1` +
+    const cg = get(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1` +
       `&sparkline=true&price_change_percentage=24h,7d,30d,1y`);
     const pk = get(`${PAPRIKA}/tickers?quotes=USD`, { timeout: 30000 });
     const [a, b] = await Promise.allSettled([cg, pk]);
     if (a.status === 'fulfilled' && Array.isArray(a.value) && a.value.length)
       return a.value.map(c => asset(c, null));
     if (b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length)
-      return b.value.slice(0, 150).map(paprikaAsset);
+      return b.value.map(paprikaAsset);
     throw a.reason || b.reason || new ApiError('No price source answered.');
+  });
+}
+
+/* ---------- there is always more ----------
+   CoinGecko lists seventeen thousand assets and GeckoTerminal indexes millions
+   of pools. Atlas used to take one page of each and stop, which made "show
+   more" a button that ran out after forty rows and made a category look like
+   it held twenty things. Nothing is capped now: a page is fetched when the
+   list on screen is exhausted, and the sources decide where that ends. */
+export function loadAssetPage(page) {
+  if (page < 2) return Promise.resolve([]);
+  return cache(`assets:p${page}`, TTL, async () => {
+    const j = await get(`${CG}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250` +
+      `&page=${page}&sparkline=true&price_change_percentage=24h,7d,30d,1y`, { tries: 1 })
+      .catch(() => null);
+    return Array.isArray(j) ? j.map(c => asset(c, null)) : [];
   });
 }
 
@@ -535,7 +551,7 @@ export function loadChainTokens(chainId) {
       { tries: 1, headers: GT_ACCEPT, urgent: true }).catch(() => null);
     const imgs = gtTokens(j);
     return mergePairs([(j?.data || []).map(r => gtPool(r, imgs))])
-      .map(p => ({ ...p, chain: chainId })).slice(0, 40);
+      .map(p => ({ ...p, chain: chainId }));
   });
 }
 
@@ -591,14 +607,12 @@ export function loadPools() {
          could ask whether it was real. The cap stays; the floor does not. */
       .filter(([p, b]) => b && (b.totalSupplyUsd || p.tvlUsd || 0) > 0)
       .map(([p, b]) => pool(p, b))
-      .sort((a, b) => b.supplyUsd - a.supplyUsd)
-      .slice(0, 4000);
+      .sort((a, b) => b.supplyUsd - a.supplyUsd);
     const borrowed = new Set(lending.map(l => l.pool));
     const yields = rows
       .filter(p => !borrowed.has(p.pool) && num(p.tvlUsd) > 0 && num(p.apy ?? p.apyBase) > 0)
       .map(farm)
-      .sort((a, b) => b.tvl - a.tvl)
-      .slice(0, 4000);
+      .sort((a, b) => b.tvl - a.tvl);
     return { lending, yields };
   });
 }
@@ -753,8 +767,7 @@ export function loadProtocols() {
     return (Array.isArray(ps) ? ps : [])
       .filter(p => num(p.tvl) > 0 || num(dv[slugOf(p.name)]?.total24h) > 0)
       .map(p => protocol(p, dv[slugOf(p.name)], fv[slugOf(p.name)], pv[slugOf(p.name)], ov[slugOf(p.name)]))
-      .sort((a, b) => b.tvl - a.tvl)
-      .slice(0, 500);
+      .sort((a, b) => b.tvl - a.tvl);
   });
 }
 
@@ -860,9 +873,8 @@ export function loadMorpho() {
       .catch(() => null);
     return (j?.data?.markets?.items || [])
       .map(morphoMarket)
-      .filter(m => m.chain && m.supplyUsd >= 1e6)
-      .sort((a, b) => b.supplyUsd - a.supplyUsd)
-      .slice(0, 300);
+      .filter(m => m.chain && m.supplyUsd > 0)
+      .sort((a, b) => b.supplyUsd - a.supplyUsd);
   });
 }
 
@@ -908,9 +920,8 @@ export function loadStables() {
           key: `${s.name || ''} ${sym} stablecoin peg ${s.pegMechanism || ''} ${(s.chains || []).join(' ')}`,
         };
       })
-      .filter(s => s.circulating > 1e6)
-      .sort((a, b) => b.circulating - a.circulating)
-      .slice(0, 120);
+      .filter(s => s.circulating > 0)
+      .sort((a, b) => b.circulating - a.circulating);
     return { rows, bySym: Object.fromEntries(rows.map(s => [s.sym, s])) };
   });
 }
@@ -953,8 +964,7 @@ export function loadBridges() {
         };
       })
       .filter(b => b.name && b.name !== '?')
-      .sort((a, b) => b.vol24 - a.vol24)
-      .slice(0, 120);
+      .sort((a, b) => b.vol24 - a.vol24);
   });
 }
 
@@ -979,8 +989,7 @@ export function loadRaises() {
           key: `${r.name} ${r.round || ''} ${r.sector || ''} funding raise round investors ${investors.join(' ')}`,
         };
       })
-      .sort((a, b) => b.date - a.date)
-      .slice(0, 600);
+      .sort((a, b) => b.date - a.date);
   });
 }
 
@@ -1003,8 +1012,7 @@ export function loadHacks() {
           key: `${h.name} hack exploit ${h.technique || ''} ${h.classification || ''} ${list.join(' ')}`,
         };
       })
-      .sort((a, b) => b.date - a.date)
-      .slice(0, 400);
+      .sort((a, b) => b.date - a.date);
   });
 }
 
@@ -1100,7 +1108,7 @@ function mergePairs(lists) {
     if (!p || !okPair(p) || seen.has(p.id)) continue;
     seen.add(p.id); out.push(p);
   }
-  return out.sort((a, b) => (b.liq || b.vol24) - (a.liq || a.vol24)).slice(0, 30);
+  return out.sort((a, b) => (b.liq || b.vol24) - (a.liq || a.vol24));
 }
 
 /** Live DEX search across two independent indexes, so one being unreachable
@@ -1134,6 +1142,25 @@ export function searchPairs(q) {
 }
 
 /** Trending DEX pools, so the kind is populated before anyone searches. */
+/* The next slice of the long tail: one more page of trending and one more of
+   each big network's own pools. Nothing here is a cap — running out of pages is
+   the source saying it has no more, not Atlas deciding forty was enough. */
+export function loadPairPage(page) {
+  if (page < 2) return Promise.resolve([]);
+  return cache(`pairs:p${page}`, TTL, async () => {
+    const asks = [get(`${GT}/networks/trending_pools?page=${page}&include=base_token`,
+      { tries: 1, headers: GT_ACCEPT }).catch(() => null)];
+    for (const id of ['eth', 'sol', 'base', 'arb', 'bnb', 'poly'])
+      asks.push(get(`${GT}/networks/${GT_NET[id]}/pools?page=${page}&include=base_token`,
+        { tries: 1, headers: GT_ACCEPT }).catch(() => null));
+    const got = await Promise.all(asks);
+    return mergePairs(got.filter(Boolean).map(j => {
+      const imgs = gtTokens(j);
+      return (j?.data || []).map(r => gtPool(r, imgs));
+    }));
+  });
+}
+
 export function loadTrendingPairs() {
   return cache('trending', TTL, async () => {
     /* One page of trending is twenty pools — a sample of the long tail, not the
@@ -1157,7 +1184,7 @@ export function loadTrendingPairs() {
       const imgs = gtTokens(j);
       return (j?.data || []).map(r => gtPool(r, imgs));
     });
-    return mergePairs(lists).slice(0, 300);
+    return mergePairs(lists);
   });
 }
 
@@ -1330,6 +1357,19 @@ export async function nftImages(rows, key) {
   return out;
 }
 
+/* DeFiLlama's own icon CDN, keyed by the same collection id the floor comes
+   from. It is keyless, which matters: OpenSea's image endpoint needs a key, and
+   the honest answer to "find a public OpenSea key" is that there is not one to
+   find — their keys are issued per account and rate-limited per account, so
+   shipping somebody else's in a public repository would be both a theft and a
+   thing that stops working the day they notice. This costs nothing and covers
+   the rows DeFiLlama leaves blank; a key in config.js still adds OpenSea's own
+   artwork on top of it. */
+const llamaIconFor = c => {
+  const slug = c.collectionId || c.slug || '';
+  return slug ? `https://icons.llamao.fi/icons/nfts/${encodeURIComponent(slug)}?w=64&h=64` : null;
+};
+
 function llamaNft(c) {
   const name = c.name || c.collectionId || '?';
   const floorUsd = num(c.floorPriceUSD ?? c.floorPrice1dUSD);
@@ -1338,7 +1378,7 @@ function llamaNft(c) {
   return {
     kind: 'nft', id: `n:${c.collectionId || slugOf(name)}`, cid: c.collectionId || '',
     name, sym: String(c.symbol || name).toUpperCase().slice(0, 8),
-    img: safeUrl(c.image || c.logo || c.imageUrl || c.logoUrl) || null,
+    img: safeUrl(c.image || c.logo || c.imageUrl || c.logoUrl) || llamaIconFor(c),
     slug: c.slug || c.collectionSlug || '', chain,
     // DeFiLlama aggregates every marketplace on a chain; naming one would be a lie
     net: c.chain || 'Ethereum', market: 'DeFiLlama',
@@ -1469,11 +1509,11 @@ export function loadNFTs() {
     ]);
     const a = dl.status === 'fulfilled' && Array.isArray(dl.value)
       ? dl.value.map(llamaNft)
-        .sort((x, y) => (y.volUsd || y.floorUsd) - (x.volUsd || x.floorUsd)).slice(0, 300)
+        .sort((x, y) => (y.volUsd || y.floorUsd) - (x.volUsd || x.floorUsd))
       : [];
     const b = me.status === 'fulfilled' && Array.isArray(me.value)
       ? me.value.map(meNft)
-        .sort((x, y) => (y.volSol || 0) - (x.volSol || 0)).slice(0, 60)
+        .sort((x, y) => (y.volSol || 0) - (x.volSol || 0))
       : [];
     if (!a.length && !b.length) throw dl.reason || me.reason || new ApiError('No NFT source answered.');
     return [...a, ...b];

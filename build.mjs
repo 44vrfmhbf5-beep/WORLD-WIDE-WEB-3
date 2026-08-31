@@ -45,9 +45,41 @@ const inline = (f, pre = '') => {
   const body = src.replace(/^import[^;]+;$/gm, '').replace(/^export\s+/gm, '');
   return `(() => {\n${pre}${body}\nreturn { ${names.join(', ')} };\n})()`;
 };
+/* The wallet used to be the one thing left out — 900KB of vendored SDK, and a
+   single-file build was told it simply had no wallet. That made the published
+   build a search engine that could only ever hand you off somewhere else,
+   which is precisely what the wallet exists to stop. It costs a megabyte; the
+   alternative costs the feature. */
+const privySrc = read('vendor/privy.mjs');
+/* The SDK's export line is one enormous `export{a as B,c as D,…}`. Only two of
+   those names are ever used, so the wrapper hands back exactly those two —
+   found by name rather than by their minified aliases, which change on every
+   rebuild of the vendor file. */
+const privyExports = privySrc.match(/export\s*\{([^}]*)\}\s*;?\s*$/m);
+if (!privyExports) throw new Error('privy export shape changed — bundler needs updating');
+const alias = want => {
+  const hit = privyExports[1].split(',')
+    .map(x => x.trim().split(/\s+as\s+/).map(y => y.trim()))
+    .find(([, as]) => as === want);
+  if (!hit) throw new Error(`privy no longer exports ${want} — bundler needs updating`);
+  return hit[0];
+};
+const privy = `(() => {\n${privySrc.replace(/export\s*\{[^}]*\}\s*;?\s*$/m,
+  `return { default: ${alias('default')}, LocalStorage: ${alias('LocalStorage')} };`)}\n})()`;
+
+/* trade.js imports from wallet.js, so wallet has to be inlined first and its
+   exports handed in — the same dependency the config closure has, one level
+   deeper. */
+const walletPre = 'const { config } = __cfg;\n';
+const tradePre = 'const { config } = __cfg;\nconst { '
+  + exportsOf(read('wallet.js')).join(', ') + ' } = __wallet;\n';
+
 const modules = `const __cfg = ${inline('config.js')};\n`
+  + `window.__ATLAS_VENDOR__ = ${privy};\n`
+  + `const __wallet = ${inline('wallet.js', walletPre)};\n`
   + `window.__ATLAS_MODULES__ = { config: __cfg, nl: ${inline('nl.js')}, `
-  + `mcp: ${inline('mcp.js', 'const { config } = __cfg;\n')} };`;
+  + `mcp: ${inline('mcp.js', 'const { config } = __cfg;\n')}, `
+  + `wallet: __wallet, trade: ${inline('trade.js', tradePre)} };`;
 
 // --artifact: bundle the sample dataset and emit body-level content only, since
 // the Artifact host supplies its own <!doctype>/<html>/<head>/<body> wrapper.
