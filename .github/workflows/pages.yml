@@ -46,13 +46,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ship only the site itself — tests and tooling stay out of the bundle
+      # The file list is not written here. It was once — hand-written when Atlas
+      # had four files — and the five modules added since were silently never
+      # deployed, so the app looked whole until somebody clicked Trade and got a
+      # 404 for a file sitting in the repository. tools/check-deploy owns that
+      # list now, assembles the site from it, and the same list is what
+      # `npm run check` asks a live host for.
       - name: Assemble site
         run: |
           node build.mjs
-          mkdir -p _site/vendor
-          cp index.html styles.css app.js data.js demo.html _site/
-          cp vendor/fuse.mjs vendor/fuse.LICENSE _site/vendor/
+          node tools/check-deploy.mjs --copy _site
+          node tools/check-deploy.mjs --dir _site
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

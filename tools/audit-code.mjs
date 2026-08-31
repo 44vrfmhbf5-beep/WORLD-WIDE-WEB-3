@@ -71,6 +71,32 @@ for (const out of ['demo.html', 'artifact.html']) {
   console.log(`  ${out}: ${man.modules.join(', ')}${man.vendor ? ' + the SDK' : ''}`);
 }
 
+console.log('\n# the deployment ships what the app can ask for');
+/* The gap this closes: the Pages workflow copied a hand-written list of files
+   written when Atlas had four of them. Five modules were added later and none
+   was ever deployed — the app looked whole until somebody clicked Trade and
+   got a 404 for a file sitting in the repository. The list has one home now,
+   and this fails if it does not cover what the app can load. */
+{
+  const { SITE } = await import('../tools/check-deploy.mjs');
+  const shipped = new Set(SITE.map(([f]) => f));
+  for (const [, file] of lazy)
+    if (!shipped.has(file)) fail(`app.js can load ${file}, and the site list does not ship it`);
+  // the statically imported graph has to be there too, or nothing renders
+  for (const f of ['index.html', 'app.js', 'data.js', 'styles.css', 'vendor/fuse.mjs'])
+    if (!shipped.has(f)) fail(`${f} is required to render and the site list does not ship it`);
+  // and a workflow that hand-lists files is how this happened the first time
+  const wf = '.github/workflows/pages.yml';
+  if (fs.existsSync(wf)) {
+    const y = read(wf);
+    if (/^\s*cp .*\.js/m.test(y))
+      fail(`${wf} copies files by hand again — it should assemble with check-deploy --copy`);
+    if (!y.includes('check-deploy.mjs --copy'))
+      fail(`${wf} does not assemble the site from the one list that knows it`);
+  }
+  console.log(`  ${SITE.length} files ship, covering ${lazy.length} lazily loaded module(s)`);
+}
+
 console.log('\n# nothing is exported into the void');
 /* An export nothing imports is either dead weight or — the case that actually
    bites — something written, wired into a comment, and never called. */

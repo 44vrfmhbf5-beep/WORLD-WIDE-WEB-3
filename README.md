@@ -131,6 +131,18 @@ file would break the three that import it. The second is not survivable, and
 now says so with the status code. Both are in the suite, each against a server
 that misbehaves in exactly that way.
 
+**The site has one definition.** `tools/check-deploy.mjs` holds the list of
+files that make up a deployment; the Pages workflow assembles `_site` by asking
+it to copy them, `npm run check <url>` asks a live host for the same list, and
+`tools/audit-code.mjs` fails if the app can lazily load something the list does
+not ship — or if the workflow goes back to copying files by hand.
+
+It went back to copying files by hand once, which is the whole reason for this.
+The workflow was written when Atlas had four files and listed them literally.
+Five modules were added afterwards and not one was ever deployed: the site
+rendered perfectly, and `wallet.js` returned 404 to anyone who clicked Trade.
+Three rounds of debugging went into the app before the workflow was read.
+
 **And a deployment can be checked.** Five of the modules load only when
 somebody uses the thing that needs them — the wallet arrives when Trade is
 clicked, which is hours after the deploy that forgot to copy it. The browser
