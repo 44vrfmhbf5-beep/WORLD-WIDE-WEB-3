@@ -581,7 +581,7 @@ console.log('\n# upstream strings that end up in an href');
   await p.fill('#q', 'poison'); await p.waitForTimeout(700);
   await p.locator('.row[data-id="r:poison"]').first().evaluate(el => el.click());
   await p.waitForSelector('.sheet-in[data-kind="protocol"]', { timeout: 8000 });
-  const href = await p.locator('.sheet .cta a').getAttribute('href');
+  const href = await p.locator('.sheet .quad a').first().getAttribute('href');
   ok(!/^javascript:/i.test(href), `a javascript: url from upstream never reaches the href (${href})`);
   ok(/defillama\.com/.test(href), 'it falls back to the canonical page instead');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
@@ -801,7 +801,10 @@ console.log('\n# a network is described by the token that secures it');
 
   await p.click('[data-tab=stocks]'); await p.waitForTimeout(900);
   await p.locator('.row[data-id="t:tesla-xstock"]').evaluate(el => el.click()); await p.waitForTimeout(1400);
-  const t = await p.locator('.sheet-in .stats').textContent();
+  // the headline figures are cards and the rest are dotted rows; both are the
+  // same list of fields, so read them together
+  const t = (await p.locator('.sheet-in .stats').textContent())
+    + (await p.locator('.sheet-in .leads').textContent());
   // the equity request carries the same windows and high as any other asset,
   // and the sheet was showing four of them
   ok(/7d/.test(t) && /All-time high/.test(t),
@@ -1146,7 +1149,7 @@ console.log('\n# two registries settle what a heuristic can only guess');
   ok(/Listed by/.test(sheet) || /Jupiter|Uniswap/.test(sheet),
     'a verified row names the registry that vouched for it');
   // Atlas holds no wallet and quotes no price; it hands off with the token resolved
-  ok(await p.locator('.cta a').count() >= 1, 'and offers somewhere to act on it');
+  ok(await p.locator('.quad a').count() >= 1, 'and offers somewhere to act on it');
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
   await p.click('[data-tab=all]'); await p.waitForTimeout(500);
 }

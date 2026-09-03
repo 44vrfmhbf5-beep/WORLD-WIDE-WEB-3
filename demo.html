@@ -17,18 +17,23 @@
 <style>
 /* Atlas — onchain search */
 :root{
-  --bg:#12121a; --bg2:#16161f; --surface:#1c1c27; --surface2:#22222f;
-  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  /* Near-black, not blue-black. The reference screens put a bright green line
+     and a white number on something close to true black, and every degree of
+     colour in the background takes contrast away from both. */
+  --bg:#08080a; --bg2:#0d0d10; --surface:#141418; --surface2:#1c1c21;
+  --line:rgba(255,255,255,.06); --line2:rgba(255,255,255,.11);
   /* Both muted greys failed WCAG AA against every surface in the app — 994
      elements of it — which is most of the secondary text on the page. Raised
      until they pass at 4.5:1 on --surface, which is the darkest thing either
      of them ever sits on. */
-  --text:#f4f3f8; --dim:#a8a7bb; --faint:#8f8ea6;
-  /* American Express blue. It is darker than the violet it replaces, so
-     anything sitting on it takes white rather than near-black. */
+  --text:#f4f4f6; --dim:#a6a6b0; --faint:#8b8b96;
+  /* American Express blue for anything you can press. The green belongs to the
+     data: in the reference screens the only saturated colour on the page is the
+     line on the chart and the number beside it, which is why both read at a
+     glance. Buttons there are the same near-black as everything else. */
   --accent:#006fcf; --accent-dim:#3b8fdd; --on-accent:#fff;
   --up:#4ade80; --down:#ff6b81;
-  --r:16px; --r-lg:22px;
+  --r:14px; --r-lg:20px; --r-xl:26px;
   --ease:cubic-bezier(.22,.61,.36,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -48,23 +53,23 @@ button{background:none;border:0;cursor:pointer}
 .i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;flex:none}
 
 /* ambient glow */
+/* One cool wash, low and wide. Three coloured lobes read as a gradient mesh
+   from a different app; the reference is almost flat and lets the data carry
+   the only colour on screen. */
 .aurora{position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(680px 380px at 50% -8%,rgba(171,159,242,.22),transparent 70%),
-    radial-gradient(520px 320px at 88% 4%,rgba(97,214,214,.10),transparent 70%),
-    radial-gradient(460px 300px at 6% 12%,rgba(255,107,129,.07),transparent 70%);
+  background:radial-gradient(900px 460px at 50% -12%,rgba(0,111,207,.10),transparent 72%);
 }
 
 /* header */
 .top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
-  gap:16px;padding:14px 22px;backdrop-filter:blur(14px);
-  background:linear-gradient(180deg,rgba(18,18,26,.9),rgba(18,18,26,.55));
+  gap:16px;padding:14px 22px;backdrop-filter:blur(16px);
+  background:linear-gradient(180deg,rgba(8,8,10,.92),rgba(8,8,10,.6));
   border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:9px;color:var(--text);text-decoration:none;
   font-weight:700;font-size:16px;letter-spacing:-.03em}
 .mark{width:20px;height:20px;border-radius:7px;
   background:conic-gradient(from 200deg,#006fcf,#3fb6f5,#00d4b8,#006fcf);
-  box-shadow:0 0 18px rgba(171,159,242,.5)}
+  box-shadow:0 0 18px rgba(0,111,207,.45)}
 .top-nav{display:flex;align-items:center;gap:12px}
 .net{color:var(--faint);font-size:12.5px;font-weight:500}
 .ghost-btn{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:11px;
@@ -94,12 +99,12 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* search */
 .searchbar{position:sticky;top:64px;z-index:15;margin-top:16px;display:flex;align-items:center;gap:12px;
-  padding:0 16px;height:58px;border-radius:var(--r-lg);
-  background:var(--surface);border:1px solid var(--line2);
-  box-shadow:0 12px 40px -14px rgba(0,0,0,.8);
+  padding:0 18px;height:56px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 14px 44px -18px rgba(0,0,0,.9);
   transition:.22s var(--ease)}
 .searchbar:focus-within{border-color:var(--accent-dim);background:var(--surface2);
-  box-shadow:0 0 0 4px rgba(171,159,242,.14),0 16px 44px -14px rgba(0,0,0,.9)}
+  box-shadow:0 0 0 4px rgba(0,111,207,.16),0 16px 44px -14px rgba(0,0,0,.9)}
 .lens{color:var(--faint);width:20px;height:20px;transition:.2s}
 .searchbar:focus-within .lens{color:var(--accent)}
 #q{flex:1;background:none;border:0;outline:0;font-size:17px;font-weight:500;letter-spacing:-.015em;min-width:0}
@@ -123,8 +128,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 .meta{padding:14px 2px 10px;color:var(--faint);font-size:12.5px;font-weight:500;letter-spacing:.01em}
 
-/* results */
-.results{display:flex;flex-direction:column;gap:8px}
+/* results
+   The reference screens do not draw a card per row. They draw one dark panel
+   and rule it into rows, and then the row you are on lifts out of it as a
+   rounded, bordered card with its actions inside. That contrast is the whole
+   navigational signal: everything is quiet until one thing is not. */
+.results{display:flex;flex-direction:column;gap:0;
+  border-radius:var(--r-xl);background:var(--bg2);border:1px solid var(--line);
+  padding:6px;overflow:hidden}
+.results:empty{border:0;padding:0}
 /* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
 .results .row,.results .hcard{scroll-margin-top:132px}
 .wrap>#banner{margin-top:14px}
@@ -132,16 +144,22 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
    cannot see which row is highlighted. */
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
-  background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
-  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
+.row{display:flex;align-items:center;gap:14px;padding:14px 14px;border-radius:var(--r);
+  background:none;border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
+  position:relative;
+  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease),
+    box-shadow .18s var(--ease)}
 .row.in{animation:in .3s var(--ease) both}
 @keyframes in{from{opacity:0;transform:translateY(7px)}}
-.row:hover{background:var(--surface2)}
-/* Selection is a keyboard affordance, not a claim about the row. A ring around
-   the first result reads as "this one is special", which it is not — the list
-   is already in order. A quiet fill is enough to follow the arrow keys. */
-.row.sel{background:var(--surface2)}
+/* the rule between rows, drawn by the row above so the last one has none */
+.row + .row::before{content:"";position:absolute;left:14px;right:14px;top:-1px;height:1px;
+  background:var(--line)}
+.row:hover{background:var(--surface)}
+.row:hover::before,.row:hover + .row::before,.row.sel::before,.row.sel + .row::before{opacity:0}
+/* The row you are on is the one the reference lifts: a card with an edge and a
+   shadow, sitting proud of the ruled list behind it. */
+.row.sel{background:var(--surface);border-color:var(--line2);
+  box-shadow:0 10px 30px -12px rgba(0,0,0,.9)}
 .row:active{transform:scale(.994)}
 
 /* ---- warnings ----
@@ -165,28 +183,36 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* 4-char tickers get a tighter face */
 .tok.t4{font-size:9.5px;letter-spacing:-.04em}
-.tok{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;
-  font-size:12px;font-weight:700;letter-spacing:-.03em;color:#12121a;position:relative;
-  background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 45%,#fff))}
-.tok.sq{border-radius:12px}
-.tok .badge{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;
-  background:var(--c2);border:2.5px solid var(--surface)}
-.row:hover .tok .badge,.row.sel .tok .badge{border-color:var(--surface2)}
+.tok{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;
+  font-size:12px;font-weight:700;letter-spacing:-.03em;color:#08080a;position:relative;
+  background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 55%,#fff))}
+.tok.sq{border-radius:13px}
+/* the chain badge rides the token, and its ring is whatever it is sitting on */
+.tok .badge{position:absolute;right:-2px;bottom:-2px;width:15px;height:15px;border-radius:50%;
+  background:var(--c2);border:2.5px solid var(--bg2)}
+.row:hover .tok .badge{border-color:var(--surface)}
+.row.sel .tok .badge{border-color:var(--surface)}
 
 .body{flex:1;min-width:0}
-.t1{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14.5px;letter-spacing:-.015em;
+.t1{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;letter-spacing:-.02em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t1 .sym{color:var(--faint);font-weight:500}
-.t2{margin-top:2px;color:var(--dim);font-size:12.5px;display:flex;align-items:center;gap:7px;
+.t2{margin-top:3px;color:var(--dim);font-size:12.5px;display:flex;align-items:center;gap:7px;
   white-space:nowrap;overflow:hidden}
 .t2 .sep{color:var(--faint);opacity:.5}
 .tag{padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--dim);
   font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 
 .num{text-align:right;flex:none;font-variant-numeric:tabular-nums}
-.n1{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
-.n2{margin-top:2px;font-size:12.5px;font-weight:600}
+.n1{font-weight:600;font-size:15px;letter-spacing:-.025em}
+.n2{margin-top:3px;font-size:12.5px;font-weight:600;display:flex;align-items:center;
+  justify-content:flex-end;gap:4px}
 .up{color:var(--up)}.down{color:var(--down)}
+/* A direction before the number, the way every trading screen writes it — the
+   sign is doing the work twice, which is what makes it readable at a glance. */
+.n2.up::before,.n2.down::before{content:"";width:0;height:0;border-inline:4px solid transparent}
+.n2.up::before{border-bottom:5px solid var(--up)}
+.n2.down::before{border-top:5px solid var(--down)}
 .n2.mute{color:var(--faint);font-weight:500}
 .spark{width:62px;height:26px;flex:none;opacity:.85}
 /* The second line sheds what it can afford to, worst first. The tag repeats the
@@ -195,41 +221,60 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @media (max-width:560px){.spark{display:none}.t2 .tag{display:none}}
 @media (max-width:380px){.t2 .mi,.t2 .sep{display:none}}
 
-.empty{text-align:center;padding:60px 20px;color:var(--faint)}
+.empty{text-align:center;padding:56px 20px;color:var(--faint)}
 .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px;font-weight:600}
-.gtitle{padding:16px 4px 6px;font-size:11.5px;font-weight:700;letter-spacing:.1em;
+.gtitle{padding:16px 14px 7px;font-size:11px;font-weight:700;letter-spacing:.11em;
   text-transform:uppercase;color:var(--faint)}
+.gtitle:first-child{padding-top:10px}
 
 /* detail sheet */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(8,8,12,.6);backdrop-filter:blur(3px);
   opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
 .scrim.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;z-index:31;top:0;right:0;bottom:0;width:min(440px,100%);
-  background:var(--bg2);border-left:1px solid var(--line);overflow-y:auto;
+.sheet{position:fixed;z-index:31;top:0;right:0;bottom:0;width:min(452px,100%);
+  background:var(--bg);border-left:1px solid var(--line);overflow-y:auto;
   transform:translateX(100%);transition:transform .32s var(--ease);visibility:hidden}
 .sheet.open{transform:none;visibility:visible}
 .sheet-in{padding:22px 24px 40px}
-.sheet-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:22px}
+.sheet-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:4px}
 .x{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:var(--dim);
   background:var(--surface);border:1px solid var(--line);transition:.15s}
 .x:hover{color:var(--text);background:var(--surface2)}
-.sheet h2{font-size:20px;font-weight:700;letter-spacing:-.025em}
+.sheet h2{font-size:19px;font-weight:600;letter-spacing:-.03em}
 .sheet .hsub{color:var(--dim);font-size:13px;margin-top:3px}
-.big{font-size:34px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
-.chgline{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13.5px;font-weight:600}
+/* The number is the headline and is set like one: as large as the panel can
+   carry, tight, and with nothing competing on its line. */
+.big{font-size:40px;font-weight:600;letter-spacing:-.045em;font-variant-numeric:tabular-nums;
+  line-height:1.05;margin-top:20px}
+.chgline{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13.5px;font-weight:600}
 .chgline .mute{color:var(--faint);font-weight:500}
-.chart{margin:20px 0 4px;border-radius:var(--r);overflow:hidden;background:var(--surface);
-  border:1px solid var(--line);padding:14px 0 0}
+/* the chart runs to the panel's edges: a border around it would box in the one
+   thing on screen that is meant to feel continuous */
+.chart{margin:18px -24px 4px;overflow:hidden;background:none;padding:10px 0 0}
 .chart svg{display:block;width:100%;height:auto}
-.rangebar{display:flex;gap:4px;padding:8px 12px 10px}
-.rangebar span{padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--faint)}
-.rangebar span.on{background:var(--surface2);color:var(--text)}
+/* Aave's segmented control: one track, the active segment filled. */
+.rangebar{display:flex;gap:2px;margin:14px 24px 0;padding:3px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line)}
+.rangebar span{flex:1;text-align:center;padding:6px 9px;border-radius:999px;font-size:11.5px;
+  font-weight:600;color:var(--faint)}
+.rangebar span.on{background:var(--surface2);color:var(--text);
+  box-shadow:0 1px 6px rgba(0,0,0,.5)}
 
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
-.stat{padding:12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
-.stat .k{color:var(--faint);font-size:11.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
-.stat .v{margin-top:5px;font-size:16px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px}
+.stat{padding:13px 15px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
+.stat .k{color:var(--faint);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.stat .v{margin-top:6px;font-size:16.5px;font-weight:600;letter-spacing:-.025em;font-variant-numeric:tabular-nums}
 .stat.wide{grid-column:1/-1}
+
+/* Dotted leaders, straight out of the reference: a label, a run of dots, and a
+   figure. It is how a spec sheet reads, and it lets a dozen secondary numbers
+   sit under the four that earned a card without turning into a wall of them. */
+.leads{margin-top:10px;display:flex;flex-direction:column}
+.lead{display:flex;align-items:baseline;gap:8px;padding:9px 3px;font-size:13px}
+.lead .k{color:var(--faint);white-space:nowrap}
+.lead i{flex:1;height:0;border-bottom:1px dotted var(--line2);transform:translateY(-3px);min-width:14px}
+.lead .v{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  letter-spacing:-.01em}
 .util{margin-top:9px;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
 .util i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#3fd0e8);
   animation:grow .5s var(--ease) both}
@@ -246,14 +291,33 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .mini .body .t1{font-size:13.5px}
 .mini .body .t2{font-size:12px}
 .mini .num .n1{font-size:13.5px}
-.cta{display:flex;flex-wrap:wrap;gap:9px;margin-top:24px}
-.cta button,.cta a{flex:1 1 45%;padding:13px;border-radius:14px;font-size:14px;font-weight:600;
+/* What is left of the old two-tier call to action: one full-width button,
+   used by the trade form and the empty states. Handing off to a venue is the
+   square grid below now. */
+.cta{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}
+.cta button{flex:1 1 100%;padding:13px;border-radius:var(--r);font-size:14px;font-weight:600;
   transition:.16s var(--ease);text-align:center}
-.cta .p{flex-basis:100%}
 .cta .p{background:var(--accent);color:var(--on-accent);box-shadow:0 8px 24px -10px var(--accent)}
 .cta .p:hover{background:#1a86e8;transform:translateY(-1px)}
-.cta .s{background:var(--surface);border:1px solid var(--line2);color:var(--text)}
-.cta .s:hover{background:var(--surface2)}
+
+/* Four square buttons under the balance, icon over label — the shape the
+   reference gives to the things you do most, sized for a thumb and quiet
+   enough that the number above stays the loudest thing on the panel. */
+.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:20px}
+.quad a,.quad button{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:15px 4px;border-radius:var(--r-lg);background:var(--surface);
+  border:1px solid var(--line);color:var(--text);text-decoration:none;
+  font-size:12px;font-weight:600;letter-spacing:-.01em;transition:.16s var(--ease)}
+.quad a:hover,.quad button:hover{background:var(--surface2);border-color:var(--line2);
+  transform:translateY(-1px)}
+.quad .i{width:19px;height:19px;stroke-width:1.7;color:var(--dim)}
+.quad a:hover .i,.quad button:hover .i{color:var(--text)}
+.quad span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* Saved: the tile keeps its place and fills its star rather than swapping the
+   word under it, so the row never reflows under your thumb. */
+.quad button.on{border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent-dim)}
+.quad button.on .i{color:var(--accent-dim);fill:currentColor}
+@media (max-width:400px){.quad{gap:6px}.quad a,.quad button{padding:13px 2px;font-size:11px}}
 .note{margin-top:14px;text-align:center;color:var(--faint);font-size:11.5px}
 
 @media (max-width:640px){
@@ -319,6 +383,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .warn button:hover{background:rgba(255,255,255,.18)}
 
 .sheet-top .ident{display:flex;gap:12px;align-items:center;min-width:0}
+.sheet-top .ident .tok{width:44px;height:44px;font-size:13px}
 .sheet-top .ident h2{overflow-wrap:anywhere}
 .sheet-top .acts{display:flex;gap:6px;flex:none}
 .note.l{text-align:left;margin-top:0}
@@ -326,7 +391,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.about .note{line-height:1.55;color:var(--dim);max-width:62ch}
 /* the source's own words, set apart from the line we composed */
 .sec.about .src{margin-top:9px;padding-left:11px;border-left:2px solid var(--line2);color:var(--faint)}
-.cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
 .cta.one button{flex:0 0 auto;padding:11px 22px}
 .rangebar span{cursor:pointer}
@@ -514,10 +578,13 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .ax.lo{top:76px;right:8px}
 .ax.t0{bottom:1px;left:8px}
 .ax.t1{bottom:1px;right:8px}
-/* out of the bars' way: the panel is labelled above them, not across them */
-.ax.vk{top:100px;right:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
-  padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--bg) 76%,transparent)}
-.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
+/* The bars fill the whole strip they are given, so there is no room above
+   them for a caption — the free space is the middle of the time axis, between
+   the first and last stamps. */
+.ax.vk{left:50%;transform:translateX(-50%);bottom:1px;font-size:9px;
+  text-transform:uppercase;letter-spacing:.09em}
+.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards;
+  filter:drop-shadow(0 0 7px color-mix(in srgb,var(--glow,#4ade80) 55%,transparent))}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
 @keyframes fadein{to{opacity:1}}
@@ -573,14 +640,16 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* aggregate bar — the numbers DefiLlama leads with, from data already loaded */
 
-/* results header: what is on screen, and the one control that changes its shape */
+/* results header: what is on screen, and the controls that change its shape.
+   The reference puts a filter pill on the left and a row of quiet icon buttons
+   on the right, which is the same two jobs this line already had. */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.bar .meta{padding:14px 2px 10px}
-.viewtools{display:flex;gap:6px;flex:none}
-.vt{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:10px;
+.bar .meta{padding:16px 4px 12px}
+.viewtools{display:flex;gap:6px;flex:none;align-items:center}
+.vt{display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim);
   font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
-.vt:hover{color:var(--text);border-color:var(--line2)}
+.vt:hover{color:var(--text);border-color:var(--line2);background:var(--surface2)}
 .vt .i{width:15px;height:15px}
 
 /* the results line: it truncates from the middle of its own sentence, never
@@ -591,12 +660,19 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 /* ---- table view ----
    Grid rows, not <table>: the same .row nodes the card view uses, so the keyed
    reconciler, selection, starring and keyboard nav all work unchanged. */
-.results.table{gap:0}
+/* In table mode the panel is the table: no inner padding, and the header row
+   is part of it rather than a strip floating over it. */
+.results.table{gap:0;padding:0}
 .results.table .row{border-radius:0;border-left:0;border-right:0;border-top:0;
-  border-bottom:1px solid var(--line);background:none;
-  display:grid;grid-template-columns:var(--cols);align-items:center;gap:14px;padding:14px 12px}
+  border-bottom:1px solid var(--line);background:none;box-shadow:none;
+  display:grid;grid-template-columns:var(--cols);align-items:center;gap:14px;padding:14px 16px}
+/* the rows already have a rule of their own here — the card view's hairline
+   would draw a second one a pixel above it */
+.results.table .row + .row::before{display:none}
 .results.table .row:hover{background:var(--surface)}
-.results.table .row.sel{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);border-radius:0}
+.results.table .row.sel{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);
+  border-radius:0;border-color:var(--line)}
+.results.table .row:last-child{border-bottom:0}
 .thead{border-bottom:1px solid var(--line2)}
 .results.table .name{display:flex;align-items:center;gap:12px;min-width:0}
 .results.table .cell{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;
@@ -604,8 +680,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .results.table .cell.txt{font-weight:500;color:var(--dim);font-size:13px}
 .results.table .star{margin-left:4px}
 
-.thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:0 12px 8px;
-  position:sticky;top:118px;z-index:9;background:var(--bg)}
+.thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:13px 16px 11px;
+  position:sticky;top:120px;z-index:9;background:var(--bg2)}
 .thead span,.thead button{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);text-align:right;white-space:nowrap}
 .thead .name{text-align:left;justify-content:flex-start}
@@ -684,6 +760,28 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .thead{display:none}
 }
 
+
+/* ---- the bottom bar ----
+   Under the thumb, above everything, and only where the rail cannot be: on a
+   wide screen the categories are already down the left side and a second copy
+   of them would be two answers to one question. */
+.tabbar{display:none}
+@media (max-width:900px){
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:25;display:grid;
+    grid-template-columns:repeat(5,1fr);gap:2px;
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,rgba(8,8,10,.82),rgba(8,8,10,.98));
+    backdrop-filter:blur(18px);border-top:1px solid var(--line)}
+  .tabbar button{display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 2px;
+    border-radius:12px;color:var(--faint);font-size:10.5px;font-weight:600;letter-spacing:-.01em;
+    transition:color .15s var(--ease),background .15s var(--ease)}
+  .tabbar .i{width:21px;height:21px;stroke-width:1.7}
+  .tabbar button:active{background:var(--surface)}
+  .tabbar button[aria-current=true]{color:var(--text)}
+  .tabbar button[aria-current=true] .i{color:var(--accent-dim)}
+  /* the bar is fixed over the page, so the page has to end above it */
+  body{padding-bottom:calc(94px + env(safe-area-inset-bottom))}
+}
 
 /* ---- mobile ----
    Everything the desktop puts in a column header or a hover has to be reachable
@@ -767,6 +865,17 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .railchains .chip{padding:8px 12px 8px 9px}
 }
 
+/* The panel the rows sit in costs a few pixels down each side, and on the
+   narrowest phone they come out of the one thing on the second line that
+   cannot shrink further: the figure. Give them back from the panel and the
+   gaps, and take the last two off the type, not the number. */
+@media (max-width:400px){
+  .results{padding:4px}
+  .row{padding:12px 8px;gap:8px}
+  .row + .row::before{left:8px;right:8px}
+  .t2{font-size:11.5px}
+}
+
 </style>
 </head>
 <body>
@@ -840,6 +949,11 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   <div id="results" class="results" role="region" aria-label="Results"></div>
 </main>
 </div>
+
+<!-- Every reference screen puts navigation under the thumb rather than above
+     the content. On a phone the category rail becomes this; on a wide screen
+     the rail is already down the left and this is not rendered. -->
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
 
 <aside class="sheet" id="sheet" aria-hidden="true" tabindex="-1" aria-label="Details"></aside>
 <div class="scrim" id="scrim"></div>
@@ -5054,13 +5168,42 @@ const find = id => everything().find(x => x.id === id)
 /* One primary way out, plus the venues that can act on this row. Atlas holds no
    wallet and quotes no price; handing off with the token already resolved is
    the point of having found it here. */
-const ctaHTML = (it, label, href) => `<div class="cta">
-  <a class="p" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)} \u2197</a>
-  ${actions(it).map(([l, u]) => `<a class="s" href="${esc(u)}"
-    target="_blank" rel="noopener noreferrer">${esc(l)} \u2197</a>`).join('')}</div>`;
+const QI = {
+  trade: '<svg viewBox="0 0 24 24" class="i"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>',
+  out: '<svg viewBox="0 0 24 24" class="i"><path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
+  star: '<svg viewBox="0 0 24 24" class="i"><path d="m12 4 2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" class="i"><path d="M12 15V4M8.5 7.5 12 4l3.5 3.5"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>',
+};
+// Square tiles have room for a word, not a sentence: "Swap on Jupiter" is
+// "Jupiter" once the arrow icon above it has said the rest.
+const shortAct = s => String(s).replace(/^(?:View on|Open on|Trade on|Swap on|Buy with|Open)\s+/i, '');
+const qout = (l, u) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${QI.out}<span>${esc(shortAct(l))}</span></a>`;
+/* Four square actions, ordered by how directly they act on this row: the
+   on-site trade form first, then the venues that can fill it, then where the
+   numbers came from, then keeping and sharing it. */
+const ctaHTML = (it, label, href) => {
+  const t = [];
+  if (TRADEABLE.has(it.kind) && tradeRoute(it)) t.push(`<button data-goto="trade">${QI.trade}<span>Trade</span></button>`);
+  for (const [l, u] of actions(it)) t.push(qout(l, u));
+  t.push(qout(label, href));
+  const on = S.watch.has(it.id);
+  t.push(`<button class="${on ? 'on' : ''}" data-star="${esc(it.id)}" aria-pressed="${on}">${QI.star}<span>Watch</span></button>`);
+  t.push(`<button data-share="${esc(it.id)}">${QI.share}<span>Share</span></button>`);
+  return `<div class="quad">${t.slice(0, 4).join('')}</div>`;
+};
 
 const stat = (k, v, extra = '', cls = '') =>
   `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${extra}</div>`;
+const lead = (k, v, cls = '') =>
+  `<div class="lead"><span class="k">${k}</span><i></i><span class="v ${cls}">${v}</span></div>`;
+/* The reference sheets lead with a few figures and drop the rest to dotted
+   rows. Past four cards a stat grid stops reading as headline numbers and
+   starts reading as wallpaper, so anything after the fourth becomes a row. */
+const statGrid = (cards, leads = []) => {
+  const c = cards.filter(Boolean), l = leads.filter(Boolean);
+  return (c.length ? `<div class="stats">${c.join('')}</div>` : '')
+    + (l.length ? `<div class="leads">${l.join('')}</div>` : '');
+};
 
 function sheetHTML(it) {
   const c = CH[it.chain];
@@ -5076,16 +5219,17 @@ function sheetHTML(it) {
       <div class="big">${usd(it.price)}</div>
       <div class="chgline"><span class="${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</span><span class="mute">past 24 hours</span></div>
       ${chartBox(it)}
-      <div class="stats">
-        ${stat('Market cap', '$' + compact(it.mcap))}
-        ${stat('24h volume', '$' + compact(it.vol))}
-        ${stat('7d', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down')}
-        ${stat('30d', pct(it.chg30d), '', it.chg30d >= 0 ? 'up' : 'down')}
-        ${stat('All-time high', usd(it.ath))}
-        ${stat('Off its high', it.athChg ? pct(it.athChg) : '—')}
-        ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
-        ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
-      </div>
+      ${statGrid([
+        stat('Market cap', '$' + compact(it.mcap)),
+        stat('24h volume', '$' + compact(it.vol)),
+        stat('7d', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down'),
+        stat('30d', pct(it.chg30d), '', it.chg30d >= 0 ? 'up' : 'down'),
+      ], [
+        lead('All-time high', usd(it.ath)),
+        lead('Off its high', it.athChg ? pct(it.athChg) : '—', it.athChg < 0 ? 'down' : ''),
+        it.high24 || it.low24 ? lead('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : lead('Rank', it.rank ? '#' + it.rank : '—'),
+        it.turn ? lead('Turnover', it.turn.toFixed(1) + '% of cap') : lead('Lending markets', String(markets.length)),
+      ])}
       ${riskBox(it)}${perpBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
@@ -5099,13 +5243,14 @@ function sheetHTML(it) {
   const g = SHEET[it.kind];
   if (g) {
     const s = g(it);
+    const st = s.stats.filter(Boolean);
     const nets = (it.chains || []).map(c => S.chainRows.find(x => x.chain === c)).filter(Boolean).slice(0, 6);
     return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="${esc(it.kind)}">
       ${head(s.head || KIND[it.kind].title(it), s.sub)}
       <div class="big ${s.cls || ''}">${esc(s.big)}</div>
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
-      <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
+      ${statGrid(st.slice(0, 4).map(([k, v]) => stat(k, esc(v))), st.slice(4).map(([k, v]) => lead(k, esc(v))))}
       ${riskBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
@@ -5123,15 +5268,16 @@ function sheetHTML(it) {
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
       ${chartBox(it)}
-      <div class="stats">
-        ${stat('Category', esc(it.cat))}
-        ${stat('7d change', pct(it.chg7d))}
-        ${it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length))}
-        ${it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl))}
-        ${it.rev24 ? stat('24h revenue', '$' + compact(it.rev24)) : ''}
-        ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
-        ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
-      </div>
+      ${statGrid([
+        stat('Category', esc(it.cat)),
+        stat('7d change', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down'),
+        it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length)),
+        it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl)),
+      ], [
+        it.rev24 ? lead('24h revenue', '$' + compact(it.rev24)) : '',
+        it.perps24 ? lead('24h perps volume', '$' + compact(it.perps24)) : '',
+        it.opts24 ? lead('24h options volume', '$' + compact(it.opts24)) : '',
+      ])}
       ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -5183,16 +5329,17 @@ function sheetHTML(it) {
     <div class="big up">${apy(it.sup)}</div>
     <div class="chgline"><span class="mute">supply APY${it.supReward ? ` · ${apy(it.supBase)} base + ${apy(it.supReward)} rewards` : ''}</span></div>
     ${chartBox(it)}
-    <div class="stats">
-      ${stat('Total supplied', '$' + compact(it.supplyUsd))}
-      ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
-      ${stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor))}
-      ${stat('Available now', '$' + compact(it.free))}
-      ${stat('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—')}
-      ${it.mean30 ? stat('30d average supply', apy(it.mean30)) : ''}
-      <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
-        <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
-    </div>
+    ${statGrid([
+      stat('Total supplied', '$' + compact(it.supplyUsd)),
+      stat('Total borrowed', '$' + compact(it.borrowUsd)),
+      stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor)),
+      stat('Available now', '$' + compact(it.free)),
+      `<div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
+        <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>`,
+    ], [
+      lead('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—'),
+      it.mean30 ? lead('30d average supply', apy(it.mean30)) : '',
+    ])}
     ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
@@ -5404,16 +5551,17 @@ function paintChart(box, it, s, days) {
   }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true"
+      style="--glow:${stroke}">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
       ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
       <path class="area" d="${d}L${(CW - CPAD).toFixed(1)} ${PH}L${CPAD} ${PH}Z" fill="url(#cgrad)"/>
       <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"/>
-      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
+      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2.2"
         stroke-linejoin="round" stroke-linecap="round"/>
-      ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
+      ${bars ? `<g class="vol" fill="${stroke}" opacity=".2">${bars}</g>` : ''}
       ${marks}
     </svg>
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
@@ -5724,12 +5872,35 @@ $('#tabs').innerHTML = NAV.map(([head, tabs]) =>
   (head ? `<div class="railk nav" role="presentation">${esc(head)}</div>` : '') +
   tabs.map(t => `<button class="tab" role="tab" data-tab="${t}" aria-selected="false">${
     esc(LABEL[t])}<span class="ct"></span></button>`).join('')).join('');
+/* The bottom bar: four destinations and a way to the rest. Every reference
+   screen puts navigation under the thumb, and a fourteen-item rail cannot go
+   there — so this is the shortlist, and More opens the same picker the rail's
+   dropdown does. `data-go` rather than `data-tab`, because the rail is still in
+   the document and two elements answering to the same attribute is how a
+   selector starts matching the wrong one. */
+const BARNAV = [
+  ['all', 'Home', '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'],
+  ['assets', 'Assets', '<path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="m3 12 9 4.5L21 12"/><path d="m3 16.5 9 4.5 9-4.5"/>'],
+  ['dex', 'Swap', '<path d="M4 8h13l-3-3"/><path d="M20 16H7l3 3"/>'],
+  ['saved', 'Saved', '<path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"/>'],
+];
+$('#tabbar').innerHTML = BARNAV.map(([t, label, path]) =>
+  `<button data-go="${t}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" class="i">${path}</svg><span>${esc(label)}</span></button>`).join('')
+  + `<button data-more-cats aria-label="All categories"><svg viewBox="0 0 24 24" class="i"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>More</span></button>`;
+$('#tabbar').addEventListener('click', e => {
+  const b = e.target.closest('[data-go],[data-more-cats]'); if (!b) return;
+  if (b.hasAttribute('data-more-cats')) return openCats();
+  goTab(b.dataset.go);
+});
+
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${esc(name)}</button>`).join('');
 $('#netCount').textContent = `${CHAINS.length} networks`;
 $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
   document.querySelectorAll('#tabs [data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
+  document.querySelectorAll('#tabbar [data-go]').forEach(t =>
+    t.setAttribute('aria-current', String(t.dataset.go === S.tab)));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
   const btn = $('#chainbtn');
   btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
@@ -5871,6 +6042,20 @@ const onChainClick = e => {
 $('#chains').addEventListener('click', onChainClick);
 $('#chainbtn').addEventListener('click', openPicker);
 
+/* The address bar already holds the hash that reopens this exact sheet, so
+   sharing is only a question of which way the device offers. */
+function share(btn) {
+  const url = location.href;
+  const title = el.sheet.querySelector('h2')?.textContent || 'Atlas';
+  if (navigator.share) return void navigator.share({ title, url }).catch(() => {});
+  const t = btn.querySelector('span');
+  navigator.clipboard?.writeText(url).then(() => {
+    if (!t) return;
+    t.textContent = 'Copied';
+    setTimeout(() => { t.textContent = 'Share'; }, 1400);
+  });
+}
+
 function toggleStar(id) {
   const it = find(id); if (!it) return;
   S.watch.has(id) ? S.watch.delete(id) : S.watch.set(id, it);
@@ -5908,6 +6093,13 @@ el.sheet.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) return history.back();
   const pick = e.target.closest('[data-pick]');
   if (pick) { const t = pick.dataset.pick; history.back(); return setTimeout(() => goTab(t), 60); }
+  const gt = e.target.closest('[data-goto]');
+  if (gt) {
+    const box = el.sheet.querySelector('.sec.trade');
+    if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.querySelector('[data-amt]')?.focus({ preventScroll: true }); }
+    return;
+  }
+  const sh = e.target.closest('[data-share]'); if (sh) return share(sh);
   const d = e.target.closest('[data-days]');
   if (d) {
     el.sheet.querySelectorAll('[data-days]').forEach(x => x.classList.toggle('on', x === d));

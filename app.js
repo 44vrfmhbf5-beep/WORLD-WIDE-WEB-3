@@ -1406,13 +1406,42 @@ const find = id => everything().find(x => x.id === id)
 /* One primary way out, plus the venues that can act on this row. Atlas holds no
    wallet and quotes no price; handing off with the token already resolved is
    the point of having found it here. */
-const ctaHTML = (it, label, href) => `<div class="cta">
-  <a class="p" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)} \u2197</a>
-  ${actions(it).map(([l, u]) => `<a class="s" href="${esc(u)}"
-    target="_blank" rel="noopener noreferrer">${esc(l)} \u2197</a>`).join('')}</div>`;
+const QI = {
+  trade: '<svg viewBox="0 0 24 24" class="i"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>',
+  out: '<svg viewBox="0 0 24 24" class="i"><path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
+  star: '<svg viewBox="0 0 24 24" class="i"><path d="m12 4 2.5 5 5.5.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.5-.8z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" class="i"><path d="M12 15V4M8.5 7.5 12 4l3.5 3.5"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>',
+};
+// Square tiles have room for a word, not a sentence: "Swap on Jupiter" is
+// "Jupiter" once the arrow icon above it has said the rest.
+const shortAct = s => String(s).replace(/^(?:View on|Open on|Trade on|Swap on|Buy with|Open)\s+/i, '');
+const qout = (l, u) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${QI.out}<span>${esc(shortAct(l))}</span></a>`;
+/* Four square actions, ordered by how directly they act on this row: the
+   on-site trade form first, then the venues that can fill it, then where the
+   numbers came from, then keeping and sharing it. */
+const ctaHTML = (it, label, href) => {
+  const t = [];
+  if (TRADEABLE.has(it.kind) && tradeRoute(it)) t.push(`<button data-goto="trade">${QI.trade}<span>Trade</span></button>`);
+  for (const [l, u] of actions(it)) t.push(qout(l, u));
+  t.push(qout(label, href));
+  const on = S.watch.has(it.id);
+  t.push(`<button class="${on ? 'on' : ''}" data-star="${esc(it.id)}" aria-pressed="${on}">${QI.star}<span>Watch</span></button>`);
+  t.push(`<button data-share="${esc(it.id)}">${QI.share}<span>Share</span></button>`);
+  return `<div class="quad">${t.slice(0, 4).join('')}</div>`;
+};
 
 const stat = (k, v, extra = '', cls = '') =>
   `<div class="stat"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${extra}</div>`;
+const lead = (k, v, cls = '') =>
+  `<div class="lead"><span class="k">${k}</span><i></i><span class="v ${cls}">${v}</span></div>`;
+/* The reference sheets lead with a few figures and drop the rest to dotted
+   rows. Past four cards a stat grid stops reading as headline numbers and
+   starts reading as wallpaper, so anything after the fourth becomes a row. */
+const statGrid = (cards, leads = []) => {
+  const c = cards.filter(Boolean), l = leads.filter(Boolean);
+  return (c.length ? `<div class="stats">${c.join('')}</div>` : '')
+    + (l.length ? `<div class="leads">${l.join('')}</div>` : '');
+};
 
 function sheetHTML(it) {
   const c = CH[it.chain];
@@ -1428,16 +1457,17 @@ function sheetHTML(it) {
       <div class="big">${usd(it.price)}</div>
       <div class="chgline"><span class="${it.chg >= 0 ? 'up' : 'down'}">${pct(it.chg)}</span><span class="mute">past 24 hours</span></div>
       ${chartBox(it)}
-      <div class="stats">
-        ${stat('Market cap', '$' + compact(it.mcap))}
-        ${stat('24h volume', '$' + compact(it.vol))}
-        ${stat('7d', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down')}
-        ${stat('30d', pct(it.chg30d), '', it.chg30d >= 0 ? 'up' : 'down')}
-        ${stat('All-time high', usd(it.ath))}
-        ${stat('Off its high', it.athChg ? pct(it.athChg) : '—')}
-        ${it.high24 || it.low24 ? stat('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : stat('Rank', it.rank ? '#' + it.rank : '—')}
-        ${it.turn ? stat('Turnover', it.turn.toFixed(1) + '% of cap') : stat('Lending markets', String(markets.length))}
-      </div>
+      ${statGrid([
+        stat('Market cap', '$' + compact(it.mcap)),
+        stat('24h volume', '$' + compact(it.vol)),
+        stat('7d', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down'),
+        stat('30d', pct(it.chg30d), '', it.chg30d >= 0 ? 'up' : 'down'),
+      ], [
+        lead('All-time high', usd(it.ath)),
+        lead('Off its high', it.athChg ? pct(it.athChg) : '—', it.athChg < 0 ? 'down' : ''),
+        it.high24 || it.low24 ? lead('24h range', `${usd(it.low24)} – ${usd(it.high24)}`) : lead('Rank', it.rank ? '#' + it.rank : '—'),
+        it.turn ? lead('Turnover', it.turn.toFixed(1) + '% of cap') : lead('Lending markets', String(markets.length)),
+      ])}
       ${riskBox(it)}${perpBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       <div class="sec"><h3>Lend or borrow ${esc(it.sym)}</h3>
         ${markets.length ? markets.map(miniHTML).join('')
@@ -1451,13 +1481,14 @@ function sheetHTML(it) {
   const g = SHEET[it.kind];
   if (g) {
     const s = g(it);
+    const st = s.stats.filter(Boolean);
     const nets = (it.chains || []).map(c => S.chainRows.find(x => x.chain === c)).filter(Boolean).slice(0, 6);
     return `<div class="sheet-in" data-id="${esc(it.id)}" data-kind="${esc(it.kind)}">
       ${head(s.head || KIND[it.kind].title(it), s.sub)}
       <div class="big ${s.cls || ''}">${esc(s.big)}</div>
       <div class="chgline"><span class="mute">${esc(s.caption)}</span></div>
       ${chartBox(it)}
-      <div class="stats">${s.stats.filter(Boolean).map(([k, v]) => stat(k, esc(v))).join('')}</div>
+      ${statGrid(st.slice(0, 4).map(([k, v]) => stat(k, esc(v))), st.slice(4).map(([k, v]) => lead(k, esc(v))))}
       ${riskBox(it)}${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${s.body ? `<div class="sec"><h3>${esc(s.body[0])}</h3><div class="note l">${esc(s.body[1])}</div></div>` : ''}
       ${s.related?.length ? `<div class="sec"><h3>${esc(s.relatedTitle)}</h3>${s.related.map(miniHTML).join('')}</div>` : ''}
@@ -1475,15 +1506,16 @@ function sheetHTML(it) {
       <div class="big">$${compact(it.tvl)}</div>
       <div class="chgline"><span class="${it.chg1d >= 0 ? 'up' : 'down'}">${pct(it.chg1d)}</span><span class="mute">total value locked, past 24 hours</span></div>
       ${chartBox(it)}
-      <div class="stats">
-        ${stat('Category', esc(it.cat))}
-        ${stat('7d change', pct(it.chg7d))}
-        ${it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length))}
-        ${it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl))}
-        ${it.rev24 ? stat('24h revenue', '$' + compact(it.rev24)) : ''}
-        ${it.perps24 ? stat('24h perps volume', '$' + compact(it.perps24)) : ''}
-        ${it.opts24 ? stat('24h options volume', '$' + compact(it.opts24)) : ''}
-      </div>
+      ${statGrid([
+        stat('Category', esc(it.cat)),
+        stat('7d change', pct(it.chg7d), '', it.chg7d >= 0 ? 'up' : 'down'),
+        it.vol24 ? stat('24h DEX volume', '$' + compact(it.vol24)) : stat('Networks', String(it.chains.length)),
+        it.fees24 ? stat('24h fees', '$' + compact(it.fees24)) : stat('TVL', '$' + compact(it.tvl)),
+      ], [
+        it.rev24 ? lead('24h revenue', '$' + compact(it.rev24)) : '',
+        it.perps24 ? lead('24h perps volume', '$' + compact(it.perps24)) : '',
+        it.opts24 ? lead('24h options volume', '$' + compact(it.opts24)) : '',
+      ])}
       ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
       ${markets.length ? `<div class="sec"><h3>Lending markets</h3>${markets.map(miniHTML).join('')}</div>` : ''}
       ${nets.length ? `<div class="sec"><h3>Runs on</h3>${nets.map(miniHTML).join('')}</div>` : ''}
@@ -1535,16 +1567,17 @@ function sheetHTML(it) {
     <div class="big up">${apy(it.sup)}</div>
     <div class="chgline"><span class="mute">supply APY${it.supReward ? ` · ${apy(it.supBase)} base + ${apy(it.supReward)} rewards` : ''}</span></div>
     ${chartBox(it)}
-    <div class="stats">
-      ${stat('Total supplied', '$' + compact(it.supplyUsd))}
-      ${stat('Total borrowed', '$' + compact(it.borrowUsd))}
-      ${stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor))}
-      ${stat('Available now', '$' + compact(it.free))}
-      ${stat('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—')}
-      ${it.mean30 ? stat('30d average supply', apy(it.mean30)) : ''}
-      <div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
-        <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>
-    </div>
+    ${statGrid([
+      stat('Total supplied', '$' + compact(it.supplyUsd)),
+      stat('Total borrowed', '$' + compact(it.borrowUsd)),
+      stat('Borrow APY', it.bor == null ? 'not borrowable' : apy(it.bor)),
+      stat('Available now', '$' + compact(it.free)),
+      `<div class="stat wide"><div class="k">Utilization</div><div class="v">${it.util.toFixed(0)}%</div>
+        <div class="util"><i style="width:${it.util.toFixed(0)}%"></i></div></div>`,
+    ], [
+      lead('Max LTV', it.ltv ? (it.ltv * 100).toFixed(0) + '%' : '—'),
+      it.mean30 ? lead('30d average supply', apy(it.mean30)) : '',
+    ])}
     ${aboutBox(it)}${itemsBox(it)}${tradeBox(it)}
     ${a ? `<div class="sec"><h3>Collateral asset</h3>${miniHTML(a)}</div>` : ''}
     ${it.protocol ? `<div class="sec"><h3>Protocol</h3>${miniHTML(it.protocol)}</div>` : ''}
@@ -1756,16 +1789,17 @@ function paintChart(box, it, s, days) {
   }).join('') : '';
 
   host.innerHTML = `
-    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true">
+    <svg viewBox="0 0 ${CW} ${CH2}" width="${CW}" height="${CH2}" aria-hidden="true"
+      style="--glow:${stroke}">
       <defs><linearGradient id="cgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${stroke}" stop-opacity=".26"/>
+        <stop offset="0" stop-color="${stroke}" stop-opacity=".30"/>
         <stop offset="1" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
       ${band ? `<path class="band" d="${band}" fill="${stroke}" opacity=".14"/>` : ''}
       <path class="area" d="${d}L${(CW - CPAD).toFixed(1)} ${PH}L${CPAD} ${PH}Z" fill="url(#cgrad)"/>
       <line class="base" x1="0" y1="${Y(first).toFixed(1)}" x2="${CW}" y2="${Y(first).toFixed(1)}"/>
-      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2"
+      <path class="line" d="${d}" fill="none" stroke="${stroke}" stroke-width="2.2"
         stroke-linejoin="round" stroke-linecap="round"/>
-      ${bars ? `<g class="vol" fill="${stroke}" opacity=".34">${bars}</g>` : ''}
+      ${bars ? `<g class="vol" fill="${stroke}" opacity=".2">${bars}</g>` : ''}
       ${marks}
     </svg>
     <i class="cx"></i><i class="cdot" style="background:${stroke}"></i>
@@ -2076,12 +2110,35 @@ $('#tabs').innerHTML = NAV.map(([head, tabs]) =>
   (head ? `<div class="railk nav" role="presentation">${esc(head)}</div>` : '') +
   tabs.map(t => `<button class="tab" role="tab" data-tab="${t}" aria-selected="false">${
     esc(LABEL[t])}<span class="ct"></span></button>`).join('')).join('');
+/* The bottom bar: four destinations and a way to the rest. Every reference
+   screen puts navigation under the thumb, and a fourteen-item rail cannot go
+   there — so this is the shortlist, and More opens the same picker the rail's
+   dropdown does. `data-go` rather than `data-tab`, because the rail is still in
+   the document and two elements answering to the same attribute is how a
+   selector starts matching the wrong one. */
+const BARNAV = [
+  ['all', 'Home', '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'],
+  ['assets', 'Assets', '<path d="M3 7.5 12 3l9 4.5-9 4.5z"/><path d="m3 12 9 4.5L21 12"/><path d="m3 16.5 9 4.5 9-4.5"/>'],
+  ['dex', 'Swap', '<path d="M4 8h13l-3-3"/><path d="M20 16H7l3 3"/>'],
+  ['saved', 'Saved', '<path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.6 9.7l5.8-.8z"/>'],
+];
+$('#tabbar').innerHTML = BARNAV.map(([t, label, path]) =>
+  `<button data-go="${t}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" class="i">${path}</svg><span>${esc(label)}</span></button>`).join('')
+  + `<button data-more-cats aria-label="All categories"><svg viewBox="0 0 24 24" class="i"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>More</span></button>`;
+$('#tabbar').addEventListener('click', e => {
+  const b = e.target.closest('[data-go],[data-more-cats]'); if (!b) return;
+  if (b.hasAttribute('data-more-cats')) return openCats();
+  goTab(b.dataset.go);
+});
+
 $('#chains').innerHTML = `<button class="chip all" data-chain="" aria-pressed="true"><span class="dot"></span>All chains</button>` +
   CHAINS.map(([id, name, color]) => `<button class="chip" data-chain="${id}" aria-pressed="false" style="--c:${color}"><span class="dot"></span>${esc(name)}</button>`).join('');
 $('#netCount').textContent = `${CHAINS.length} networks`;
 $('#chainWord').textContent = `${CHAINS.length} networks`;
 function paintFilters() {
   document.querySelectorAll('#tabs [data-tab]').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
+  document.querySelectorAll('#tabbar [data-go]').forEach(t =>
+    t.setAttribute('aria-current', String(t.dataset.go === S.tab)));
   document.querySelectorAll('[data-chain]').forEach(t => t.setAttribute('aria-pressed', (t.dataset.chain || null) === S.chain));
   const btn = $('#chainbtn');
   btn.querySelector('.cn').textContent = S.chain ? CH[S.chain].name : 'All chains';
@@ -2223,6 +2280,20 @@ const onChainClick = e => {
 $('#chains').addEventListener('click', onChainClick);
 $('#chainbtn').addEventListener('click', openPicker);
 
+/* The address bar already holds the hash that reopens this exact sheet, so
+   sharing is only a question of which way the device offers. */
+function share(btn) {
+  const url = location.href;
+  const title = el.sheet.querySelector('h2')?.textContent || 'Atlas';
+  if (navigator.share) return void navigator.share({ title, url }).catch(() => {});
+  const t = btn.querySelector('span');
+  navigator.clipboard?.writeText(url).then(() => {
+    if (!t) return;
+    t.textContent = 'Copied';
+    setTimeout(() => { t.textContent = 'Share'; }, 1400);
+  });
+}
+
 function toggleStar(id) {
   const it = find(id); if (!it) return;
   S.watch.has(id) ? S.watch.delete(id) : S.watch.set(id, it);
@@ -2260,6 +2331,13 @@ el.sheet.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) return history.back();
   const pick = e.target.closest('[data-pick]');
   if (pick) { const t = pick.dataset.pick; history.back(); return setTimeout(() => goTab(t), 60); }
+  const gt = e.target.closest('[data-goto]');
+  if (gt) {
+    const box = el.sheet.querySelector('.sec.trade');
+    if (box) { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); box.querySelector('[data-amt]')?.focus({ preventScroll: true }); }
+    return;
+  }
+  const sh = e.target.closest('[data-share]'); if (sh) return share(sh);
   const d = e.target.closest('[data-days]');
   if (d) {
     el.sheet.querySelectorAll('[data-days]').forEach(x => x.classList.toggle('on', x === d));

@@ -1,17 +1,22 @@
 /* Atlas — onchain search */
 :root{
-  --bg:#12121a; --bg2:#16161f; --surface:#1c1c27; --surface2:#22222f;
-  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  /* Near-black, not blue-black. The reference screens put a bright green line
+     and a white number on something close to true black, and every degree of
+     colour in the background takes contrast away from both. */
+  --bg:#08080a; --bg2:#0d0d10; --surface:#141418; --surface2:#1c1c21;
+  --line:rgba(255,255,255,.06); --line2:rgba(255,255,255,.11);
   /* Both muted greys failed WCAG AA against every surface in the app — 994
      elements of it — which is most of the secondary text on the page. Raised
      until they pass at 4.5:1 on --surface, which is the darkest thing either
      of them ever sits on. */
-  --text:#f4f3f8; --dim:#a8a7bb; --faint:#8f8ea6;
-  /* American Express blue. It is darker than the violet it replaces, so
-     anything sitting on it takes white rather than near-black. */
+  --text:#f4f4f6; --dim:#a6a6b0; --faint:#8b8b96;
+  /* American Express blue for anything you can press. The green belongs to the
+     data: in the reference screens the only saturated colour on the page is the
+     line on the chart and the number beside it, which is why both read at a
+     glance. Buttons there are the same near-black as everything else. */
   --accent:#006fcf; --accent-dim:#3b8fdd; --on-accent:#fff;
   --up:#4ade80; --down:#ff6b81;
-  --r:16px; --r-lg:22px;
+  --r:14px; --r-lg:20px; --r-xl:26px;
   --ease:cubic-bezier(.22,.61,.36,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -31,23 +36,23 @@ button{background:none;border:0;cursor:pointer}
 .i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;flex:none}
 
 /* ambient glow */
+/* One cool wash, low and wide. Three coloured lobes read as a gradient mesh
+   from a different app; the reference is almost flat and lets the data carry
+   the only colour on screen. */
 .aurora{position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(680px 380px at 50% -8%,rgba(171,159,242,.22),transparent 70%),
-    radial-gradient(520px 320px at 88% 4%,rgba(97,214,214,.10),transparent 70%),
-    radial-gradient(460px 300px at 6% 12%,rgba(255,107,129,.07),transparent 70%);
+  background:radial-gradient(900px 460px at 50% -12%,rgba(0,111,207,.10),transparent 72%);
 }
 
 /* header */
 .top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;
-  gap:16px;padding:14px 22px;backdrop-filter:blur(14px);
-  background:linear-gradient(180deg,rgba(18,18,26,.9),rgba(18,18,26,.55));
+  gap:16px;padding:14px 22px;backdrop-filter:blur(16px);
+  background:linear-gradient(180deg,rgba(8,8,10,.92),rgba(8,8,10,.6));
   border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:9px;color:var(--text);text-decoration:none;
   font-weight:700;font-size:16px;letter-spacing:-.03em}
 .mark{width:20px;height:20px;border-radius:7px;
   background:conic-gradient(from 200deg,#006fcf,#3fb6f5,#00d4b8,#006fcf);
-  box-shadow:0 0 18px rgba(171,159,242,.5)}
+  box-shadow:0 0 18px rgba(0,111,207,.45)}
 .top-nav{display:flex;align-items:center;gap:12px}
 .net{color:var(--faint);font-size:12.5px;font-weight:500}
 .ghost-btn{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:11px;
@@ -77,12 +82,12 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* search */
 .searchbar{position:sticky;top:64px;z-index:15;margin-top:16px;display:flex;align-items:center;gap:12px;
-  padding:0 16px;height:58px;border-radius:var(--r-lg);
-  background:var(--surface);border:1px solid var(--line2);
-  box-shadow:0 12px 40px -14px rgba(0,0,0,.8);
+  padding:0 18px;height:56px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 14px 44px -18px rgba(0,0,0,.9);
   transition:.22s var(--ease)}
 .searchbar:focus-within{border-color:var(--accent-dim);background:var(--surface2);
-  box-shadow:0 0 0 4px rgba(171,159,242,.14),0 16px 44px -14px rgba(0,0,0,.9)}
+  box-shadow:0 0 0 4px rgba(0,111,207,.16),0 16px 44px -14px rgba(0,0,0,.9)}
 .lens{color:var(--faint);width:20px;height:20px;transition:.2s}
 .searchbar:focus-within .lens{color:var(--accent)}
 #q{flex:1;background:none;border:0;outline:0;font-size:17px;font-weight:500;letter-spacing:-.015em;min-width:0}
@@ -106,8 +111,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 .meta{padding:14px 2px 10px;color:var(--faint);font-size:12.5px;font-weight:500;letter-spacing:.01em}
 
-/* results */
-.results{display:flex;flex-direction:column;gap:8px}
+/* results
+   The reference screens do not draw a card per row. They draw one dark panel
+   and rule it into rows, and then the row you are on lifts out of it as a
+   rounded, bordered card with its actions inside. That contrast is the whole
+   navigational signal: everything is quiet until one thing is not. */
+.results{display:flex;flex-direction:column;gap:0;
+  border-radius:var(--r-xl);background:var(--bg2);border:1px solid var(--line);
+  padding:6px;overflow:hidden}
+.results:empty{border:0;padding:0}
 /* the sticky search bar overlays what scrolls under it; keep a row's worth clear */
 .results .row,.results .hcard{scroll-margin-top:132px}
 .wrap>#banner{margin-top:14px}
@@ -115,16 +127,22 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
    cannot see which row is highlighted. */
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.row{display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:var(--r);
-  background:var(--surface);border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
-  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease)}
+.row{display:flex;align-items:center;gap:14px;padding:14px 14px;border-radius:var(--r);
+  background:none;border:1px solid transparent;cursor:pointer;text-align:left;width:100%;
+  position:relative;
+  transition:background .16s var(--ease),border-color .16s,transform .16s var(--ease),
+    box-shadow .18s var(--ease)}
 .row.in{animation:in .3s var(--ease) both}
 @keyframes in{from{opacity:0;transform:translateY(7px)}}
-.row:hover{background:var(--surface2)}
-/* Selection is a keyboard affordance, not a claim about the row. A ring around
-   the first result reads as "this one is special", which it is not — the list
-   is already in order. A quiet fill is enough to follow the arrow keys. */
-.row.sel{background:var(--surface2)}
+/* the rule between rows, drawn by the row above so the last one has none */
+.row + .row::before{content:"";position:absolute;left:14px;right:14px;top:-1px;height:1px;
+  background:var(--line)}
+.row:hover{background:var(--surface)}
+.row:hover::before,.row:hover + .row::before,.row.sel::before,.row.sel + .row::before{opacity:0}
+/* The row you are on is the one the reference lifts: a card with an edge and a
+   shadow, sitting proud of the ruled list behind it. */
+.row.sel{background:var(--surface);border-color:var(--line2);
+  box-shadow:0 10px 30px -12px rgba(0,0,0,.9)}
 .row:active{transform:scale(.994)}
 
 /* ---- warnings ----
@@ -148,28 +166,36 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* 4-char tickers get a tighter face */
 .tok.t4{font-size:9.5px;letter-spacing:-.04em}
-.tok{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;
-  font-size:12px;font-weight:700;letter-spacing:-.03em;color:#12121a;position:relative;
-  background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 45%,#fff))}
-.tok.sq{border-radius:12px}
-.tok .badge{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;
-  background:var(--c2);border:2.5px solid var(--surface)}
-.row:hover .tok .badge,.row.sel .tok .badge{border-color:var(--surface2)}
+.tok{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;
+  font-size:12px;font-weight:700;letter-spacing:-.03em;color:#08080a;position:relative;
+  background:linear-gradient(140deg,var(--c),color-mix(in srgb,var(--c) 55%,#fff))}
+.tok.sq{border-radius:13px}
+/* the chain badge rides the token, and its ring is whatever it is sitting on */
+.tok .badge{position:absolute;right:-2px;bottom:-2px;width:15px;height:15px;border-radius:50%;
+  background:var(--c2);border:2.5px solid var(--bg2)}
+.row:hover .tok .badge{border-color:var(--surface)}
+.row.sel .tok .badge{border-color:var(--surface)}
 
 .body{flex:1;min-width:0}
-.t1{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14.5px;letter-spacing:-.015em;
+.t1{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;letter-spacing:-.02em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t1 .sym{color:var(--faint);font-weight:500}
-.t2{margin-top:2px;color:var(--dim);font-size:12.5px;display:flex;align-items:center;gap:7px;
+.t2{margin-top:3px;color:var(--dim);font-size:12.5px;display:flex;align-items:center;gap:7px;
   white-space:nowrap;overflow:hidden}
 .t2 .sep{color:var(--faint);opacity:.5}
 .tag{padding:2px 7px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--dim);
   font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 
 .num{text-align:right;flex:none;font-variant-numeric:tabular-nums}
-.n1{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
-.n2{margin-top:2px;font-size:12.5px;font-weight:600}
+.n1{font-weight:600;font-size:15px;letter-spacing:-.025em}
+.n2{margin-top:3px;font-size:12.5px;font-weight:600;display:flex;align-items:center;
+  justify-content:flex-end;gap:4px}
 .up{color:var(--up)}.down{color:var(--down)}
+/* A direction before the number, the way every trading screen writes it — the
+   sign is doing the work twice, which is what makes it readable at a glance. */
+.n2.up::before,.n2.down::before{content:"";width:0;height:0;border-inline:4px solid transparent}
+.n2.up::before{border-bottom:5px solid var(--up)}
+.n2.down::before{border-top:5px solid var(--down)}
 .n2.mute{color:var(--faint);font-weight:500}
 .spark{width:62px;height:26px;flex:none;opacity:.85}
 /* The second line sheds what it can afford to, worst first. The tag repeats the
@@ -178,41 +204,60 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 @media (max-width:560px){.spark{display:none}.t2 .tag{display:none}}
 @media (max-width:380px){.t2 .mi,.t2 .sep{display:none}}
 
-.empty{text-align:center;padding:60px 20px;color:var(--faint)}
+.empty{text-align:center;padding:56px 20px;color:var(--faint)}
 .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px;font-weight:600}
-.gtitle{padding:16px 4px 6px;font-size:11.5px;font-weight:700;letter-spacing:.1em;
+.gtitle{padding:16px 14px 7px;font-size:11px;font-weight:700;letter-spacing:.11em;
   text-transform:uppercase;color:var(--faint)}
+.gtitle:first-child{padding-top:10px}
 
 /* detail sheet */
 .scrim{position:fixed;inset:0;z-index:30;background:rgba(8,8,12,.6);backdrop-filter:blur(3px);
   opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
 .scrim.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;z-index:31;top:0;right:0;bottom:0;width:min(440px,100%);
-  background:var(--bg2);border-left:1px solid var(--line);overflow-y:auto;
+.sheet{position:fixed;z-index:31;top:0;right:0;bottom:0;width:min(452px,100%);
+  background:var(--bg);border-left:1px solid var(--line);overflow-y:auto;
   transform:translateX(100%);transition:transform .32s var(--ease);visibility:hidden}
 .sheet.open{transform:none;visibility:visible}
 .sheet-in{padding:22px 24px 40px}
-.sheet-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:22px}
+.sheet-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:4px}
 .x{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;color:var(--dim);
   background:var(--surface);border:1px solid var(--line);transition:.15s}
 .x:hover{color:var(--text);background:var(--surface2)}
-.sheet h2{font-size:20px;font-weight:700;letter-spacing:-.025em}
+.sheet h2{font-size:19px;font-weight:600;letter-spacing:-.03em}
 .sheet .hsub{color:var(--dim);font-size:13px;margin-top:3px}
-.big{font-size:34px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
-.chgline{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13.5px;font-weight:600}
+/* The number is the headline and is set like one: as large as the panel can
+   carry, tight, and with nothing competing on its line. */
+.big{font-size:40px;font-weight:600;letter-spacing:-.045em;font-variant-numeric:tabular-nums;
+  line-height:1.05;margin-top:20px}
+.chgline{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13.5px;font-weight:600}
 .chgline .mute{color:var(--faint);font-weight:500}
-.chart{margin:20px 0 4px;border-radius:var(--r);overflow:hidden;background:var(--surface);
-  border:1px solid var(--line);padding:14px 0 0}
+/* the chart runs to the panel's edges: a border around it would box in the one
+   thing on screen that is meant to feel continuous */
+.chart{margin:18px -24px 4px;overflow:hidden;background:none;padding:10px 0 0}
 .chart svg{display:block;width:100%;height:auto}
-.rangebar{display:flex;gap:4px;padding:8px 12px 10px}
-.rangebar span{padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--faint)}
-.rangebar span.on{background:var(--surface2);color:var(--text)}
+/* Aave's segmented control: one track, the active segment filled. */
+.rangebar{display:flex;gap:2px;margin:14px 24px 0;padding:3px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line)}
+.rangebar span{flex:1;text-align:center;padding:6px 9px;border-radius:999px;font-size:11.5px;
+  font-weight:600;color:var(--faint)}
+.rangebar span.on{background:var(--surface2);color:var(--text);
+  box-shadow:0 1px 6px rgba(0,0,0,.5)}
 
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
-.stat{padding:12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line)}
-.stat .k{color:var(--faint);font-size:11.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
-.stat .v{margin-top:5px;font-size:16px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px}
+.stat{padding:13px 15px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
+.stat .k{color:var(--faint);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.stat .v{margin-top:6px;font-size:16.5px;font-weight:600;letter-spacing:-.025em;font-variant-numeric:tabular-nums}
 .stat.wide{grid-column:1/-1}
+
+/* Dotted leaders, straight out of the reference: a label, a run of dots, and a
+   figure. It is how a spec sheet reads, and it lets a dozen secondary numbers
+   sit under the four that earned a card without turning into a wall of them. */
+.leads{margin-top:10px;display:flex;flex-direction:column}
+.lead{display:flex;align-items:baseline;gap:8px;padding:9px 3px;font-size:13px}
+.lead .k{color:var(--faint);white-space:nowrap}
+.lead i{flex:1;height:0;border-bottom:1px dotted var(--line2);transform:translateY(-3px);min-width:14px}
+.lead .v{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;
+  letter-spacing:-.01em}
 .util{margin-top:9px;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
 .util i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#3fd0e8);
   animation:grow .5s var(--ease) both}
@@ -229,14 +274,33 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .mini .body .t1{font-size:13.5px}
 .mini .body .t2{font-size:12px}
 .mini .num .n1{font-size:13.5px}
-.cta{display:flex;flex-wrap:wrap;gap:9px;margin-top:24px}
-.cta button,.cta a{flex:1 1 45%;padding:13px;border-radius:14px;font-size:14px;font-weight:600;
+/* What is left of the old two-tier call to action: one full-width button,
+   used by the trade form and the empty states. Handing off to a venue is the
+   square grid below now. */
+.cta{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}
+.cta button{flex:1 1 100%;padding:13px;border-radius:var(--r);font-size:14px;font-weight:600;
   transition:.16s var(--ease);text-align:center}
-.cta .p{flex-basis:100%}
 .cta .p{background:var(--accent);color:var(--on-accent);box-shadow:0 8px 24px -10px var(--accent)}
 .cta .p:hover{background:#1a86e8;transform:translateY(-1px)}
-.cta .s{background:var(--surface);border:1px solid var(--line2);color:var(--text)}
-.cta .s:hover{background:var(--surface2)}
+
+/* Four square buttons under the balance, icon over label — the shape the
+   reference gives to the things you do most, sized for a thumb and quiet
+   enough that the number above stays the loudest thing on the panel. */
+.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:20px}
+.quad a,.quad button{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:15px 4px;border-radius:var(--r-lg);background:var(--surface);
+  border:1px solid var(--line);color:var(--text);text-decoration:none;
+  font-size:12px;font-weight:600;letter-spacing:-.01em;transition:.16s var(--ease)}
+.quad a:hover,.quad button:hover{background:var(--surface2);border-color:var(--line2);
+  transform:translateY(-1px)}
+.quad .i{width:19px;height:19px;stroke-width:1.7;color:var(--dim)}
+.quad a:hover .i,.quad button:hover .i{color:var(--text)}
+.quad span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* Saved: the tile keeps its place and fills its star rather than swapping the
+   word under it, so the row never reflows under your thumb. */
+.quad button.on{border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent-dim)}
+.quad button.on .i{color:var(--accent-dim);fill:currentColor}
+@media (max-width:400px){.quad{gap:6px}.quad a,.quad button{padding:13px 2px;font-size:11px}}
 .note{margin-top:14px;text-align:center;color:var(--faint);font-size:11.5px}
 
 @media (max-width:640px){
@@ -302,6 +366,7 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .warn button:hover{background:rgba(255,255,255,.18)}
 
 .sheet-top .ident{display:flex;gap:12px;align-items:center;min-width:0}
+.sheet-top .ident .tok{width:44px;height:44px;font-size:13px}
 .sheet-top .ident h2{overflow-wrap:anywhere}
 .sheet-top .acts{display:flex;gap:6px;flex:none}
 .note.l{text-align:left;margin-top:0}
@@ -309,7 +374,6 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .sec.about .note{line-height:1.55;color:var(--dim);max-width:62ch}
 /* the source's own words, set apart from the line we composed */
 .sec.about .src{margin-top:9px;padding-left:11px;border-left:2px solid var(--line2);color:var(--faint)}
-.cta a{display:grid;place-items:center;text-decoration:none}
 .cta.one{margin-top:18px;justify-content:center}
 .cta.one button{flex:0 0 auto;padding:11px 22px}
 .rangebar span{cursor:pointer}
@@ -497,10 +561,13 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .ax.lo{top:76px;right:8px}
 .ax.t0{bottom:1px;left:8px}
 .ax.t1{bottom:1px;right:8px}
-/* out of the bars' way: the panel is labelled above them, not across them */
-.ax.vk{top:100px;right:8px;opacity:.72;font-size:9px;text-transform:uppercase;letter-spacing:.09em;
-  padding:1px 5px;border-radius:5px;background:color-mix(in srgb,var(--bg) 76%,transparent)}
-.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards}
+/* The bars fill the whole strip they are given, so there is no room above
+   them for a caption — the free space is the middle of the time axis, between
+   the first and last stamps. */
+.ax.vk{left:50%;transform:translateX(-50%);bottom:1px;font-size:9px;
+  text-transform:uppercase;letter-spacing:.09em}
+.chart-svg .line{stroke-dasharray:1400;stroke-dashoffset:1400;animation:draw .75s var(--ease) forwards;
+  filter:drop-shadow(0 0 7px color-mix(in srgb,var(--glow,#4ade80) 55%,transparent))}
 .chart-svg .area{opacity:0;animation:fadein .5s .25s var(--ease) forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
 @keyframes fadein{to{opacity:1}}
@@ -556,14 +623,16 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 
 /* aggregate bar — the numbers DefiLlama leads with, from data already loaded */
 
-/* results header: what is on screen, and the one control that changes its shape */
+/* results header: what is on screen, and the controls that change its shape.
+   The reference puts a filter pill on the left and a row of quiet icon buttons
+   on the right, which is the same two jobs this line already had. */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.bar .meta{padding:14px 2px 10px}
-.viewtools{display:flex;gap:6px;flex:none}
-.vt{display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:10px;
+.bar .meta{padding:16px 4px 12px}
+.viewtools{display:flex;gap:6px;flex:none;align-items:center}
+.vt{display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;
   background:var(--surface);border:1px solid var(--line);color:var(--dim);
   font-size:12.5px;font-weight:600;transition:.15s var(--ease)}
-.vt:hover{color:var(--text);border-color:var(--line2)}
+.vt:hover{color:var(--text);border-color:var(--line2);background:var(--surface2)}
 .vt .i{width:15px;height:15px}
 
 /* the results line: it truncates from the middle of its own sentence, never
@@ -574,12 +643,19 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 /* ---- table view ----
    Grid rows, not <table>: the same .row nodes the card view uses, so the keyed
    reconciler, selection, starring and keyboard nav all work unchanged. */
-.results.table{gap:0}
+/* In table mode the panel is the table: no inner padding, and the header row
+   is part of it rather than a strip floating over it. */
+.results.table{gap:0;padding:0}
 .results.table .row{border-radius:0;border-left:0;border-right:0;border-top:0;
-  border-bottom:1px solid var(--line);background:none;
-  display:grid;grid-template-columns:var(--cols);align-items:center;gap:14px;padding:14px 12px}
+  border-bottom:1px solid var(--line);background:none;box-shadow:none;
+  display:grid;grid-template-columns:var(--cols);align-items:center;gap:14px;padding:14px 16px}
+/* the rows already have a rule of their own here — the card view's hairline
+   would draw a second one a pixel above it */
+.results.table .row + .row::before{display:none}
 .results.table .row:hover{background:var(--surface)}
-.results.table .row.sel{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);border-radius:0}
+.results.table .row.sel{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);
+  border-radius:0;border-color:var(--line)}
+.results.table .row:last-child{border-bottom:0}
 .thead{border-bottom:1px solid var(--line2)}
 .results.table .name{display:flex;align-items:center;gap:12px;min-width:0}
 .results.table .cell{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;
@@ -587,8 +663,8 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
 .results.table .cell.txt{font-weight:500;color:var(--dim);font-size:13px}
 .results.table .star{margin-left:4px}
 
-.thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:0 12px 8px;
-  position:sticky;top:118px;z-index:9;background:var(--bg)}
+.thead{display:grid;grid-template-columns:var(--cols);gap:14px;padding:13px 16px 11px;
+  position:sticky;top:120px;z-index:9;background:var(--bg2)}
 .thead span,.thead button{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);text-align:right;white-space:nowrap}
 .thead .name{text-align:left;justify-content:flex-start}
@@ -667,6 +743,28 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .thead{display:none}
 }
 
+
+/* ---- the bottom bar ----
+   Under the thumb, above everything, and only where the rail cannot be: on a
+   wide screen the categories are already down the left side and a second copy
+   of them would be two answers to one question. */
+.tabbar{display:none}
+@media (max-width:900px){
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:25;display:grid;
+    grid-template-columns:repeat(5,1fr);gap:2px;
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,rgba(8,8,10,.82),rgba(8,8,10,.98));
+    backdrop-filter:blur(18px);border-top:1px solid var(--line)}
+  .tabbar button{display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 2px;
+    border-radius:12px;color:var(--faint);font-size:10.5px;font-weight:600;letter-spacing:-.01em;
+    transition:color .15s var(--ease),background .15s var(--ease)}
+  .tabbar .i{width:21px;height:21px;stroke-width:1.7}
+  .tabbar button:active{background:var(--surface)}
+  .tabbar button[aria-current=true]{color:var(--text)}
+  .tabbar button[aria-current=true] .i{color:var(--accent-dim)}
+  /* the bar is fixed over the page, so the page has to end above it */
+  body{padding-bottom:calc(94px + env(safe-area-inset-bottom))}
+}
 
 /* ---- mobile ----
    Everything the desktop puts in a column header or a hover has to be reachable
@@ -748,4 +846,15 @@ body.searching .hero .sub,body.browsing .hero .sub{font-size:0;opacity:0;margin:
   .vt{padding:9px 13px}
   .railnav .tab{padding:9px 14px}
   .railchains .chip{padding:8px 12px 8px 9px}
+}
+
+/* The panel the rows sit in costs a few pixels down each side, and on the
+   narrowest phone they come out of the one thing on the second line that
+   cannot shrink further: the figure. Give them back from the panel and the
+   gaps, and take the last two off the type, not the number. */
+@media (max-width:400px){
+  .results{padding:4px}
+  .row{padding:12px 8px;gap:8px}
+  .row + .row::before{left:8px;right:8px}
+  .t2{font-size:11.5px}
 }

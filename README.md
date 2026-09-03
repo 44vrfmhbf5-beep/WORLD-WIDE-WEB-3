@@ -625,6 +625,13 @@ viewports get cards regardless; five numeric columns do not fit on a phone, and
 the switch that offers them is not shown there — nor on the category home,
 which is neither a table nor a list of cards.
 
+On a phone the category rail has nowhere to be, so navigation moves under the
+thumb: a fixed bottom bar carrying the four categories people actually land on,
+plus one tile that opens the full category picker. It is the same `goTab` the
+rail calls and takes its current state from the same paint, so there is no
+second source of truth about which category you are in — and on a wide screen
+it is not rendered at all, because the rail is already down the left.
+
 Filter and sort stack, one strip per line, rather than sharing a row: they are
 two different questions and reading them as one line asked people to parse
 where one ended. On a phone each strip is a scroller pinned to a single line —
@@ -641,6 +648,34 @@ cols: [['TVL', i => money(i.tvl), 'tvl'], ['1d', i => pct(i.chg1d), 'chg1d', 'sg
 The table is CSS grid over the same `.row` nodes the cards use, not `<table>`
 markup — so the keyed reconciler, selection, starring and keyboard nav all work
 in both views with no second code path.
+
+### The results are one panel, and a sheet is four figures then rows
+
+Rows used to float on the page as separate cards, each with its own border, so
+a screen of ten results was ten boxes and eleven gaps. They now sit inside one
+rounded panel, separated by hairlines drawn by the row above — the list reads
+as a list, and the selected row is the only thing that lifts off it. In table
+mode the panel keeps its background under the sticky header and drops the
+hairlines, because the columns already rule themselves.
+
+A sheet leads with **four figures as cards and drops the rest to dotted rows**
+— `label ·········· value`. Eight equal cards is a grid of wallpaper: nothing
+in it is the headline because everything is. Four is what fits two-up without
+shrinking the type, and the tail is easier to scan as rows anyway, since the
+values line up on the right. One helper renders both halves, so every sheet —
+asset, market, protocol, chain, and the eight kinds built from `SHEET` — gets
+the same shape from the same list of fields; the utilization bar stays a wide
+card because it is a picture, not a value.
+
+The stack of links at the bottom of a sheet became **four square actions**,
+icon over label, ordered by how directly each acts on the row: the on-site
+trade form first (it scrolls to it and focuses the amount), then the venues
+that can fill it, then where the numbers came from, then Watch and Share.
+Anything past the fourth is dropped rather than wrapped — a fifth link nobody
+pressed is not worth a second row under the thumb. Watch fills its star in
+place instead of re-labelling itself, so the row never reflows under a finger,
+and Share hands the sheet's own URL to `navigator.share`, falling back to the
+clipboard.
 
 ### Charts
 

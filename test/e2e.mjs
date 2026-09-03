@@ -606,6 +606,9 @@ console.log('\n# the published artifact, with no network at all');
   for (const t of tabs) {
     if (t === 'saved' || t === 'all') continue;
     await q.click(`[data-tab="${t}"]`); await q.waitForTimeout(600);
+    // a category whose source only loads once its tab is asked for arrives
+    // behind the request lane; blank has to mean blank, not merely not yet
+    await q.locator('#results .row:not(.sk)').first().waitFor({ timeout: 8000 }).catch(() => {});
     if (!await q.locator('#results .row:not(.sk)').count()) { empty.push(t); continue; }
     const row = (await q.locator('#results .row:not(.sk)').first()
       .locator('.n1, .cell').first().textContent()).trim();
